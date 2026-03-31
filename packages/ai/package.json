@@ -1,0 +1,16 @@
+{
+  "name": "@typhoon/ai",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ai-sdk/openai-compatible": "^2.0.0",
+    "ai": "^6.0.0"
+  }
+}

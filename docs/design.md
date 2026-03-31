@@ -1,5 +1,17 @@
 # Typhoon: AI-Powered Customer Service Chatbot — Design & Proposal
 
+> **Note:** This is the original design proposal written before implementation. The actual implementation diverges in several areas:
+>
+> - **CopilotKit / AG-UI** was not adopted. Chat uses AI SDK React (`@ai-sdk/react` useChat) with Mastra `chatRoute` (SSE).
+> - **OpenTelemetry** frontend instrumentation was not implemented.
+> - **PDF parsing** uses `unpdf`, not `pdf-parse-new`.
+> - **`@mastra/pg`** was replaced by a custom `@typhoon/pg` package (see `packages/pg/DEVIATIONS.md`).
+> - **Additional packages** were created: `@typhoon/ai`, `@typhoon/pg`, `@typhoon/logger`, `@typhoon/chat`.
+> - **Admin pages** not yet built: Conversations, API Keys, Settings.
+> - **Reports queue** (`feedback-digest` job) was not implemented.
+>
+> For current documentation, see [Architecture](architecture.md) and [README](../README.md).
+
 ## Context
 
 Typhoon is a **RAG-powered customer service chatbot** that answers questions from source documents stored in S3/MinIO. There is no ticket system — customers interact with a chatbot, and the chatbot retrieves answers from ingested documents.
@@ -119,44 +131,10 @@ typhoon/
 ```
 
 **Layer dependency model:**
-
-```mermaid
-%%{init: {'theme': 'neutral'}}%%
-graph BT
-    subgraph L0["Layer 0 — Foundations"]
-        config["config"]
-        types["types"]
-    end
-
-    subgraph L1["Layer 1 — Infrastructure Clients"]
-        db["db"]
-        storage["storage"]
-    end
-
-    subgraph L2["Layer 2 — Domain Logic & UI"]
-        agents["agents"]
-        ingestion["ingestion"]
-        ui["ui"]
-    end
-
-    subgraph App["apps/server — Composition Root"]
-        server["server"]
-    end
-
-    db --> config
-    db --> types
-    storage --> config
-
-    agents --> db
-    agents --> types
-    ingestion --> db
-    ingestion --> storage
-    ingestion --> types
-    ui --> types
-
-    server --> agents
-    server --> ingestion
-    server --> db
+```
+Layer 2:  agents, ingestion, ui          ← Domain logic & UI
+Layer 1:  db, storage                    ← Infrastructure clients
+Layer 0:  config, types                  ← Foundations
 ```
 
 `apps/server` composes packages — it imports agents, ingestion jobs, and DB schemas, then wires them into the Mastra instance.
@@ -165,35 +143,12 @@ graph BT
 
 ## 4. Core Flow
 
-```mermaid
-%%{init: {'theme': 'neutral'}}%%
-flowchart LR
-    subgraph Ingestion["Document Ingestion"]
-        S3["S3 / MinIO\nDocs"]
-        BullMQ["BullMQ\nSync"]
-        Parse["Parse\n(PDF/DOCX/XLSX)"]
-        Chunk["MDocument\n.chunk()"]
-        Upsert["PgVector\n.upsert()"]
-        S3 --> BullMQ --> Parse --> Chunk --> Upsert
-    end
-
-    subgraph Query["Query Flow"]
-        PgSearch["PgVector\nSearch"]
-        VQT["createVector\nQueryTool"]
-        Agent["Mastra Agent\n(stream)"]
-        Answer["Streamed\nAnswer"]
-        Agent --> VQT --> PgSearch --> Answer
-    end
-
-    Upsert -.->|indexed vectors| PgSearch
-
-    subgraph Clients["Client Entry Points"]
-        Rep["Rep\n(Desk App)"]
-        Customer["Customer\n(Widget)"]
-    end
-
-    Rep --> Agent
-    Customer -->|API key gated| Agent
+```
+S3/MinIO Docs → BullMQ Sync → Parse → MDocument.chunk() → PgVector.upsert()
+                                                                ↓
+Rep question → Mastra Agent (stream) → createVectorQueryTool → PgVector search → Streamed answer
+                                                                ↑
+Customer → Widget (API key gated) → Same Mastra Agent → Same flow
 ```
 
 ---
@@ -237,7 +192,7 @@ export const mastra = new Mastra({
   storage,
   vectors: { pgVector: vector },
   server: {
-    port: 4000,
+    port: 5172,
     apiRoutes: customRoutes,
   },
 });
@@ -302,29 +257,7 @@ Rules:
 });
 ```
 
-### 6.3 Agent Routing
-
-```mermaid
-%%{init: {'theme': 'neutral'}}%%
-flowchart TD
-    Rep["Rep / Customer"] --> Supervisor
-
-    Supervisor{"Supervisor\nAgent"}
-    Supervisor -->|"Product, how-to,\npolicy, troubleshooting"| Knowledge["Knowledge\nAgent"]
-    Supervisor -->|"Greetings,\nmeta-questions"| Direct["Direct\nResponse"]
-
-    Knowledge --> SearchTool["searchKnowledgeBase\n(createVectorQueryTool)"]
-    SearchTool --> PgVector[("PgVector")]
-    PgVector --> Results["Ranked Chunks\n+ Citations"]
-    Results --> Knowledge
-    Knowledge --> StreamedAnswer["Streamed Answer\nwith Sources"]
-
-    Supervisor -.->|"Future"| Billing["Billing Agent"]
-    Supervisor -.->|"Future"| Account["Account Agent"]
-    Supervisor -.->|"Future"| Escalation["Escalation Agent"]
-```
-
-### 6.4 Future Agent Slots
+### 6.3 Future Agent Slots
 
 Add new agents by defining them and registering with the supervisor:
 - **Billing Agent** — handle billing inquiries
@@ -337,25 +270,10 @@ Add new agents by defining them and registering with the supervisor:
 
 ### 7.1 S3 Sync (BullMQ)
 
-```mermaid
-%%{init: {'theme': 'neutral'}}%%
-flowchart TD
-    Cron["Cron Trigger\n(every 6h)"] --> Scan["scan job"]
-    Scan --> ListS3["List S3 Objects"]
-    ListS3 --> Diff["Diff vs DB\n(ETag comparison)"]
-
-    Diff -->|"New / Updated"| Process["process-file job"]
-    Diff -->|"Removed"| Delete["delete-file job"]
-    Diff -->|"Unchanged"| Skip["Skip"]
-
-    Process --> Download["Download\nfrom S3"]
-    Download --> ParseStep["Parse\n(PDF/DOCX/XLSX)"]
-    ParseStep --> ChunkStep["MDocument\n.chunk()"]
-    ChunkStep --> Embed["embedMany()"]
-    Embed --> UpsertStep["PgVector\n.upsert()"]
-
-    Delete --> DeleteVec["PgVector\n.deleteVectors()"]
-    DeleteVec --> MarkDeleted["Mark document\ndeleted in DB"]
+```
+scan job (cron 6h) → list S3 objects → diff vs DB → fan out per-file jobs
+process-file job → download → parse → MDocument.chunk() → embed → PgVector.upsert()
+delete-file job → PgVector.deleteVectors({ filter: { documentId } })
 ```
 
 ### 7.2 Parsing (custom — only for formats Mastra doesn't handle)
@@ -419,59 +337,6 @@ async function processFile(content: string, format: string, doc: Document) {
 
 Mastra's `PgStore` handles threads, messages, and memory tables automatically. We only need Drizzle for domain-specific tables.
 
-```mermaid
-%%{init: {'theme': 'neutral'}}%%
-erDiagram
-    sync_targets ||--o{ documents : "has"
-    sync_targets ||--o{ sync_jobs : "triggers"
-    documents }o--o{ PgVector_chunks : "embedded as"
-    MASTRA_threads ||--o{ MASTRA_messages : "contains"
-    MASTRA_messages ||--o{ feedback : "rated by"
-
-    sync_targets {
-        uuid id PK
-        text name
-        text bucketName
-        text prefix
-        text region
-        text endpoint
-        text cronSchedule
-        boolean isActive
-    }
-
-    documents {
-        uuid id PK
-        uuid syncTargetId FK
-        text s3Key
-        text s3Etag
-        text mimeType
-        int fileSize
-        text title
-        enum status "pending|processing|ready|parse_error|deleted"
-        int chunkCount
-    }
-
-    sync_jobs {
-        uuid id PK
-        uuid syncTargetId FK
-        enum status "running|completed|failed"
-        int filesScanned
-        int filesNew
-        int filesUpdated
-        int filesDeleted
-        int filesErrored
-    }
-
-    feedback {
-        uuid id PK
-        text threadId
-        text messageId
-        uuid userId
-        enum rating "positive|negative"
-        text comment
-    }
-```
-
 ### `sync_targets` — S3 bucket configurations
 ```
 id, name, bucketName, prefix, region, endpoint, cronSchedule, isActive, createdAt, updatedAt
@@ -512,35 +377,35 @@ Registered via `registerApiRoute()` in the Mastra instance. All other endpoints 
 
 ### Sync Targets (admin)
 ```
-GET    /sync-targets               List configured S3 sources
-POST   /sync-targets               Add S3 source
-PATCH  /sync-targets/:id           Update config
-DELETE /sync-targets/:id           Remove source
-POST   /sync-targets/:id/sync      Trigger manual sync
-GET    /sync-targets/:id/jobs      List sync job history
+GET    /v1/sync-targets            List configured S3 sources
+POST   /v1/sync-targets            Add S3 source
+PATCH  /v1/sync-targets/:id        Update config
+DELETE /v1/sync-targets/:id        Remove source
+POST   /v1/sync-targets/:id/sync   Trigger manual sync
+GET    /v1/sync-targets/:id/jobs   List sync job history
 ```
 
 ### Documents (read-only)
 ```
-GET    /documents                  List documents (filterable by source, status, format)
-GET    /documents/:id              Get document detail
+GET    /v1/documents               List documents (filterable by source, status, format)
+GET    /v1/documents/:id           Get document detail
 ```
 
 ### Feedback
 ```
-POST   /feedback                   Submit feedback on an AI response
-GET    /feedback                   List feedback (admin)
+POST   /v1/feedback                Submit feedback on an AI response
+GET    /v1/feedback                List feedback (admin)
 ```
 
 ### Widget (API key gated)
 ```
-POST   /widget/chat                Customer chat (API key auth, SSE)
-GET    /widget/config              Widget branding/welcome message
+POST   /v1/widget/chat             Customer chat (API key auth, SSE)
+GET    /v1/widget/config           Widget branding/welcome message
 ```
 
 ### Auth (Better Auth — auto-mounted)
 ```
-Better Auth handles: /api/auth/* (login, register, session, OIDC callback, API key management)
+Better Auth handles: /v1/auth/* (login, register, session, OIDC callback, API key management)
 ```
 
 ### Auto-generated by Mastra (no custom code needed)
@@ -626,36 +491,9 @@ useRenderTool('search-knowledge-base', ({ args, result }) => (
 ### 10.3 Customer Widget (`apps/widget`)
 
 - Embeddable `<script>` tag rendering a chat bubble
-- Uses same Mastra agent via `/widget/chat` (API key auth)
+- Uses same Mastra agent via `/v1/widget/chat` (API key auth)
 - Gated by deployment-level API key — admin creates one key per deployment (e.g., "Marketing Site", "Help Center")
 - Rate-limited and usage-tracked per API key/deployment
-
-```mermaid
-%%{init: {'theme': 'neutral'}}%%
-sequenceDiagram
-    participant C as Customer Browser
-    participant W as Widget Script
-    participant S as Server (Hono)
-    participant BA as Better Auth
-    participant A as Mastra Agent
-    participant V as PgVector
-
-    C->>W: Opens page with widget embed
-    W->>S: POST /widget/chat<br/>(x-api-key header)
-    S->>BA: Validate API key
-    alt Invalid / Missing Key
-        BA-->>S: 403 Forbidden
-        S-->>W: 403 — Widget disabled
-    else Valid Key
-        BA-->>S: Key valid + deployment metadata
-        S->>A: Stream agent request<br/>(threadId, message)
-        A->>V: searchKnowledgeBase tool call
-        V-->>A: Ranked chunks + sources
-        A-->>S: SSE stream (answer + citations)
-        S-->>W: SSE stream
-        W-->>C: Renders chat response
-    end
-```
 
 ---
 
@@ -724,38 +562,6 @@ Utilities:
 ---
 
 ## 13. Implementation Phases
-
-```mermaid
-%%{init: {'theme': 'neutral'}}%%
-gantt
-    title Implementation Phases
-    dateFormat X
-    axisFormat %s
-
-    section Phase 1 — Foundation
-    Scaffold monorepo                          :p1a, 0, 1
-    @typhoon/config                            :p1b, 0, 1
-    @typhoon/types                             :p1c, 0, 1
-    @typhoon/db (Drizzle schemas)              :p1d, after p1c, 1
-    @typhoon/storage (S3 client)               :p1e, after p1b, 1
-    Docker Compose (PG, Redis, MinIO)          :p1f, 0, 1
-
-    section Phase 2 — Mastra + Ingestion
-    Mastra instance (PgStore, PgVector, Memory):p2a, after p1d, 1
-    @typhoon/ingestion (parsers + pipeline)    :p2b, after p2a, 2
-    Custom routes (sync targets, documents)    :p2c, after p2a, 1
-
-    section Phase 3 — Agents + Chat
-    @typhoon/agents (Knowledge + Supervisor)   :p3a, after p2b, 1
-    Wire agents + Memory into Mastra           :p3b, after p3a, 1
-    Custom routes (feedback, widget, API keys) :p3c, after p3b, 1
-
-    section Phase 4 — UI
-    @typhoon/ui (shared components + OTel)     :p4a, after p3a, 1
-    apps/desk (Rep workspace)                  :p4b, after p4a, 2
-    apps/admin (Admin dashboard)               :p4c, after p4a, 2
-    apps/widget (Customer chat)                :p4d, after p3c, 1
-```
 
 ### Phase 1 — Foundation (Layer 0-1)
 1. Scaffold monorepo: root `package.json`, `turbo.json`, `tsconfig.json`, `biome.json`

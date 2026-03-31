@@ -43,7 +43,7 @@ Mastra's `MDocument` handles markdown, HTML, JSON, and plain text natively. Cust
 
 | Format | Parser | MDocument Method |
 |--------|--------|-----------------|
-| PDF | `pdf-parse` | `MDocument.fromText()` |
+| PDF | `unpdf` | `MDocument.fromText()` |
 | DOCX | `mammoth` (converts to HTML) | `MDocument.fromHTML()` |
 | XLSX | SheetJS (converts to CSV) | `MDocument.fromText()` |
 | Markdown | Native | `MDocument.fromMarkdown()` |

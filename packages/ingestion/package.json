@@ -1,0 +1,31 @@
+{
+  "name": "@typhoon/ingestion",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1016.0",
+    "@mastra/rag": "^2.1.2",
+    "@typhoon/ai": "workspace:*",
+    "@typhoon/config": "workspace:*",
+    "@typhoon/db": "workspace:*",
+    "@typhoon/logger": "workspace:*",
+    "@typhoon/pg": "workspace:*",
+    "@typhoon/storage": "workspace:*",
+    "@typhoon/types": "workspace:*",
+    "ai": "^6.0.0",
+    "bullmq": "^5.34.0",
+    "drizzle-orm": "^0.45.1",
+    "mammoth": "^1.8.0",
+    "unpdf": "^1.4.0",
+    "xlsx": "^0.18.5",
+    "zod": "^4.0.0"
+  }
+}

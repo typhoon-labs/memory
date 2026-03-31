@@ -24,8 +24,8 @@ Built with **Bun workspaces** for dependency management and **Turborepo** for ta
 ## 3-Layer Dependency Model
 
 ```
-Layer 2:  agents, ingestion, ui          Domain logic & UI
-Layer 1:  db, storage                    Infrastructure clients
+Layer 2:  agents, ingestion, chat, ui    Domain logic & UI
+Layer 1:  db, ai, pg, storage, logger    Infrastructure clients
 Layer 0:  config, types                  Foundations
 ```
 
@@ -38,16 +38,20 @@ Higher layers import from lower layers. No circular dependencies. Turborepo enfo
 | `@typhoon/config` | 0 | Shared TypeScript, Biome, and env configs (Zod validation) |
 | `@typhoon/types` | 0 | Zod schemas for domain entities |
 | `@typhoon/db` | 1 | Drizzle ORM schemas + migrations (non-Mastra tables) |
+| `@typhoon/ai` | 1 | LLM + embedding model factories (AI SDK, OpenAI-compatible) |
+| `@typhoon/pg` | 1 | PostgreSQL storage + PgVector for Mastra |
 | `@typhoon/storage` | 1 | S3/MinIO client (list, download, delete) |
+| `@typhoon/logger` | 1 | Structured logging via Mastra logger |
 | `@typhoon/agents` | 2 | Mastra supervisor + knowledge agent with RAG tools |
 | `@typhoon/ingestion` | 2 | Document parsers, MDocument pipeline, BullMQ sync jobs |
-| `@typhoon/ui` | 2 | Shared React component library (shadcn/ui) |
+| `@typhoon/chat` | 2 | React chat UI components (streaming, markdown rendering) |
+| `@typhoon/ui` | 2 | Shared React component library (Radix UI, shadcn-style) |
 
 ## Application Architecture
 
 ### API Server (`apps/server`)
 
-- **Framework:** Mastra built-in Hono server
+- **Framework:** Mastra + Hono (`@mastra/hono`)
 - **Auto-generated endpoints:** Agent generate/stream, memory threads/messages, working memory
 - **Custom routes:** Sync targets CRUD, document browsing, feedback, widget chat, auth
 - **Background workers:** BullMQ for S3 sync pipeline
@@ -58,17 +62,17 @@ Higher layers import from lower layers. No circular dependencies. Turborepo enfo
 - **Build:** Vite + React 19
 - **Routing:** TanStack Router
 - **Server state:** TanStack Query
-- **Chat:** CopilotKit headless (AG-UI protocol)
+- **Chat:** AI SDK React (`@ai-sdk/react` useChat) + Mastra `chatRoute` (SSE)
 - **Pages:** Dashboard, Chat, Search, Documents
 
 ### Admin Dashboard (`apps/admin`)
 
-- Same stack as desk (without CopilotKit)
-- **Pages:** Dashboard, Sync Sources, Documents, Feedback
+- Same stack as desk (without chat components)
+- **Pages:** Dashboard, Sync Sources, Sync Source Detail, Documents, Feedback
 
 ### Customer Widget (`apps/widget`)
 
-- Embeddable `<script>` tag with CopilotKit popup
+- Embeddable React widget using AI SDK React (`@ai-sdk/react` useChat)
 - API key gated (per-deployment keys)
 
 ## Data Architecture
@@ -87,9 +91,9 @@ Higher layers import from lower layers. No circular dependencies. Turborepo enfo
 | Pattern | Technology | Use Case |
 |---------|-----------|----------|
 | REST | Hono HTTP (via Mastra) | CRUD operations (sync targets, documents, feedback) |
-| SSE | Mastra `chatRoute` | Real-time chat streaming from agents |
-| AG-UI | CopilotKit (SSE events) | Structured agent-UI protocol (tool calls, state) |
+| SSE | Mastra `chatRoute` + AI SDK | Real-time chat streaming from agents |
 | Jobs | BullMQ (Redis) | Background document sync pipeline |
+| Cron | Croner | Scheduled sync refresh jobs |
 
 ## Agent System
 

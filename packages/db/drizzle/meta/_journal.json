@@ -1,0 +1,55 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1774503609886,
+      "tag": "0000_broken_sumo",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1774514863866,
+      "tag": "0001_right_lionheart",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1774516254040,
+      "tag": "0002_furry_wolfpack",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1774682012842,
+      "tag": "0003_optimal_captain_universe",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1774688144196,
+      "tag": "0004_confused_yellowjacket",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1774844666187,
+      "tag": "0005_puzzling_deathbird",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1775100000000,
+      "tag": "0006_generic_sync_targets",
+      "breakpoints": true
+    }
+  ]
+}

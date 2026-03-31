@@ -1,0 +1,215 @@
+services:
+  # ==========================================================================
+  # PostgreSQL + pgvector
+  # ==========================================================================
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: typhoon-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: typhoon
+      POSTGRES_PASSWORD: typhoon
+      POSTGRES_DB: typhoon
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-postgres.sql:/docker-entrypoint-initdb.d/init-postgres.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U typhoon']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ==========================================================================
+  # Redis
+  # ==========================================================================
+  redis:
+    image: redis:8-alpine
+    container_name: typhoon-redis
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ==========================================================================
+  # MinIO (S3-compatible object storage)
+  # ==========================================================================
+  minio:
+    image: minio/minio:latest
+    container_name: typhoon-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - '9000:9000'
+      - '9001:9001'
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Create default bucket on startup
+  minio-init:
+    image: minio/mc:latest
+    container_name: typhoon-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 minioadmin minioadmin &&
+      mc mb --ignore-existing local/typhoon-documents &&
+      echo 'Bucket typhoon-documents created.'
+      "
+
+  # ==========================================================================
+  # Bifrost (LLM gateway proxy)
+  # ==========================================================================
+  bifrost:
+    image: maximhq/bifrost:v1.4.7
+    container_name: typhoon-bifrost
+    restart: unless-stopped
+    ports:
+      - '${BIFROST_PORT:-8787}:8080'
+    environment:
+      APP_PORT: 8080
+      BIFROST_LOG_LEVEL: ${BIFROST_LOG_LEVEL:-info}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-change-me}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+    volumes:
+      - ./bifrost/config.json:/app/data/config.json:ro
+      - bifrost_data:/app/data
+
+  # ==========================================================================
+  # Dex (OIDC provider — optional, for local SSO testing)
+  # ==========================================================================
+  dex:
+    image: dexidp/dex:v2.41.1
+    container_name: typhoon-dex
+    restart: unless-stopped
+    ports:
+      - '5556:5556'
+    volumes:
+      - ./dex-config.yml:/etc/dex/config.docker.yaml
+    command: ['dex', 'serve', '/etc/dex/config.docker.yaml']
+
+  # ==========================================================================
+  # Application services
+  # ==========================================================================
+
+  # Database migrations (runs once, then exits)
+  migrate:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.server
+    container_name: typhoon-migrate
+    command: ['sh', '-c', 'cd packages/db && bun run db:migrate']
+    env_file:
+      - ../../.env
+    environment:
+      DATABASE_URL: postgresql://typhoon:typhoon@postgres:5432/typhoon
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: 'no'
+
+  # API Server
+  server:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.server
+    container_name: typhoon-server
+    restart: unless-stopped
+    env_file:
+      - ../../.env
+    environment:
+      DATABASE_URL: postgresql://typhoon:typhoon@postgres:5432/typhoon
+      REDIS_URL: redis://redis:6379
+      S3_ENDPOINT: http://minio:9000
+      LLM_BASE_URL: http://bifrost:8080/v1
+      EMBEDDING_BASE_URL: http://bifrost:8080/v1
+      AUTH_URL: http://server:5172
+      TRUSTED_ORIGINS: http://localhost:5173,http://localhost:5174
+      OIDC_ISSUER_URL: http://dex:5556/dex
+      PORT: '5172'
+      HOST: 0.0.0.0
+    ports:
+      - '5172:5172'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ['CMD', 'wget', '-qO/dev/null', 'http://127.0.0.1:5172/api/v1/auth/ok']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  # Desk (rep workspace SPA)
+  desk:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.frontend
+      args:
+        APP_NAME: desk
+    container_name: typhoon-desk
+    restart: unless-stopped
+    ports:
+      - '5173:80'
+    depends_on:
+      server:
+        condition: service_healthy
+
+  # Admin (admin dashboard SPA)
+  admin:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.frontend
+      args:
+        APP_NAME: admin
+    container_name: typhoon-admin
+    restart: unless-stopped
+    ports:
+      - '5174:80'
+    depends_on:
+      server:
+        condition: service_healthy
+
+  # Widget (embeddable chat widget)
+  widget:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.frontend
+      args:
+        APP_NAME: widget
+    container_name: typhoon-widget
+    restart: unless-stopped
+    ports:
+      - '5175:80'
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+  bifrost_data:

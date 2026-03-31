@@ -1,0 +1,99 @@
+TYPHOON CLOUDVAULT PRIVACY POLICY
+
+Last Updated: January 15, 2026
+
+Typhoon Technologies, Inc. ("Typhoon", "we", "us", or "our") operates the CloudVault service. This Privacy Policy describes how we collect, use, and share information when you use our cloud storage platform.
+
+1. INFORMATION WE COLLECT
+
+1.1 Account Information
+When you create a CloudVault account, we collect your name, email address, organization name, and billing information (credit card number, billing address). If you sign up via Google or Microsoft SSO, we receive your name and email from the identity provider.
+
+1.2 Files and Content
+Files you upload to CloudVault are stored in encrypted form on our servers. We do not access, scan, or analyze the contents of your files for advertising or any purpose other than providing the service. Automated scanning is performed solely for malware detection and integrity verification.
+
+1.3 Usage Data
+We collect information about how you use CloudVault, including login timestamps, device identifiers, IP addresses, browser type, operating system, features used, and files accessed (metadata only, not file contents). This data is used to improve the service, troubleshoot issues, and generate aggregate analytics.
+
+1.4 Cookies and Tracking
+CloudVault uses essential cookies for authentication and session management. We use analytics cookies (Google Analytics) to understand usage patterns. You can disable non-essential cookies in your browser settings or through our cookie consent banner. We do not use advertising cookies or trackers.
+
+2. HOW WE USE YOUR INFORMATION
+
+We use collected information to:
+- Provide, maintain, and improve the CloudVault service
+- Process payments and manage subscriptions
+- Send transactional emails (password resets, billing receipts, security alerts)
+- Provide customer support
+- Detect and prevent fraud, abuse, and security threats
+- Comply with legal obligations
+
+We do not sell your personal information to third parties. We do not use your data for targeted advertising.
+
+3. INFORMATION SHARING
+
+We share information only in these circumstances:
+
+3.1 Service Providers
+We use third-party providers for infrastructure (Amazon Web Services), payment processing (Stripe), email delivery (Postmark), and analytics (Google Analytics). These providers access only the data necessary to perform their services and are contractually obligated to protect it.
+
+3.2 Legal Requirements
+We may disclose information if required by law, subpoena, court order, or government regulation. We will notify you of such requests unless legally prohibited from doing so.
+
+3.3 Business Transfers
+In the event of a merger, acquisition, or sale of assets, your information may be transferred to the acquiring entity. We will notify you via email and in-app notice before any such transfer.
+
+3.4 With Your Consent
+We may share information for purposes not described here with your explicit consent.
+
+4. DATA RETENTION
+
+- Account data is retained for as long as your account is active.
+- After account deletion, personal data is purged within 72 hours. Encrypted file data is purged within 30 days.
+- Billing records are retained for 7 years as required by tax regulations.
+- Server logs are retained for 90 days.
+- Backup data is rotated on a 60-day cycle.
+
+5. DATA SECURITY
+
+We implement industry-standard security measures including:
+- AES-256 encryption for data at rest
+- TLS 1.3 for data in transit
+- Hardware security modules (HSMs) for key management
+- Regular third-party security audits and penetration testing
+- SOC 2 Type II certification
+
+6. YOUR RIGHTS (GDPR AND CCPA)
+
+If you are located in the European Economic Area (EEA) or California, you have the following rights:
+
+- Right to access: request a copy of your personal data
+- Right to rectification: correct inaccurate personal data
+- Right to erasure: request deletion of your personal data
+- Right to portability: export your data in a machine-readable format
+- Right to object: opt out of certain data processing activities
+- Right to restrict processing: limit how we use your data
+
+To exercise these rights, go to Account Settings, Data and Privacy, or email privacy@typhooncloudvault.com. We respond to all requests within 30 days.
+
+7. INTERNATIONAL DATA TRANSFERS
+
+CloudVault operates data centers in the United States, European Union, Asia Pacific, and Canada. Your data is stored in the region you select during account setup. If data must be transferred across regions for operational purposes, we rely on Standard Contractual Clauses (SCCs) approved by the European Commission.
+
+Enterprise customers can configure data residency restrictions to ensure data never leaves a specific region.
+
+8. CHILDREN'S PRIVACY
+
+CloudVault is not intended for use by individuals under the age of 16. We do not knowingly collect personal information from children. If we discover that a child under 16 has created an account, we will promptly delete it.
+
+9. CHANGES TO THIS POLICY
+
+We may update this Privacy Policy from time to time. We will notify you of material changes by email and by posting a notice on our website at least 30 days before the changes take effect. Your continued use of CloudVault after changes become effective constitutes acceptance of the updated policy.
+
+10. CONTACT US
+
+For questions about this Privacy Policy or our data practices:
+
+Email: privacy@typhooncloudvault.com
+Mail: Typhoon Technologies, Inc., 1200 Market Street, Suite 400, San Francisco, CA 94103
+Data Protection Officer: dpo@typhooncloudvault.com

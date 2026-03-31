@@ -1,0 +1,65 @@
+{
+  "$schema": "https://www.getbifrost.ai/schema",
+  "providers": {
+    "anthropic": {
+      "network_config": {
+        "base_url": "http://host.docker.internal:7070",
+        "default_request_timeout_in_seconds": 300,
+        "max_retries": 3,
+        "retry_backoff_initial_ms": 500,
+        "retry_backoff_max_ms": 5000
+      },
+      "keys": [
+        {
+          "name": "anthropic",
+          "value": "env.ANTHROPIC_API_KEY",
+          "models": [],
+          "weight": 1.0
+        }
+      ]
+    },
+    "ollama": {
+      "network_config": {
+        "base_url": "http://host.docker.internal:11434"
+      },
+      "keys": [
+        {
+          "name": "ollama",
+          "value": "ollama",
+          "models": [],
+          "weight": 1.0
+        }
+      ]
+    },
+    "bedrock": {
+      "keys": [
+        {
+          "name": "bedrock",
+          "value": "",
+          "models": [],
+          "weight": 0,
+          "bedrock_key_config": {
+            "access_key": "env.AWS_ACCESS_KEY_ID",
+            "secret_key": "env.AWS_SECRET_ACCESS_KEY",
+            "session_token": "env.AWS_SESSION_TOKEN",
+            "region": "env.AWS_REGION"
+          }
+        }
+      ]
+    }
+  },
+  "config_store": {
+    "enabled": true,
+    "type": "sqlite",
+    "config": {
+      "path": "/app/data/config.db"
+    }
+  },
+  "logs_store": {
+    "enabled": true,
+    "type": "sqlite",
+    "config": {
+      "path": "/app/data/logs.db"
+    }
+  }
+}

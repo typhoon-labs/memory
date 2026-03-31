@@ -33,6 +33,7 @@ The app connects to an OpenAI-compatible endpoint for chat. Locally this is Bifr
 | `LLM_BASE_URL` | Yes | — | OpenAI-compatible chat endpoint (e.g., `http://localhost:8787/v1`) |
 | `LLM_API_KEY` | Yes | — | API key for the LLM gateway |
 | `LLM_CHAT_MODEL` | No | `anthropic.claude-sonnet-4-6-v1:0` | Chat model ID (Bedrock format) |
+| `LLM_TITLE_MODEL` | No | Falls back to `LLM_CHAT_MODEL` | Lighter model for thread title generation |
 | `ANTHROPIC_API_KEY` | No | — | Anthropic API key (passed to Bifrost gateway) |
 
 ## Embeddings
@@ -46,12 +47,13 @@ The app connects to an OpenAI-compatible endpoint for embeddings.
 | `EMBEDDING_MODEL` | No | `amazon.titan-embed-text-v2:0` | Embedding model ID (Bedrock format) |
 | `EMBEDDING_DIMENSION` | No | `1024` | Vector dimension |
 
-## Better Auth
+## Auth
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `BETTER_AUTH_SECRET` | Yes | — | Secret for session signing (change in production) |
-| `BETTER_AUTH_URL` | Yes | — | Base URL for auth endpoints (e.g., `http://localhost:4000`) |
+| `AUTH_SECRET` | Yes | — | Secret for session signing (change in production) |
+| `AUTH_URL` | No | `http://localhost:5172` | Base URL for auth endpoints |
+| `TRUSTED_ORIGINS` | No | — | Comma-separated list of allowed CORS origins (e.g., `http://localhost:5173,http://localhost:5174`) |
 
 ## OIDC (optional)
 
@@ -61,9 +63,15 @@ The app connects to an OpenAI-compatible endpoint for embeddings.
 | `OIDC_CLIENT_ID` | No | — | OIDC client ID |
 | `OIDC_CLIENT_SECRET` | No | — | OIDC client secret |
 
+## Logging
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `LOG_LEVEL` | No | — | Log level: `debug`, `info`, `warn`, `error`, or `silent` |
+
 ## Server
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `PORT` | No | `4000` | HTTP server port |
+| `PORT` | No | `5172` | HTTP server port |
 | `HOST` | No | `0.0.0.0` | HTTP server bind address |

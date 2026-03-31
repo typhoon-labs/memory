@@ -22,14 +22,18 @@ This script:
 
 ### 2. Configure environment
 
-Edit `.env` with your API keys:
+Edit `.env` with your LLM and embedding endpoints. The app connects to OpenAI-compatible endpoints — locally this is typically Bifrost (see [Infrastructure](infrastructure.md)):
 
 ```bash
-# Required for chat
-ANTHROPIC_API_KEY=sk-ant-...
+# LLM Gateway (chat)
+LLM_BASE_URL=http://localhost:8787/v1
+LLM_API_KEY=changeme
+ANTHROPIC_API_KEY=sk-ant-...          # Passed to Bifrost, not used directly
 
-# Required for embeddings
-OPENAI_API_KEY=sk-...
+# Embeddings (OpenAI-compatible endpoint)
+EMBEDDING_BASE_URL=http://localhost:11434/v1
+EMBEDDING_API_KEY=
+EMBEDDING_MODEL=nomic-embed-text
 ```
 
 ### 3. Start the development server
@@ -39,7 +43,7 @@ bun run dev
 ```
 
 This starts all services via Turborepo:
-- **Mastra server** on `http://localhost:4000`
+- **Mastra server** on `http://localhost:5172`
 - **Rep desk** on `http://localhost:5173`
 - **Admin dashboard** on `http://localhost:5174`
 

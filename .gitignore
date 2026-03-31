@@ -1,0 +1,47 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+out/
+*.tsbuildinfo
+
+# Turborepo
+.turbo/
+
+# Mastra
+.mastra/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Test coverage
+coverage/
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+npm-debug.log*
+
+# Lock files (Bun uses bun.lockb)
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Generated binary fixtures
+fixtures/sample-docs/*.docx
+fixtures/sample-docs/*.xlsx
+fixtures/sample-docs/*.pdf

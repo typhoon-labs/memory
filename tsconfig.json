@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "forceConsistentCasingInFileNames": true,
+    "verbatimModuleSyntax": true
+  },
+  "files": [],
+  "references": [
+    { "path": "packages/config" },
+    { "path": "packages/types" },
+    { "path": "packages/ai" },
+    { "path": "packages/db" },
+    { "path": "packages/storage" },
+    { "path": "packages/agents" },
+    { "path": "packages/ingestion" },
+    { "path": "packages/ui" },
+    { "path": "packages/chat" },
+    { "path": "apps/server" }
+  ]
+}

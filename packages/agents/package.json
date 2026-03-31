@@ -1,0 +1,20 @@
+{
+  "name": "@typhoon/agents",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@typhoon/ai": "workspace:*",
+    "@typhoon/config": "workspace:*",
+    "@typhoon/types": "workspace:*",
+    "@mastra/core": "^1.15.0",
+    "@mastra/rag": "^2.1.2"
+  }
+}

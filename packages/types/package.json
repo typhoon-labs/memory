@@ -1,0 +1,17 @@
+{
+  "name": "@typhoon/types",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@typhoon/config": "workspace:*",
+    "zod": "^4.3.6"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "name": "@typhoon/storage",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@typhoon/config": "workspace:*",
+    "@typhoon/logger": "workspace:*",
+    "@aws-sdk/client-s3": "^3.1016.0"
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "forceConsistentCasingInFileNames": true,
+    "verbatimModuleSyntax": true,
+    "paths": {
+      "@typhoon/ai": ["../../packages/ai/src"],
+      "@typhoon/config": ["../../packages/config/src"],
+      "@typhoon/types": ["../../packages/types/src"],
+      "@typhoon/db": ["../../packages/db/src"],
+      "@typhoon/storage": ["../../packages/storage/src"],
+      "@typhoon/agents": ["../../packages/agents/src"],
+      "@typhoon/ingestion": ["../../packages/ingestion/src"],
+      "@typhoon/pg": ["../../packages/pg/src"],
+      "@typhoon/ui": ["../../packages/ui/src"]
+    }
+  }
+}

@@ -1,0 +1,169 @@
+@import "tailwindcss";
+
+#typhoon-widget-root {
+  --typhoon-primary: #18181b;
+  --typhoon-primary-fg: #fafafa;
+  --typhoon-muted: #f4f4f5;
+  --typhoon-muted-fg: #71717a;
+  --typhoon-border: #e4e4e7;
+  --typhoon-bg: #ffffff;
+  --typhoon-fg: #18181b;
+  --typhoon-radius: 0.5rem;
+
+  font-family: "Outfit", system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+#typhoon-widget-root.typhoon-dark {
+  --typhoon-primary: #e4e4e7;
+  --typhoon-primary-fg: #18181b;
+  --typhoon-muted: rgba(255, 255, 255, 0.08);
+  --typhoon-muted-fg: #a1a1aa;
+  --typhoon-border: rgba(255, 255, 255, 0.08);
+  --typhoon-bg: #09090b;
+  --typhoon-fg: #fafafa;
+}
+
+.typhoon-toggle {
+  position: fixed;
+  bottom: 1.25rem;
+  right: 1.25rem;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 50%;
+  border: none;
+  background: var(--typhoon-primary);
+  color: var(--typhoon-primary-fg);
+  font-size: 1.25rem;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.typhoon-popup {
+  position: fixed;
+  bottom: 5rem;
+  right: 1.25rem;
+  width: min(380px, calc(100vw - 2rem));
+  max-height: min(520px, calc(100dvh - 6rem));
+  background: var(--typhoon-bg);
+  border: 1px solid var(--typhoon-border);
+  border-radius: var(--typhoon-radius);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.typhoon-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--typhoon-border);
+  font-weight: 600;
+}
+
+.typhoon-header-title {
+  font-size: 0.875rem;
+}
+
+.typhoon-new-btn {
+  background: none;
+  border: 1px solid var(--typhoon-border);
+  border-radius: var(--typhoon-radius);
+  width: 1.75rem;
+  height: 1.75rem;
+  font-size: 1rem;
+  cursor: pointer;
+  color: var(--typhoon-fg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.typhoon-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.75rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-height: 200px;
+  max-height: 360px;
+}
+
+.typhoon-welcome {
+  color: var(--typhoon-muted-fg);
+  text-align: center;
+  padding-top: 2rem;
+  font-size: 0.875rem;
+}
+
+.typhoon-msg {
+  max-width: 85%;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--typhoon-radius);
+  font-size: 0.875rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.typhoon-msg-user {
+  align-self: flex-end;
+  background: var(--typhoon-primary);
+  color: var(--typhoon-primary-fg);
+}
+
+.typhoon-msg-assistant {
+  align-self: flex-start;
+  background: var(--typhoon-muted);
+  color: var(--typhoon-fg);
+}
+
+.typhoon-thinking {
+  color: var(--typhoon-muted-fg);
+}
+
+.typhoon-input-area {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-top: 1px solid var(--typhoon-border);
+}
+
+.typhoon-input {
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--typhoon-border);
+  border-radius: var(--typhoon-radius);
+  font-size: 0.875rem;
+  outline: none;
+  background: var(--typhoon-bg);
+  color: var(--typhoon-fg);
+}
+
+.typhoon-send-btn {
+  padding: 0.5rem 0.75rem;
+  border: none;
+  border-radius: var(--typhoon-radius);
+  background: var(--typhoon-primary);
+  color: var(--typhoon-primary-fg);
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.typhoon-send-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.typhoon-stop-btn {
+  background: #ef4444;
+}
