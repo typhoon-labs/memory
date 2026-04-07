@@ -1,11 +1,10 @@
 # =============================================================================
-# Typhoon Frontend Apps (desk, admin, widget)
-# Multi-stage: install deps → Vite build → nginx serve
-# Pass --build-arg APP_NAME=desk|admin|widget
+# Typhoon — Multi-target Dockerfile
+# Targets: dev, server, frontend (via frontend-build)
 # =============================================================================
 
 # ---------------------------------------------------------------------------
-# Stage 1: Install dependencies
+# deps: shared dependency installation (layer cache)
 # ---------------------------------------------------------------------------
 FROM oven/bun:1.3.11-alpine AS deps
 
@@ -29,23 +28,52 @@ COPY packages/storage/package.json packages/storage/
 COPY packages/types/package.json packages/types/
 COPY packages/ui/package.json packages/ui/
 
-# Need all deps (including devDependencies) for Vite/TypeScript build
-RUN bun install --frozen-lockfile
+RUN --mount=type=cache,target=/root/.bun/install/cache \
+    bun install --frozen-lockfile
 
 # ---------------------------------------------------------------------------
-# Stage 2: Build the frontend app
+# dev: hot-reload target (source mounted via volumes at runtime)
 # ---------------------------------------------------------------------------
-FROM oven/bun:1.3.11-alpine AS build
+FROM oven/bun:1.3.11-alpine AS dev
+
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+
+# Entrypoint syncs dependencies when package.json changes, then runs the CMD
+COPY infra/docker/dev-entrypoint.sh /usr/local/bin/dev-entrypoint
+RUN chmod +x /usr/local/bin/dev-entrypoint
+ENTRYPOINT ["dev-entrypoint"]
+
+# ---------------------------------------------------------------------------
+# server: production API server
+# ---------------------------------------------------------------------------
+FROM oven/bun:1.3.11-alpine AS server
+
+WORKDIR /app
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY package.json bun.lock turbo.json tsconfig.json ./
+COPY apps/server/ apps/server/
+COPY packages/ packages/
+
+EXPOSE 5172
+
+HEALTHCHECK --interval=10s --timeout=5s --retries=5 \
+  CMD wget -qO/dev/null http://127.0.0.1:5172/api/v1/auth/ok || exit 1
+
+CMD ["bun", "run", "apps/server/src/index.ts"]
+
+# ---------------------------------------------------------------------------
+# frontend-build: compile frontend app with Vite
+# ---------------------------------------------------------------------------
+FROM oven/bun:1.3.11-alpine AS frontend-build
 
 ARG APP_NAME
 RUN test -n "$APP_NAME" || (echo "ERROR: APP_NAME build arg is required" && exit 1)
 
 WORKDIR /app
 
-# Copy dependencies from stage 1
 COPY --from=deps /app/node_modules ./node_modules
-
-# Copy entire workspace source (Vite resolves workspace packages during build)
 COPY package.json bun.lock turbo.json tsconfig.json biome.json ./
 COPY apps/${APP_NAME}/ apps/${APP_NAME}/
 COPY apps/server/ apps/server/
@@ -55,16 +83,16 @@ WORKDIR /app/apps/${APP_NAME}
 RUN bunx vite build
 
 # ---------------------------------------------------------------------------
-# Stage 3: Serve with nginx
+# frontend: serve built SPA via nginx
 # ---------------------------------------------------------------------------
-FROM nginx:1.27-alpine
+FROM nginx:1.27-alpine AS frontend
 
 ARG APP_NAME
 
 RUN rm /etc/nginx/conf.d/default.conf
 
 COPY infra/docker/nginx/${APP_NAME}.conf /etc/nginx/conf.d/app.conf
-COPY --from=build /app/apps/${APP_NAME}/dist /usr/share/nginx/html
+COPY --from=frontend-build /app/apps/${APP_NAME}/dist /usr/share/nginx/html
 
 EXPOSE 80
 

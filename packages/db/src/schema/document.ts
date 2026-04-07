@@ -17,11 +17,12 @@ export const documents = pgTable(
     syncTargetId: uuid('sync_target_id')
       .notNull()
       .references(() => syncTargets.id, { onDelete: 'cascade' }),
-    s3Key: text('s3_key').notNull(),
-    s3Etag: text('s3_etag'),
+    sourceKey: text('source_key').notNull(),
+    sourceEtag: text('source_etag'),
     mimeType: text('mime_type'),
     fileSize: integer('file_size'),
     title: text('title'),
+    description: text('description'),
     author: text('author'),
     pageCount: integer('page_count'),
     status: documentStatusEnum('status').notNull().default('pending'),
@@ -36,7 +37,7 @@ export const documents = pgTable(
       .$onUpdate(() => new Date()),
   },
   (table) => [
-    uniqueIndex('documents_sync_target_key_unique_idx').on(table.syncTargetId, table.s3Key),
+    uniqueIndex('documents_sync_target_key_unique_idx').on(table.syncTargetId, table.sourceKey),
     index('documents_status_idx').on(table.status),
     index('documents_sync_target_id_idx').on(table.syncTargetId),
   ],

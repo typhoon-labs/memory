@@ -9,6 +9,7 @@ import { authRoutes } from '../routes/auth.js';
 import { chatRoutes } from '../routes/chat.js';
 import { documentRoutes } from '../routes/documents.js';
 import { feedbackRoutes } from '../routes/feedback.js';
+import { queueRoutes } from '../routes/queues.js';
 import { searchRoutes } from '../routes/search.js';
 import { syncTargetRoutes } from '../routes/sync-targets.js';
 import { threadRoutes } from '../routes/threads.js';
@@ -47,9 +48,6 @@ const memory = new Memory({
 - **Preferences**: [Communication style, language, etc.]
 - **Important Context**: [Anything relevant to future interactions]`,
     },
-    generateTitle: {
-      model: createTitleModel(),
-    },
   },
 });
 
@@ -68,7 +66,17 @@ const supervisorMemory = new Memory({
   },
 });
 
-const supervisor = createSupervisor(memory, supervisorMemory);
+const envFlag = (key: string, defaultValue = true) => {
+  const val = process.env[key];
+  return val === undefined ? defaultValue : val !== '0' && val !== 'false';
+};
+
+const supervisor = createSupervisor(memory, supervisorMemory, {
+  promptInjection: envFlag('GUARDRAIL_PROMPT_INJECTION', false),
+  moderation: envFlag('GUARDRAIL_MODERATION', false),
+  piiDetection: envFlag('GUARDRAIL_PII_DETECTION', false),
+  systemPromptScrubbing: envFlag('GUARDRAIL_SYSTEM_PROMPT_SCRUBBING'),
+});
 
 const logger = createAppLogger('mastra');
 
@@ -84,6 +92,7 @@ export const mastra = new Mastra({
       ...syncTargetRoutes,
       ...documentRoutes,
       ...feedbackRoutes,
+      ...queueRoutes,
       ...searchRoutes,
       ...widgetRoutes,
       ...chatRoutes,

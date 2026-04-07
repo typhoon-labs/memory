@@ -39,15 +39,15 @@ The sync pipeline detects changes in S3 buckets by comparing the current listing
 
 **Package:** `packages/ingestion/src/parsers/`
 
-Mastra's `MDocument` handles markdown, HTML, JSON, and plain text natively. Custom parsers extract text from binary formats before passing to `MDocument`.
+Binary and markup formats are run through custom parsers that convert them to markdown before chunking. Plain text, markdown, and JSON are passed directly to `MDocument`.
 
 | Format | Parser | MDocument Method |
 |--------|--------|-----------------|
-| PDF | `unpdf` | `MDocument.fromText()` |
-| DOCX | `mammoth` (converts to HTML) | `MDocument.fromHTML()` |
-| XLSX | SheetJS (converts to CSV) | `MDocument.fromText()` |
-| Markdown | Native | `MDocument.fromMarkdown()` |
-| HTML | Native | `MDocument.fromHTML()` |
+| PDF | `unpdf` + spatial analysis (headings, tables, lists) | `MDocument.fromMarkdown()` |
+| DOCX | `mammoth` → turndown + GFM tables | `MDocument.fromMarkdown()` |
+| XLSX | SheetJS → CSV | `MDocument.fromText()` |
+| HTML (.html/.htm) | turndown + GFM tables | `MDocument.fromMarkdown()` |
+| Markdown (.md/.mdx) | Native | `MDocument.fromMarkdown()` |
 | Plain text | Native | `MDocument.fromText()` |
 | JSON | Native | `MDocument.fromJSON()` |
 
@@ -55,17 +55,23 @@ Mastra's `MDocument` handles markdown, HTML, JSON, and plain text natively. Cust
 
 **Package:** `packages/ingestion/src/pipeline.ts`
 
-Uses Mastra's `MDocument.chunk()` with format-aware strategies:
+Uses Mastra's `MDocument.chunk()` with format-aware strategies. All strategies include `addStartIndex: true` so each chunk records its byte offset in the source text.
 
 | Format | Strategy | Description |
 |--------|----------|-------------|
-| Markdown | `markdown` | Respects heading structure |
-| HTML | `html` | Respects HTML element boundaries |
-| All others | `recursive` | Smart splitting on paragraphs, sentences |
+| Markdown | `semantic-markdown` | Semantic boundary splitting; 500-token join threshold, 50-token overlap |
+| HTML | `html` | Respects heading hierarchy (h1→title, h2→section, h3→subsection) |
+| JSON | `token` | Token-based splitting; 512 max, 50 overlap |
+| All others | `sentence` | Sentence-boundary splitting; 512 max, 50 overlap |
 
-**Parameters:**
-- `maxSize`: 512 tokens
-- `overlap`: 50 tokens
+## Metadata Extraction
+
+**Package:** `packages/ingestion/src/pipeline.ts`
+
+Two LLM passes run via `LLM_EXTRACTION_MODEL` during ingestion:
+
+1. **Per-chunk keywords** — up to 5 keywords extracted per chunk; stored in vector metadata as `keywords`
+2. **Document title + description** — generated from the first 2,000 characters of content; title is stored in vector metadata and in the `documents` table
 
 ## Embedding
 
@@ -79,12 +85,14 @@ Embeddings are generated via `embedMany()` from the `ai` package using the confi
 await vectorStore.upsert({
   indexName: 'knowledge_base',
   vectors: embeddings,
-  metadata: chunks.map(chunk => ({
+  metadata: chunks.map((chunk, i) => ({
     text: chunk.text,
-    documentId: doc.id,
-    syncTargetId: doc.syncTargetId,
-    source: doc.s3Key,
-    title: doc.title,
+    documentId,
+    syncTargetId,
+    source: sourceKey,
+    title: docTitle,
+    keywords: chunk.metadata?.excerptKeywords ?? '',
+    startIndex: startIndices[i],
   })),
 });
 ```

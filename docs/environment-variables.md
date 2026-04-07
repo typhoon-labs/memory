@@ -34,6 +34,9 @@ The app connects to an OpenAI-compatible endpoint for chat. Locally this is Bifr
 | `LLM_API_KEY` | Yes | — | API key for the LLM gateway |
 | `LLM_CHAT_MODEL` | No | `anthropic.claude-sonnet-4-6-v1:0` | Chat model ID (Bedrock format) |
 | `LLM_TITLE_MODEL` | No | Falls back to `LLM_CHAT_MODEL` | Lighter model for thread title generation |
+| `LLM_RERANKER_MODEL` | No | Falls back to `LLM_CHAT_MODEL` | Model for reranking retrieved chunks |
+| `LLM_EXTRACTION_MODEL` | No | Falls back to `LLM_CHAT_MODEL` | Model for metadata extraction during ingestion (title, keywords) |
+| `LLM_GUARDRAIL_MODEL` | No | Falls back to `LLM_CHAT_MODEL` | Model for guardrail processors (moderation, PII detection) |
 | `ANTHROPIC_API_KEY` | No | — | Anthropic API key (passed to Bifrost gateway) |
 
 ## Embeddings

@@ -323,7 +323,7 @@ async function processFile(content: string, format: string, doc: Document) {
       text: chunk.text,
       documentId: doc.id,
       syncTargetId: doc.syncTargetId,
-      source: doc.s3Key,
+      source: doc.sourceKey,
       title: doc.title,
       sectionHeading: chunk.metadata?.sectionHeading,
     })),
@@ -344,10 +344,10 @@ id, name, bucketName, prefix, region, endpoint, cronSchedule, isActive, createdA
 
 ### `documents` — Document metadata from S3 sync
 ```
-id, syncTargetId, s3Key, s3Etag, mimeType, fileSize, title, author, pageCount,
+id, syncTargetId, sourceKey, sourceEtag, mimeType, fileSize, title, author, pageCount,
 status (pending|processing|ready|parse_error|deleted), errorMessage,
 chunkCount, contentHash, lastSyncedAt, createdAt, updatedAt
-UNIQUE(syncTargetId, s3Key)
+UNIQUE(syncTargetId, sourceKey)
 ```
 
 ### `sync_jobs` — Sync job tracking

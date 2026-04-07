@@ -26,104 +26,104 @@ ALTER TABLE "user" ALTER COLUMN "created_at" SET DEFAULT now();--> statement-bre
 ALTER TABLE "user" ALTER COLUMN "updated_at" SET DATA TYPE timestamp with time zone;--> statement-breakpoint
 ALTER TABLE "user" ALTER COLUMN "updated_at" SET DEFAULT now();--> statement-breakpoint
 ALTER TABLE "user" ALTER COLUMN "ban_expires" SET DATA TYPE timestamp with time zone;--> statement-breakpoint
-ALTER TABLE "dataset_items" ALTER COLUMN "id" SET DATA TYPE uuid;--> statement-breakpoint
+ALTER TABLE "dataset_items" ALTER COLUMN "id" SET DATA TYPE uuid USING "id"::uuid;--> statement-breakpoint
 ALTER TABLE "dataset_items" ALTER COLUMN "id" SET DEFAULT gen_random_uuid();--> statement-breakpoint
-ALTER TABLE "dataset_items" ALTER COLUMN "dataset_id" SET DATA TYPE uuid;--> statement-breakpoint
-ALTER TABLE "dataset_versions" ALTER COLUMN "id" SET DATA TYPE uuid;--> statement-breakpoint
+ALTER TABLE "dataset_items" ALTER COLUMN "dataset_id" SET DATA TYPE uuid USING "dataset_id"::uuid;--> statement-breakpoint
+ALTER TABLE "dataset_versions" ALTER COLUMN "id" SET DATA TYPE uuid USING "id"::uuid;--> statement-breakpoint
 ALTER TABLE "dataset_versions" ALTER COLUMN "id" SET DEFAULT gen_random_uuid();--> statement-breakpoint
-ALTER TABLE "dataset_versions" ALTER COLUMN "dataset_id" SET DATA TYPE uuid;--> statement-breakpoint
-ALTER TABLE "datasets" ALTER COLUMN "id" SET DATA TYPE uuid;--> statement-breakpoint
+ALTER TABLE "dataset_versions" ALTER COLUMN "dataset_id" SET DATA TYPE uuid USING "dataset_id"::uuid;--> statement-breakpoint
+ALTER TABLE "datasets" ALTER COLUMN "id" SET DATA TYPE uuid USING "id"::uuid;--> statement-breakpoint
 ALTER TABLE "datasets" ALTER COLUMN "id" SET DEFAULT gen_random_uuid();--> statement-breakpoint
 ALTER TABLE "documents" ALTER COLUMN "status" SET DEFAULT 'pending'::"public"."document_status";--> statement-breakpoint
 ALTER TABLE "documents" ALTER COLUMN "status" SET DATA TYPE "public"."document_status" USING "status"::"public"."document_status";--> statement-breakpoint
-ALTER TABLE "experiment_results" ALTER COLUMN "id" SET DATA TYPE uuid;--> statement-breakpoint
+ALTER TABLE "experiment_results" ALTER COLUMN "id" SET DATA TYPE uuid USING "id"::uuid;--> statement-breakpoint
 ALTER TABLE "experiment_results" ALTER COLUMN "id" SET DEFAULT gen_random_uuid();--> statement-breakpoint
-ALTER TABLE "experiment_results" ALTER COLUMN "experiment_id" SET DATA TYPE uuid;--> statement-breakpoint
-ALTER TABLE "experiments" ALTER COLUMN "id" SET DATA TYPE uuid;--> statement-breakpoint
+ALTER TABLE "experiment_results" ALTER COLUMN "experiment_id" SET DATA TYPE uuid USING "experiment_id"::uuid;--> statement-breakpoint
+ALTER TABLE "experiments" ALTER COLUMN "id" SET DATA TYPE uuid USING "id"::uuid;--> statement-breakpoint
 ALTER TABLE "experiments" ALTER COLUMN "id" SET DEFAULT gen_random_uuid();--> statement-breakpoint
 ALTER TABLE "experiments" ALTER COLUMN "status" SET DATA TYPE "public"."experiment_status" USING "status"::"public"."experiment_status";--> statement-breakpoint
-ALTER TABLE "feedback" ALTER COLUMN "thread_id" SET DATA TYPE uuid;--> statement-breakpoint
-ALTER TABLE "feedback" ALTER COLUMN "message_id" SET DATA TYPE uuid;--> statement-breakpoint
-ALTER TABLE "feedback" ALTER COLUMN "user_id" SET DATA TYPE uuid;--> statement-breakpoint
+ALTER TABLE "feedback" ALTER COLUMN "thread_id" SET DATA TYPE uuid USING "thread_id"::uuid;--> statement-breakpoint
+ALTER TABLE "feedback" ALTER COLUMN "message_id" SET DATA TYPE uuid USING "message_id"::uuid;--> statement-breakpoint
+ALTER TABLE "feedback" ALTER COLUMN "user_id" SET DATA TYPE uuid USING "user_id"::uuid;--> statement-breakpoint
 ALTER TABLE "feedback" ALTER COLUMN "rating" SET DATA TYPE "public"."feedback_rating" USING "rating"::"public"."feedback_rating";--> statement-breakpoint
-ALTER TABLE "agent_versions" ALTER COLUMN "id" SET DATA TYPE uuid;--> statement-breakpoint
+ALTER TABLE "agent_versions" ALTER COLUMN "id" SET DATA TYPE uuid USING "id"::uuid;--> statement-breakpoint
 ALTER TABLE "agent_versions" ALTER COLUMN "id" SET DEFAULT gen_random_uuid();--> statement-breakpoint
-ALTER TABLE "agent_versions" ALTER COLUMN "agent_id" SET DATA TYPE uuid;--> statement-breakpoint
-ALTER TABLE "agents" ALTER COLUMN "id" SET DATA TYPE uuid;--> statement-breakpoint
+ALTER TABLE "agent_versions" ALTER COLUMN "agent_id" SET DATA TYPE uuid USING "agent_id"::uuid;--> statement-breakpoint
+ALTER TABLE "agents" ALTER COLUMN "id" SET DATA TYPE uuid USING "id"::uuid;--> statement-breakpoint
 ALTER TABLE "agents" ALTER COLUMN "id" SET DEFAULT gen_random_uuid();--> statement-breakpoint
 ALTER TABLE "agents" ALTER COLUMN "status" SET DEFAULT 'draft'::"public"."entity_status";--> statement-breakpoint
 ALTER TABLE "agents" ALTER COLUMN "status" SET DATA TYPE "public"."entity_status" USING "status"::"public"."entity_status";--> statement-breakpoint
-ALTER TABLE "agents" ALTER COLUMN "active_version_id" SET DATA TYPE uuid;--> statement-breakpoint
-ALTER TABLE "agents" ALTER COLUMN "author_id" SET DATA TYPE uuid;--> statement-breakpoint
-ALTER TABLE "ai_spans" ALTER COLUMN "id" SET DATA TYPE uuid;--> statement-breakpoint
+ALTER TABLE "agents" ALTER COLUMN "active_version_id" SET DATA TYPE uuid USING "active_version_id"::uuid;--> statement-breakpoint
+ALTER TABLE "agents" ALTER COLUMN "author_id" SET DATA TYPE uuid USING "author_id"::uuid;--> statement-breakpoint
+ALTER TABLE "ai_spans" ALTER COLUMN "id" SET DATA TYPE uuid USING "id"::uuid;--> statement-breakpoint
 ALTER TABLE "ai_spans" ALTER COLUMN "id" SET DEFAULT gen_random_uuid();--> statement-breakpoint
-ALTER TABLE "mcp_client_versions" ALTER COLUMN "id" SET DATA TYPE uuid;--> statement-breakpoint
+ALTER TABLE "mcp_client_versions" ALTER COLUMN "id" SET DATA TYPE uuid USING "id"::uuid;--> statement-breakpoint
 ALTER TABLE "mcp_client_versions" ALTER COLUMN "id" SET DEFAULT gen_random_uuid();--> statement-breakpoint
-ALTER TABLE "mcp_client_versions" ALTER COLUMN "mcp_client_id" SET DATA TYPE uuid;--> statement-breakpoint
-ALTER TABLE "mcp_clients" ALTER COLUMN "id" SET DATA TYPE uuid;--> statement-breakpoint
+ALTER TABLE "mcp_client_versions" ALTER COLUMN "mcp_client_id" SET DATA TYPE uuid USING "mcp_client_id"::uuid;--> statement-breakpoint
+ALTER TABLE "mcp_clients" ALTER COLUMN "id" SET DATA TYPE uuid USING "id"::uuid;--> statement-breakpoint
 ALTER TABLE "mcp_clients" ALTER COLUMN "id" SET DEFAULT gen_random_uuid();--> statement-breakpoint
 ALTER TABLE "mcp_clients" ALTER COLUMN "status" SET DEFAULT 'draft'::"public"."entity_status";--> statement-breakpoint
 ALTER TABLE "mcp_clients" ALTER COLUMN "status" SET DATA TYPE "public"."entity_status" USING "status"::"public"."entity_status";--> statement-breakpoint
-ALTER TABLE "mcp_clients" ALTER COLUMN "active_version_id" SET DATA TYPE uuid;--> statement-breakpoint
-ALTER TABLE "mcp_clients" ALTER COLUMN "author_id" SET DATA TYPE uuid;--> statement-breakpoint
-ALTER TABLE "mcp_server_versions" ALTER COLUMN "id" SET DATA TYPE uuid;--> statement-breakpoint
+ALTER TABLE "mcp_clients" ALTER COLUMN "active_version_id" SET DATA TYPE uuid USING "active_version_id"::uuid;--> statement-breakpoint
+ALTER TABLE "mcp_clients" ALTER COLUMN "author_id" SET DATA TYPE uuid USING "author_id"::uuid;--> statement-breakpoint
+ALTER TABLE "mcp_server_versions" ALTER COLUMN "id" SET DATA TYPE uuid USING "id"::uuid;--> statement-breakpoint
 ALTER TABLE "mcp_server_versions" ALTER COLUMN "id" SET DEFAULT gen_random_uuid();--> statement-breakpoint
-ALTER TABLE "mcp_server_versions" ALTER COLUMN "mcp_server_id" SET DATA TYPE uuid;--> statement-breakpoint
-ALTER TABLE "mcp_servers" ALTER COLUMN "id" SET DATA TYPE uuid;--> statement-breakpoint
+ALTER TABLE "mcp_server_versions" ALTER COLUMN "mcp_server_id" SET DATA TYPE uuid USING "mcp_server_id"::uuid;--> statement-breakpoint
+ALTER TABLE "mcp_servers" ALTER COLUMN "id" SET DATA TYPE uuid USING "id"::uuid;--> statement-breakpoint
 ALTER TABLE "mcp_servers" ALTER COLUMN "id" SET DEFAULT gen_random_uuid();--> statement-breakpoint
 ALTER TABLE "mcp_servers" ALTER COLUMN "status" SET DEFAULT 'draft'::"public"."entity_status";--> statement-breakpoint
 ALTER TABLE "mcp_servers" ALTER COLUMN "status" SET DATA TYPE "public"."entity_status" USING "status"::"public"."entity_status";--> statement-breakpoint
-ALTER TABLE "mcp_servers" ALTER COLUMN "active_version_id" SET DATA TYPE uuid;--> statement-breakpoint
-ALTER TABLE "mcp_servers" ALTER COLUMN "author_id" SET DATA TYPE uuid;--> statement-breakpoint
-ALTER TABLE "messages" ALTER COLUMN "id" SET DATA TYPE uuid;--> statement-breakpoint
+ALTER TABLE "mcp_servers" ALTER COLUMN "active_version_id" SET DATA TYPE uuid USING "active_version_id"::uuid;--> statement-breakpoint
+ALTER TABLE "mcp_servers" ALTER COLUMN "author_id" SET DATA TYPE uuid USING "author_id"::uuid;--> statement-breakpoint
+ALTER TABLE "messages" ALTER COLUMN "id" SET DATA TYPE uuid USING "id"::uuid;--> statement-breakpoint
 ALTER TABLE "messages" ALTER COLUMN "id" SET DEFAULT gen_random_uuid();--> statement-breakpoint
-ALTER TABLE "messages" ALTER COLUMN "thread_id" SET DATA TYPE uuid;--> statement-breakpoint
-ALTER TABLE "messages" ALTER COLUMN "resource_id" SET DATA TYPE uuid;--> statement-breakpoint
-ALTER TABLE "prompt_block_versions" ALTER COLUMN "id" SET DATA TYPE uuid;--> statement-breakpoint
+ALTER TABLE "messages" ALTER COLUMN "thread_id" SET DATA TYPE uuid USING "thread_id"::uuid;--> statement-breakpoint
+ALTER TABLE "messages" ALTER COLUMN "resource_id" SET DATA TYPE uuid USING "resource_id"::uuid;--> statement-breakpoint
+ALTER TABLE "prompt_block_versions" ALTER COLUMN "id" SET DATA TYPE uuid USING "id"::uuid;--> statement-breakpoint
 ALTER TABLE "prompt_block_versions" ALTER COLUMN "id" SET DEFAULT gen_random_uuid();--> statement-breakpoint
-ALTER TABLE "prompt_block_versions" ALTER COLUMN "block_id" SET DATA TYPE uuid;--> statement-breakpoint
-ALTER TABLE "prompt_blocks" ALTER COLUMN "id" SET DATA TYPE uuid;--> statement-breakpoint
+ALTER TABLE "prompt_block_versions" ALTER COLUMN "block_id" SET DATA TYPE uuid USING "block_id"::uuid;--> statement-breakpoint
+ALTER TABLE "prompt_blocks" ALTER COLUMN "id" SET DATA TYPE uuid USING "id"::uuid;--> statement-breakpoint
 ALTER TABLE "prompt_blocks" ALTER COLUMN "id" SET DEFAULT gen_random_uuid();--> statement-breakpoint
 ALTER TABLE "prompt_blocks" ALTER COLUMN "status" SET DEFAULT 'draft'::"public"."entity_status";--> statement-breakpoint
 ALTER TABLE "prompt_blocks" ALTER COLUMN "status" SET DATA TYPE "public"."entity_status" USING "status"::"public"."entity_status";--> statement-breakpoint
-ALTER TABLE "prompt_blocks" ALTER COLUMN "active_version_id" SET DATA TYPE uuid;--> statement-breakpoint
-ALTER TABLE "prompt_blocks" ALTER COLUMN "author_id" SET DATA TYPE uuid;--> statement-breakpoint
-ALTER TABLE "resources" ALTER COLUMN "id" SET DATA TYPE uuid;--> statement-breakpoint
+ALTER TABLE "prompt_blocks" ALTER COLUMN "active_version_id" SET DATA TYPE uuid USING "active_version_id"::uuid;--> statement-breakpoint
+ALTER TABLE "prompt_blocks" ALTER COLUMN "author_id" SET DATA TYPE uuid USING "author_id"::uuid;--> statement-breakpoint
+ALTER TABLE "resources" ALTER COLUMN "id" SET DATA TYPE uuid USING "id"::uuid;--> statement-breakpoint
 ALTER TABLE "resources" ALTER COLUMN "id" SET DEFAULT gen_random_uuid();--> statement-breakpoint
-ALTER TABLE "scorer_definition_versions" ALTER COLUMN "id" SET DATA TYPE uuid;--> statement-breakpoint
+ALTER TABLE "scorer_definition_versions" ALTER COLUMN "id" SET DATA TYPE uuid USING "id"::uuid;--> statement-breakpoint
 ALTER TABLE "scorer_definition_versions" ALTER COLUMN "id" SET DEFAULT gen_random_uuid();--> statement-breakpoint
-ALTER TABLE "scorer_definition_versions" ALTER COLUMN "scorer_definition_id" SET DATA TYPE uuid;--> statement-breakpoint
-ALTER TABLE "scorer_definitions" ALTER COLUMN "id" SET DATA TYPE uuid;--> statement-breakpoint
+ALTER TABLE "scorer_definition_versions" ALTER COLUMN "scorer_definition_id" SET DATA TYPE uuid USING "scorer_definition_id"::uuid;--> statement-breakpoint
+ALTER TABLE "scorer_definitions" ALTER COLUMN "id" SET DATA TYPE uuid USING "id"::uuid;--> statement-breakpoint
 ALTER TABLE "scorer_definitions" ALTER COLUMN "id" SET DEFAULT gen_random_uuid();--> statement-breakpoint
 ALTER TABLE "scorer_definitions" ALTER COLUMN "status" SET DEFAULT 'draft'::"public"."entity_status";--> statement-breakpoint
 ALTER TABLE "scorer_definitions" ALTER COLUMN "status" SET DATA TYPE "public"."entity_status" USING "status"::"public"."entity_status";--> statement-breakpoint
-ALTER TABLE "scorer_definitions" ALTER COLUMN "active_version_id" SET DATA TYPE uuid;--> statement-breakpoint
-ALTER TABLE "scorer_definitions" ALTER COLUMN "author_id" SET DATA TYPE uuid;--> statement-breakpoint
-ALTER TABLE "scores" ALTER COLUMN "id" SET DATA TYPE uuid;--> statement-breakpoint
+ALTER TABLE "scorer_definitions" ALTER COLUMN "active_version_id" SET DATA TYPE uuid USING "active_version_id"::uuid;--> statement-breakpoint
+ALTER TABLE "scorer_definitions" ALTER COLUMN "author_id" SET DATA TYPE uuid USING "author_id"::uuid;--> statement-breakpoint
+ALTER TABLE "scores" ALTER COLUMN "id" SET DATA TYPE uuid USING "id"::uuid;--> statement-breakpoint
 ALTER TABLE "scores" ALTER COLUMN "id" SET DEFAULT gen_random_uuid();--> statement-breakpoint
-ALTER TABLE "skill_versions" ALTER COLUMN "id" SET DATA TYPE uuid;--> statement-breakpoint
+ALTER TABLE "skill_versions" ALTER COLUMN "id" SET DATA TYPE uuid USING "id"::uuid;--> statement-breakpoint
 ALTER TABLE "skill_versions" ALTER COLUMN "id" SET DEFAULT gen_random_uuid();--> statement-breakpoint
-ALTER TABLE "skill_versions" ALTER COLUMN "skill_id" SET DATA TYPE uuid;--> statement-breakpoint
-ALTER TABLE "skills" ALTER COLUMN "id" SET DATA TYPE uuid;--> statement-breakpoint
+ALTER TABLE "skill_versions" ALTER COLUMN "skill_id" SET DATA TYPE uuid USING "skill_id"::uuid;--> statement-breakpoint
+ALTER TABLE "skills" ALTER COLUMN "id" SET DATA TYPE uuid USING "id"::uuid;--> statement-breakpoint
 ALTER TABLE "skills" ALTER COLUMN "id" SET DEFAULT gen_random_uuid();--> statement-breakpoint
 ALTER TABLE "skills" ALTER COLUMN "status" SET DEFAULT 'draft'::"public"."entity_status";--> statement-breakpoint
 ALTER TABLE "skills" ALTER COLUMN "status" SET DATA TYPE "public"."entity_status" USING "status"::"public"."entity_status";--> statement-breakpoint
-ALTER TABLE "skills" ALTER COLUMN "active_version_id" SET DATA TYPE uuid;--> statement-breakpoint
-ALTER TABLE "skills" ALTER COLUMN "author_id" SET DATA TYPE uuid;--> statement-breakpoint
+ALTER TABLE "skills" ALTER COLUMN "active_version_id" SET DATA TYPE uuid USING "active_version_id"::uuid;--> statement-breakpoint
+ALTER TABLE "skills" ALTER COLUMN "author_id" SET DATA TYPE uuid USING "author_id"::uuid;--> statement-breakpoint
 ALTER TABLE "sync_jobs" ALTER COLUMN "status" SET DEFAULT 'running'::"public"."sync_job_status";--> statement-breakpoint
 ALTER TABLE "sync_jobs" ALTER COLUMN "status" SET DATA TYPE "public"."sync_job_status" USING "status"::"public"."sync_job_status";--> statement-breakpoint
-ALTER TABLE "threads" ALTER COLUMN "id" SET DATA TYPE uuid;--> statement-breakpoint
+ALTER TABLE "threads" ALTER COLUMN "id" SET DATA TYPE uuid USING "id"::uuid;--> statement-breakpoint
 ALTER TABLE "threads" ALTER COLUMN "id" SET DEFAULT gen_random_uuid();--> statement-breakpoint
-ALTER TABLE "threads" ALTER COLUMN "resource_id" SET DATA TYPE uuid;--> statement-breakpoint
-ALTER TABLE "workspace_versions" ALTER COLUMN "id" SET DATA TYPE uuid;--> statement-breakpoint
+ALTER TABLE "threads" ALTER COLUMN "resource_id" SET DATA TYPE uuid USING "resource_id"::uuid;--> statement-breakpoint
+ALTER TABLE "workspace_versions" ALTER COLUMN "id" SET DATA TYPE uuid USING "id"::uuid;--> statement-breakpoint
 ALTER TABLE "workspace_versions" ALTER COLUMN "id" SET DEFAULT gen_random_uuid();--> statement-breakpoint
-ALTER TABLE "workspace_versions" ALTER COLUMN "workspace_id" SET DATA TYPE uuid;--> statement-breakpoint
-ALTER TABLE "workspaces" ALTER COLUMN "id" SET DATA TYPE uuid;--> statement-breakpoint
+ALTER TABLE "workspace_versions" ALTER COLUMN "workspace_id" SET DATA TYPE uuid USING "workspace_id"::uuid;--> statement-breakpoint
+ALTER TABLE "workspaces" ALTER COLUMN "id" SET DATA TYPE uuid USING "id"::uuid;--> statement-breakpoint
 ALTER TABLE "workspaces" ALTER COLUMN "id" SET DEFAULT gen_random_uuid();--> statement-breakpoint
 ALTER TABLE "workspaces" ALTER COLUMN "status" SET DEFAULT 'draft'::"public"."entity_status";--> statement-breakpoint
 ALTER TABLE "workspaces" ALTER COLUMN "status" SET DATA TYPE "public"."entity_status" USING "status"::"public"."entity_status";--> statement-breakpoint
-ALTER TABLE "workspaces" ALTER COLUMN "active_version_id" SET DATA TYPE uuid;--> statement-breakpoint
-ALTER TABLE "workspaces" ALTER COLUMN "author_id" SET DATA TYPE uuid;--> statement-breakpoint
+ALTER TABLE "workspaces" ALTER COLUMN "active_version_id" SET DATA TYPE uuid USING "active_version_id"::uuid;--> statement-breakpoint
+ALTER TABLE "workspaces" ALTER COLUMN "author_id" SET DATA TYPE uuid USING "author_id"::uuid;--> statement-breakpoint
 ALTER TABLE "workflow_snapshots" ADD COLUMN "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL;--> statement-breakpoint
 ALTER TABLE "dataset_items" ADD CONSTRAINT "dataset_items_dataset_id_datasets_id_fk" FOREIGN KEY ("dataset_id") REFERENCES "public"."datasets"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "dataset_versions" ADD CONSTRAINT "dataset_versions_dataset_id_datasets_id_fk" FOREIGN KEY ("dataset_id") REFERENCES "public"."datasets"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint

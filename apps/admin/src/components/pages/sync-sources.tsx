@@ -16,6 +16,11 @@ import {
   Label,
   LoadingSpinner,
   PageHeader,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
   StatusBadge,
 } from '@typhoon/ui';
 import { FolderSyncIcon, PlusIcon } from 'lucide-react';
@@ -60,7 +65,7 @@ const columns: ColumnDef<SyncTarget, unknown>[] = [
   {
     accessorKey: 'managedBy',
     header: 'Managed',
-    cell: ({ row }) => (row.original.managedBy === 'config' ? <StatusBadge variant="info">Config</StatusBadge> : null),
+    cell: ({ row }) => <span className="text-sm text-muted-foreground">{row.original.managedBy ?? '\u2014'}</span>,
   },
 ];
 
@@ -128,13 +133,28 @@ export function SyncSourcesPage() {
 
 function AddSourceForm({ onDone }: { onDone: () => void }) {
   const queryClient = useQueryClient();
+  const { data: sources } = useQuery<{ name: string; sourceType: string }[]>({
+    queryKey: ['sources'],
+    queryFn: () => fetch('/api/v1/sources', { credentials: 'include' }).then((r) => r.json()),
+  });
   const [form, setForm] = useState({
     name: '',
-    sourceType: 's3',
-    source: 's3-default',
-    bucket: '',
-    prefix: '',
+    source: '',
+    config: {} as Record<string, string>,
   });
+
+  const selectedSource = sources?.find((s) => s.name === form.source);
+  const sourceType = selectedSource?.sourceType;
+
+  const handleSourceChange = (value: string) => {
+    setForm({ ...form, source: value, config: {} });
+  };
+
+  const setConfig = (key: string, value: string) => {
+    setForm({ ...form, config: { ...form.config, [key]: value } });
+  };
+
+  const isValid = form.name && form.source && sourceType && (sourceType !== 's3' || form.config.bucket);
 
   const create = useMutation({
     mutationFn: () =>
@@ -144,9 +164,9 @@ function AddSourceForm({ onDone }: { onDone: () => void }) {
         credentials: 'include',
         body: JSON.stringify({
           name: form.name,
-          sourceType: form.sourceType,
+          sourceType,
           source: form.source,
-          config: { bucket: form.bucket, prefix: form.prefix },
+          config: sourceType === 's3' ? { bucket: form.config.bucket, prefix: form.config.prefix ?? '' } : form.config,
         }),
       }),
     onSuccess: () => {
@@ -172,35 +192,46 @@ function AddSourceForm({ onDone }: { onDone: () => void }) {
           />
         </div>
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="source-credential">Source</Label>
-          <Input
-            id="source-credential"
-            placeholder="e.g. s3-default"
-            value={form.source}
-            onChange={(e) => setForm({ ...form, source: e.target.value })}
-          />
+          <Label>Source</Label>
+          <Select value={form.source} onValueChange={handleSourceChange}>
+            <SelectTrigger>
+              <SelectValue placeholder="Select a source" />
+            </SelectTrigger>
+            <SelectContent>
+              {sources?.map((s) => (
+                <SelectItem key={s.name} value={s.name}>
+                  {s.name} <span className="text-muted-foreground">({s.sourceType})</span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="source-bucket">Bucket</Label>
-          <Input
-            id="source-bucket"
-            placeholder="e.g. my-docs-bucket"
-            value={form.bucket}
-            onChange={(e) => setForm({ ...form, bucket: e.target.value })}
-          />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="source-prefix">Prefix (optional)</Label>
-          <Input
-            id="source-prefix"
-            placeholder="e.g. docs/"
-            value={form.prefix}
-            onChange={(e) => setForm({ ...form, prefix: e.target.value })}
-          />
-        </div>
+
+        {sourceType === 's3' && (
+          <>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="source-bucket">Bucket</Label>
+              <Input
+                id="source-bucket"
+                placeholder="e.g. my-docs-bucket"
+                value={form.config.bucket ?? ''}
+                onChange={(e) => setConfig('bucket', e.target.value)}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="source-prefix">Prefix (optional)</Label>
+              <Input
+                id="source-prefix"
+                placeholder="e.g. docs/"
+                value={form.config.prefix ?? ''}
+                onChange={(e) => setConfig('prefix', e.target.value)}
+              />
+            </div>
+          </>
+        )}
       </div>
       <DialogFooter>
-        <Button onClick={() => create.mutate()} disabled={!form.name || !form.bucket || create.isPending}>
+        <Button onClick={() => create.mutate()} disabled={!isValid || create.isPending}>
           {create.isPending ? 'Creating...' : 'Create'}
         </Button>
       </DialogFooter>

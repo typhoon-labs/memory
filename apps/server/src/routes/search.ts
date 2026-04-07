@@ -11,14 +11,20 @@ const vectorStore = new PgVector({ id: 'typhoon-vectors', sql });
 const searchSchema = z.object({
   query: z.string().min(1),
   topK: z.number().int().min(1).max(50).optional().default(10),
+  minScore: z.number().min(0).max(1).optional().default(0.6),
+});
+
+const hybridSearchSchema = z.object({
+  query: z.string().min(1),
+  topK: z.number().int().min(1).max(50).optional().default(10),
 });
 
 export const searchRoutes = [
-  registerApiRoute('/v1/search', {
+  registerApiRoute('/v1/search/hybrid', {
     method: 'POST',
     middleware: [requireAuth],
     handler: async (c) => {
-      const body = searchSchema.safeParse(await c.req.json());
+      const body = hybridSearchSchema.safeParse(await c.req.json());
       if (!body.success) {
         return c.json({ error: 'Invalid request', details: body.error.issues }, 400);
       }
@@ -31,8 +37,9 @@ export const searchRoutes = [
           value: query,
         });
 
-        const queryResults = await vectorStore.query({
+        const queryResults = await vectorStore.hybridQuery({
           indexName: 'knowledge_base',
+          queryText: query,
           queryVector: embedding,
           topK,
         });
@@ -42,8 +49,53 @@ export const searchRoutes = [
           score: r.score,
           metadata: {
             documentId: (r.metadata as Record<string, unknown>)?.documentId,
+            syncTargetId: (r.metadata as Record<string, unknown>)?.syncTargetId,
             source: (r.metadata as Record<string, unknown>)?.source,
             title: (r.metadata as Record<string, unknown>)?.title,
+            startIndex: (r.metadata as Record<string, unknown>)?.startIndex ?? null,
+          },
+        }));
+
+        return c.json({ results });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Search failed';
+        return c.json({ error: message }, 500);
+      }
+    },
+  }),
+  registerApiRoute('/v1/search', {
+    method: 'POST',
+    middleware: [requireAuth],
+    handler: async (c) => {
+      const body = searchSchema.safeParse(await c.req.json());
+      if (!body.success) {
+        return c.json({ error: 'Invalid request', details: body.error.issues }, 400);
+      }
+
+      const { query, topK, minScore } = body.data;
+
+      try {
+        const { embedding } = await embed({
+          model: createEmbeddingModel(),
+          value: query,
+        });
+
+        const queryResults = await vectorStore.query({
+          indexName: 'knowledge_base',
+          queryVector: embedding,
+          topK,
+          minScore,
+        });
+
+        const results = queryResults.map((r) => ({
+          text: (r.metadata as Record<string, unknown>)?.text ?? '',
+          score: r.score,
+          metadata: {
+            documentId: (r.metadata as Record<string, unknown>)?.documentId,
+            syncTargetId: (r.metadata as Record<string, unknown>)?.syncTargetId,
+            source: (r.metadata as Record<string, unknown>)?.source,
+            title: (r.metadata as Record<string, unknown>)?.title,
+            startIndex: (r.metadata as Record<string, unknown>)?.startIndex ?? null,
           },
         }));
 

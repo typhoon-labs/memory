@@ -1,5 +1,5 @@
 /**
- * Registers named credential sources for S3/MinIO connectors.
+ * Registers named credential sources for sync connectors.
  *
  * Each source maps a unique name to a set of credentials read from
  * environment variables. Sync targets reference a source by name —
@@ -17,6 +17,7 @@ export function registerAllSources(): void {
   // ---------------------------------------------------------------------------
   registerSource({
     name: 's3-default',
+    sourceType: 's3',
     credentials: {
       endpoint: process.env.S3_ENDPOINT ?? 'http://localhost:9000',
       region: process.env.S3_REGION ?? 'us-east-1',
@@ -24,19 +25,4 @@ export function registerAllSources(): void {
       secretKey: process.env.S3_SECRET_KEY ?? '',
     },
   });
-
-  // ---------------------------------------------------------------------------
-  // Additional sources (uncomment / duplicate as needed)
-  // ---------------------------------------------------------------------------
-  // if (process.env.S3_STAGING_ENDPOINT) {
-  //   registerSource({
-  //     name: 's3-staging',
-  //     credentials: {
-  //       endpoint: process.env.S3_STAGING_ENDPOINT,
-  //       region: process.env.S3_STAGING_REGION ?? 'us-east-1',
-  //       accessKey: process.env.S3_STAGING_ACCESS_KEY ?? '',
-  //       secretKey: process.env.S3_STAGING_SECRET_KEY ?? '',
-  //     },
-  //   });
-  // }
 }

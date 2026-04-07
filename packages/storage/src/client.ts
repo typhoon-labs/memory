@@ -1,4 +1,5 @@
 import {
+  CopyObjectCommand,
   DeleteObjectCommand,
   GetObjectCommand,
   ListObjectsV2Command,
@@ -90,4 +91,68 @@ export async function uploadObject(
 ): Promise<void> {
   log.debug('Uploading S3 object', { bucket, key, contentType });
   await client.send(new PutObjectCommand({ Bucket: bucket, Key: key, Body: body, ContentType: contentType }));
+}
+
+export async function copyObject(
+  client: S3ClientType,
+  bucket: string,
+  sourceKey: string,
+  destinationKey: string,
+): Promise<void> {
+  log.debug('Copying S3 object', { bucket, sourceKey, destinationKey });
+  await client.send(
+    new CopyObjectCommand({
+      Bucket: bucket,
+      CopySource: `${bucket}/${sourceKey}`,
+      Key: destinationKey,
+    }),
+  );
+}
+
+export interface ListPrefixResult {
+  folders: string[];
+  objects: S3Object[];
+}
+
+export async function listObjectsByPrefix(
+  client: S3ClientType,
+  bucket: string,
+  prefix: string,
+): Promise<ListPrefixResult> {
+  log.debug('Listing S3 objects by prefix', { bucket, prefix });
+  const folders: string[] = [];
+  const objects: S3Object[] = [];
+  let continuationToken: string | undefined;
+
+  do {
+    const response = await client.send(
+      new ListObjectsV2Command({
+        Bucket: bucket,
+        Prefix: prefix,
+        Delimiter: '/',
+        ContinuationToken: continuationToken,
+      }),
+    );
+
+    for (const cp of response.CommonPrefixes ?? []) {
+      if (cp.Prefix) folders.push(cp.Prefix);
+    }
+
+    for (const obj of response.Contents ?? []) {
+      // Skip the prefix placeholder itself (zero-byte folder marker)
+      if (obj.Key === prefix) continue;
+      if (obj.Key && obj.ETag && obj.LastModified && obj.Size !== undefined) {
+        objects.push({
+          key: obj.Key,
+          etag: obj.ETag.replace(/"/g, ''),
+          lastModified: obj.LastModified,
+          size: obj.Size,
+        });
+      }
+    }
+
+    continuationToken = response.IsTruncated ? response.NextContinuationToken : undefined;
+  } while (continuationToken);
+
+  return { folders, objects };
 }

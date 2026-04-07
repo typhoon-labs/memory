@@ -1,4 +1,4 @@
-import type { ColumnDef, ColumnFiltersState, OnChangeFn, SortingState } from '@tanstack/react-table';
+import type { ColumnDef, ColumnFiltersState, OnChangeFn, RowSelectionState, SortingState } from '@tanstack/react-table';
 import {
   flexRender,
   getCoreRowModel,
@@ -7,9 +7,10 @@ import {
   getSortedRowModel,
   useReactTable,
 } from '@tanstack/react-table';
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { cn } from '../lib/utils.js';
 import { Button } from './ui/button.js';
+import { Checkbox } from './ui/checkbox.js';
 import { Input } from './ui/input.js';
 
 export interface DataTableProps<TData> {
@@ -33,13 +34,19 @@ export interface DataTableProps<TData> {
   showRowCount?: boolean;
   /** Callback when a table row is clicked. Receives the row's original data. */
   onRowClick?: (row: TData) => void;
+  /** Enable row selection with checkboxes. Defaults to false. */
+  enableRowSelection?: boolean;
+  /** Callback when selection changes. Receives array of selected row data. */
+  onSelectionChange?: (selected: TData[]) => void;
+  /** Function to derive a unique row ID from data. Required when enableRowSelection is true. */
+  getRowId?: (row: TData) => string;
   /** Additional CSS classes to merge onto the wrapper. */
   className?: string;
 }
 
 /**
  * A generic data table component powered by TanStack Table with
- * sorting, global filtering, and pagination support.
+ * sorting, global filtering, pagination, and optional row selection.
  */
 export function DataTable<TData>({
   data,
@@ -52,25 +59,62 @@ export function DataTable<TData>({
   toolbar,
   showRowCount = false,
   onRowClick,
+  enableRowSelection = false,
+  onSelectionChange,
+  getRowId,
   className,
 }: DataTableProps<TData>): React.JSX.Element {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = useState('');
   const [internalColumnFilters, setInternalColumnFilters] = useState<ColumnFiltersState>([]);
+  const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
 
   const columnFilters = controlledColumnFilters ?? internalColumnFilters;
 
+  // Prepend a checkbox column when row selection is enabled
+  const allColumns = useMemo(() => {
+    if (!enableRowSelection) return columns;
+    const selectColumn: ColumnDef<TData, unknown> = {
+      id: '_select',
+      header: ({ table }) => (
+        <Checkbox
+          checked={table.getIsAllPageRowsSelected()}
+          onCheckedChange={(checked) => table.toggleAllPageRowsSelected(!!checked)}
+          aria-label="Select all"
+        />
+      ),
+      cell: ({ row }) => (
+        <Checkbox
+          checked={row.getIsSelected()}
+          onCheckedChange={(checked) => row.toggleSelected(!!checked)}
+          aria-label="Select row"
+          onClick={(e) => e.stopPropagation()}
+        />
+      ),
+      enableSorting: false,
+    };
+    return [selectColumn, ...columns];
+  }, [columns, enableRowSelection]);
+
   const table = useReactTable({
     data,
-    columns,
+    columns: allColumns,
     state: {
       sorting,
       globalFilter,
       columnFilters,
+      ...(enableRowSelection ? { rowSelection } : {}),
     },
     onSortingChange: setSorting,
     onGlobalFilterChange: setGlobalFilter,
     onColumnFiltersChange: onColumnFiltersChange ?? setInternalColumnFilters,
+    ...(enableRowSelection
+      ? {
+          enableRowSelection: true,
+          onRowSelectionChange: setRowSelection,
+          getRowId,
+        }
+      : {}),
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: enableSorting ? getSortedRowModel() : undefined,
     getFilteredRowModel: getFilteredRowModel(),
@@ -81,6 +125,14 @@ export function DataTable<TData>({
       },
     },
   });
+
+  // Notify parent of selection changes — rowSelection is an intentional trigger dependency
+  // biome-ignore lint/correctness/useExhaustiveDependencies: rowSelection triggers re-computation of selected rows
+  useEffect(() => {
+    if (!enableRowSelection || !onSelectionChange) return;
+    const selected = table.getSelectedRowModel().rows.map((r) => r.original);
+    onSelectionChange(selected);
+  }, [rowSelection, enableRowSelection, onSelectionChange, table]);
 
   return (
     <div className={cn('w-full', className)}>
@@ -110,6 +162,7 @@ export function DataTable<TData>({
                     className={cn(
                       'px-4 py-2.5 text-left text-2xs font-semibold uppercase tracking-widest text-muted-foreground',
                       enableSorting && header.column.getCanSort() && 'cursor-pointer select-none',
+                      header.id === '_select' && 'w-10',
                     )}
                     onClick={enableSorting ? header.column.getToggleSortingHandler() : undefined}
                     onKeyDown={
@@ -123,13 +176,18 @@ export function DataTable<TData>({
                         : undefined
                     }
                   >
-                    {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
-                    {enableSorting &&
-                      (header.column.getIsSorted() === 'asc'
-                        ? ' \u2191'
-                        : header.column.getIsSorted() === 'desc'
-                          ? ' \u2193'
-                          : '')}
+                    <span className="inline-flex items-center gap-1">
+                      {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                      {enableSorting && header.column.getCanSort() && (
+                        <span className="inline-block w-3 text-center">
+                          {header.column.getIsSorted() === 'asc'
+                            ? '\u2191'
+                            : header.column.getIsSorted() === 'desc'
+                              ? '\u2193'
+                              : ''}
+                        </span>
+                      )}
+                    </span>
                   </th>
                 ))}
               </tr>
@@ -140,11 +198,15 @@ export function DataTable<TData>({
               table.getRowModel().rows.map((row) => (
                 <tr
                   key={row.id}
-                  className={cn('hover:bg-accent transition-colors', onRowClick && 'cursor-pointer')}
+                  className={cn(
+                    'hover:bg-accent transition-colors',
+                    onRowClick && 'cursor-pointer',
+                    enableRowSelection && row.getIsSelected() && 'bg-muted/50',
+                  )}
                   onClick={onRowClick ? () => onRowClick(row.original) : undefined}
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <td key={cell.id} className="whitespace-nowrap px-4 py-2.5 text-sm text-foreground">
+                    <td key={cell.id} className="whitespace-nowrap px-4 py-2.5 align-middle text-sm text-foreground">
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </td>
                   ))}
@@ -152,7 +214,7 @@ export function DataTable<TData>({
               ))
             ) : (
               <tr>
-                <td colSpan={columns.length} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                <td colSpan={allColumns.length} className="px-4 py-8 text-center text-sm text-muted-foreground">
                   No results found.
                 </td>
               </tr>

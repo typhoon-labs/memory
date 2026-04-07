@@ -33,7 +33,17 @@ export class PgVector extends MastraVector<PGVectorFilter> {
     return this.tablePrefix ? `${this.tablePrefix}_${indexName}` : indexName;
   }
 
-  async createIndex(params: CreateIndexParams & { metric?: string }): Promise<void> {
+  async createIndex(
+    params: CreateIndexParams & {
+      metric?: string;
+      language?: string;
+      indexConfig?: {
+        type?: 'hnsw' | 'ivfflat' | 'flat';
+        hnsw?: { m?: number; efConstruction?: number };
+        ivfflat?: { lists?: number };
+      };
+    },
+  ): Promise<void> {
     const table = this.tableName(params.indexName);
     const dimension = params.dimension;
     const metric = params.metric ?? 'cosine';
@@ -51,17 +61,68 @@ export class PgVector extends MastraVector<PGVectorFilter> {
     const opsClass =
       metric === 'euclidean' ? 'vector_l2_ops' : metric === 'dotproduct' ? 'vector_ip_ops' : 'vector_cosine_ops';
 
+    const indexType = params.indexConfig?.type ?? 'hnsw';
+
+    if (indexType === 'flat') return; // No index for brute-force
+
+    let withClause = '';
+    if (indexType === 'hnsw') {
+      const parts: string[] = [];
+      if (params.indexConfig?.hnsw?.m) parts.push(`m = ${params.indexConfig.hnsw.m}`);
+      if (params.indexConfig?.hnsw?.efConstruction)
+        parts.push(`ef_construction = ${params.indexConfig.hnsw.efConstruction}`);
+      if (parts.length > 0) withClause = `WITH (${parts.join(', ')})`;
+    } else if (indexType === 'ivfflat') {
+      const lists = params.indexConfig?.ivfflat?.lists;
+      if (lists) withClause = `WITH (lists = ${lists})`;
+    }
+
     await this.sql.unsafe(`
       CREATE INDEX IF NOT EXISTS "${table}_embedding_idx"
-      ON "${table}" USING hnsw (embedding ${opsClass})
+      ON "${table}" USING ${indexType} (embedding ${opsClass})
+      ${withClause}
+    `);
+
+    // Full-text search support: add tsvector column, GIN index, and auto-populate trigger
+    const ftsLang = params.language ?? 'english';
+    await this.sql.unsafe(`ALTER TABLE "${table}" ADD COLUMN IF NOT EXISTS content_tsvector tsvector`);
+    await this.sql.unsafe(
+      `CREATE INDEX IF NOT EXISTS "${table}_tsvector_idx" ON "${table}" USING gin(content_tsvector)`,
+    );
+    await this.sql.unsafe(`
+      CREATE OR REPLACE FUNCTION "${table}_update_tsvector"()
+      RETURNS TRIGGER AS $$
+      BEGIN
+        NEW.content_tsvector := to_tsvector('${ftsLang}', COALESCE(NEW.metadata->>'text', ''));
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql;
+
+      DROP TRIGGER IF EXISTS "${table}_tsvector_trg" ON "${table}";
+      CREATE TRIGGER "${table}_tsvector_trg"
+      BEFORE INSERT OR UPDATE ON "${table}"
+      FOR EACH ROW EXECUTE FUNCTION "${table}_update_tsvector"();
     `);
   }
 
-  async query(params: QueryVectorParams<PGVectorFilter> & { minScore?: number }): Promise<QueryResult[]> {
+  async query(
+    params: QueryVectorParams<PGVectorFilter> & {
+      minScore?: number;
+      options?: { ef?: number; probes?: number };
+    },
+  ): Promise<QueryResult[]> {
     const table = this.tableName(params.indexName);
     const topK = params.topK ?? 10;
     const includeVector = params.includeVector ?? false;
     const minScore = params.minScore ?? 0;
+
+    // Apply HNSW/IVFFlat search tuning within this transaction
+    if (params.options?.ef) {
+      await this.sql.unsafe(`SET LOCAL hnsw.ef_search = ${Number(params.options.ef)}`);
+    }
+    if (params.options?.probes) {
+      await this.sql.unsafe(`SET LOCAL ivfflat.probes = ${Number(params.options.probes)}`);
+    }
 
     const vectorSelect = includeVector ? ', embedding' : '';
 
@@ -270,6 +331,74 @@ export class PgVector extends MastraVector<PGVectorFilter> {
   async deleteIndex(params: DeleteIndexParams): Promise<void> {
     const table = this.tableName(params.indexName);
     await this.sql.unsafe(`DROP TABLE IF EXISTS "${table}" CASCADE`);
+  }
+
+  /**
+   * Hybrid search combining full-text search (keyword matching) with vector similarity,
+   * merged using Reciprocal Rank Fusion (RRF).
+   */
+  async hybridQuery(params: {
+    indexName: string;
+    queryText: string;
+    queryVector: number[];
+    topK?: number;
+    filter?: PGVectorFilter;
+    language?: string;
+  }): Promise<QueryResult[]> {
+    const table = this.tableName(params.indexName);
+    const topK = params.topK ?? 10;
+    const lang = params.language ?? 'english';
+    const candidateK = topK * 3; // Fetch more candidates before RRF merge
+    const vecStr = `[${params.queryVector.join(',')}]`;
+    const rrfK = 60; // RRF constant — standard value
+
+    let filterClause = '';
+    let filterValues: SqlParam[] = [];
+    if (params.filter && Object.keys(params.filter).length > 0) {
+      const filterResult = buildFilterQuery(params.filter, 3); // $1=queryText, $2=vector, $3+
+      if (filterResult.sql) {
+        filterClause = `AND ${filterResult.sql}`;
+        filterValues = filterResult.values;
+      }
+    }
+
+    const allValues: (string | number | boolean | null)[] = [params.queryText, vecStr, ...filterValues];
+    allValues.push(candidateK);
+    const candidateParam = `$${allValues.length}`;
+    allValues.push(topK);
+    const limitParam = `$${allValues.length}`;
+
+    const rows = await this.sql.unsafe(
+      `WITH fts AS (
+        SELECT id, ROW_NUMBER() OVER (
+          ORDER BY ts_rank_cd(content_tsvector, plainto_tsquery('${lang}', $1)) DESC
+        ) AS rank
+        FROM "${table}"
+        WHERE content_tsvector @@ plainto_tsquery('${lang}', $1) ${filterClause}
+        LIMIT ${candidateParam}
+      ),
+      vec AS (
+        SELECT id, ROW_NUMBER() OVER (
+          ORDER BY embedding <=> $2::vector
+        ) AS rank
+        FROM "${table}"
+        WHERE embedding IS NOT NULL ${filterClause}
+        ORDER BY embedding <=> $2::vector
+        LIMIT ${candidateParam}
+      )
+      SELECT t.id, t.metadata,
+             (1.0 / (${rrfK} + COALESCE(f.rank, ${candidateK + 1}))
+            + 1.0 / (${rrfK} + COALESCE(v.rank, ${candidateK + 1}))) AS score
+      FROM (SELECT id FROM fts UNION SELECT id FROM vec) AS combined
+      JOIN "${table}" t ON t.id = combined.id
+      LEFT JOIN fts f ON f.id = combined.id
+      LEFT JOIN vec v ON v.id = combined.id
+      ORDER BY score DESC
+      LIMIT ${limitParam}`,
+      allValues,
+    );
+
+    return rows.map((row: Record<string, unknown>) => this.mapRow(row, false));
   }
 
   async disconnect(): Promise<void> {

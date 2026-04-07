@@ -1,0 +1,67 @@
+# =============================================================================
+# Typhoon — Development Overrides
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+# Swaps app services to dev target with volume mounts for hot-reload
+# =============================================================================
+
+services:
+  # Database migrations — use dev target with mounted source
+  migrate:
+    build:
+      target: dev
+    volumes:
+      - ../../:/app
+      - dev_node_modules:/app/node_modules
+
+  # API Server — bun --watch auto-restarts on file changes
+  server:
+    build:
+      target: dev
+    command: bun run --watch apps/server/src/index.ts
+    volumes:
+      - ../../:/app
+      - dev_node_modules:/app/node_modules
+
+  # Desk — Vite dev server with HMR (port 80 matches nginx in base compose)
+  desk:
+    build:
+      target: dev
+    command: ['sh', '-c', 'rm -rf node_modules/.vite && bunx --bun vite --host 0.0.0.0 --port 80']
+    working_dir: /app/apps/desk
+    environment:
+      API_PROXY_TARGET: http://server:5172
+      HMR_CLIENT_PORT: '5173'
+      VITE_USE_POLLING: '1'
+    volumes:
+      - ../../:/app
+      - dev_node_modules:/app/node_modules
+
+  # Admin — Vite dev server with HMR
+  admin:
+    build:
+      target: dev
+    command: ['sh', '-c', 'rm -rf node_modules/.vite && bunx --bun vite --host 0.0.0.0 --port 80']
+    working_dir: /app/apps/admin
+    environment:
+      API_PROXY_TARGET: http://server:5172
+      HMR_CLIENT_PORT: '5174'
+      VITE_USE_POLLING: '1'
+    volumes:
+      - ../../:/app
+      - dev_node_modules:/app/node_modules
+
+  # Widget — Vite dev server with HMR
+  widget:
+    build:
+      target: dev
+    command: ['sh', '-c', 'rm -rf node_modules/.vite && bunx --bun vite --host 0.0.0.0 --port 80']
+    working_dir: /app/apps/widget
+    environment:
+      HMR_CLIENT_PORT: '5175'
+      VITE_USE_POLLING: '1'
+    volumes:
+      - ../../:/app
+      - dev_node_modules:/app/node_modules
+
+volumes:
+  dev_node_modules:

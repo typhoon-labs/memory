@@ -3,6 +3,7 @@ services:
   # PostgreSQL + pgvector
   # ==========================================================================
   postgres:
+    profiles: [all, infra]
     image: pgvector/pgvector:pg17
     container_name: typhoon-postgres
     restart: unless-stopped
@@ -25,6 +26,7 @@ services:
   # Redis
   # ==========================================================================
   redis:
+    profiles: [all, infra]
     image: redis:8-alpine
     container_name: typhoon-redis
     restart: unless-stopped
@@ -42,6 +44,7 @@ services:
   # MinIO (S3-compatible object storage)
   # ==========================================================================
   minio:
+    profiles: [all, infra]
     image: minio/minio:latest
     container_name: typhoon-minio
     restart: unless-stopped
@@ -62,6 +65,7 @@ services:
 
   # Create default bucket on startup
   minio-init:
+    profiles: [all, infra]
     image: minio/mc:latest
     container_name: typhoon-minio-init
     depends_on:
@@ -78,13 +82,14 @@ services:
   # Bifrost (LLM gateway proxy)
   # ==========================================================================
   bifrost:
+    profiles: [all, infra]
     image: maximhq/bifrost:v1.4.7
     container_name: typhoon-bifrost
     restart: unless-stopped
     ports:
-      - '${BIFROST_PORT:-8787}:8080'
+      - '${BIFROST_PORT:-8787}:8787'
     environment:
-      APP_PORT: 8080
+      APP_PORT: 8787
       BIFROST_LOG_LEVEL: ${BIFROST_LOG_LEVEL:-info}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-change-me}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
@@ -99,14 +104,24 @@ services:
   # Dex (OIDC provider — optional, for local SSO testing)
   # ==========================================================================
   dex:
+    profiles: [all, infra]
     image: dexidp/dex:v2.41.1
     container_name: typhoon-dex
     restart: unless-stopped
     ports:
       - '5556:5556'
+    env_file:
+      - ../../.env
     volumes:
-      - ./dex-config.yml:/etc/dex/config.docker.yaml
-    command: ['dex', 'serve', '/etc/dex/config.docker.yaml']
+      - ./dex/config.yml:/etc/dex/config.template.yaml
+    entrypoint:
+      - sh
+      - -c
+      - |
+        sed -e "s|__ISSUER__|$${OIDC_ISSUER_URL:-http://host.docker.internal:5556/dex}|g" \
+            -e "s|__AUTH_URL__|$${AUTH_URL:-http://localhost:5172}|g" \
+            /etc/dex/config.template.yaml > /etc/dex/config.yaml
+        exec dex serve /etc/dex/config.yaml
 
   # ==========================================================================
   # Application services
@@ -114,9 +129,11 @@ services:
 
   # Database migrations (runs once, then exits)
   migrate:
+    profiles: [all, app, migrate]
     build:
       context: ../..
-      dockerfile: infra/docker/Dockerfile.server
+      dockerfile: infra/docker/Dockerfile
+      target: server
     container_name: typhoon-migrate
     command: ['sh', '-c', 'cd packages/db && bun run db:migrate']
     env_file:
@@ -130,26 +147,52 @@ services:
 
   # API Server
   server:
+    profiles: [all, app]
     build:
       context: ../..
-      dockerfile: infra/docker/Dockerfile.server
+      dockerfile: infra/docker/Dockerfile
+      target: server
     container_name: typhoon-server
     restart: unless-stopped
     env_file:
       - ../../.env
     environment:
+      # Database & cache
       DATABASE_URL: postgresql://typhoon:typhoon@postgres:5432/typhoon
       REDIS_URL: redis://redis:6379
+      # S3 / MinIO
       S3_ENDPOINT: http://minio:9000
-      LLM_BASE_URL: http://bifrost:8080/v1
-      EMBEDDING_BASE_URL: http://bifrost:8080/v1
-      AUTH_URL: http://server:5172
-      TRUSTED_ORIGINS: http://localhost:5173,http://localhost:5174
-      OIDC_ISSUER_URL: http://dex:5556/dex
-      PORT: '5172'
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-minioadmin}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-minioadmin}
+      S3_BUCKET: ${S3_BUCKET:-typhoon-documents}
+      # LLM
+      LLM_BASE_URL: ${LLM_BASE_URL:-http://bifrost:8787/v1}
+      LLM_API_KEY: ${LLM_API_KEY:-changeme}
+      LLM_CHAT_MODEL: ${LLM_CHAT_MODEL:-bedrock/us.anthropic.claude-sonnet-4-6}
+      LLM_TITLE_MODEL: ${LLM_TITLE_MODEL:-bedrock/us.anthropic.claude-haiku-4-5}
+      LLM_RERANKER_MODEL: ${LLM_RERANKER_MODEL:-bedrock/us.anthropic.claude-haiku-4-5}
+      LLM_EXTRACTION_MODEL: ${LLM_EXTRACTION_MODEL:-bedrock/us.anthropic.claude-haiku-4-5}
+      LLM_GUARDRAIL_MODEL: ${LLM_GUARDRAIL_MODEL:-bedrock/us.anthropic.claude-haiku-4-5}
+      # Embeddings
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-http://bifrost:8787/v1}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-bedrock}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-bedrock/amazon.titan-embed-text-v2:0}
+      EMBEDDING_DIMENSION: ${EMBEDDING_DIMENSION:-1024}
+      # Auth
+      AUTH_SECRET: ${AUTH_SECRET:-change-me-in-production}
+      AUTH_URL: ${AUTH_URL:-http://localhost:5172}
+      TRUSTED_ORIGINS: ${TRUSTED_ORIGINS:-http://localhost:5173,http://localhost:5174,http://host.docker.internal:5173,http://host.docker.internal:5174}
+      # OIDC
+      OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-http://host.docker.internal:5556/dex}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-typhoon}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-typhoon-secret}
+      # Server
+      PORT: '${SERVER_PORT:-5172}'
       HOST: 0.0.0.0
+      LOG_LEVEL: ${LOG_LEVEL:-info}
     ports:
-      - '5172:5172'
+      - '${SERVER_PORT:-5172}:${SERVER_PORT:-5172}'
     depends_on:
       postgres:
         condition: service_healthy
@@ -160,7 +203,7 @@ services:
       migrate:
         condition: service_completed_successfully
     healthcheck:
-      test: ['CMD', 'wget', '-qO/dev/null', 'http://127.0.0.1:5172/api/v1/auth/ok']
+      test: ['CMD', 'wget', '-qO/dev/null', 'http://127.0.0.1:${SERVER_PORT:-5172}/api/v1/auth/ok']
       interval: 10s
       timeout: 5s
       retries: 10
@@ -168,9 +211,11 @@ services:
 
   # Desk (rep workspace SPA)
   desk:
+    profiles: [all, app]
     build:
       context: ../..
-      dockerfile: infra/docker/Dockerfile.frontend
+      dockerfile: infra/docker/Dockerfile
+      target: frontend
       args:
         APP_NAME: desk
     container_name: typhoon-desk
@@ -183,9 +228,11 @@ services:
 
   # Admin (admin dashboard SPA)
   admin:
+    profiles: [all, app]
     build:
       context: ../..
-      dockerfile: infra/docker/Dockerfile.frontend
+      dockerfile: infra/docker/Dockerfile
+      target: frontend
       args:
         APP_NAME: admin
     container_name: typhoon-admin
@@ -198,9 +245,11 @@ services:
 
   # Widget (embeddable chat widget)
   widget:
+    profiles: [all, app]
     build:
       context: ../..
-      dockerfile: infra/docker/Dockerfile.frontend
+      dockerfile: infra/docker/Dockerfile
+      target: frontend
       args:
         APP_NAME: widget
     container_name: typhoon-widget

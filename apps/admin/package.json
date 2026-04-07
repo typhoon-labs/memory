@@ -10,6 +10,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@dnd-kit/abstract": "^0.3.2",
+    "@dnd-kit/react": "^0.3.2",
     "@tanstack/react-query": "^5.95.2",
     "@tanstack/react-router": "^1.168.3",
     "@typhoon/ui": "workspace:*",

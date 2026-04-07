@@ -48,5 +48,31 @@ export function createEmbeddingModel(modelId?: string) {
   return provider.textEmbeddingModel(modelId ?? process.env.EMBEDDING_MODEL ?? DEFAULT_EMBEDDING_MODEL);
 }
 
+/**
+ * Creates a chat model for reranking retrieved chunks.
+ * Uses `LLM_RERANKER_MODEL` if set, otherwise falls back to the default chat model.
+ */
+export function createRerankerModel() {
+  return createChatModel(process.env.LLM_RERANKER_MODEL);
+}
+
+/**
+ * Creates a chat model for metadata extraction during ingestion (title, keywords).
+ * Uses `LLM_EXTRACTION_MODEL` if set, otherwise falls back to the default chat model.
+ * Point this at a cheap/fast model to control ingestion cost.
+ */
+export function createExtractionModel() {
+  return createChatModel(process.env.LLM_EXTRACTION_MODEL);
+}
+
+/**
+ * Creates a chat model for guardrail processors (moderation, PII, prompt injection).
+ * Uses `LLM_GUARDRAIL_MODEL` if set, otherwise falls back to the default chat model.
+ * Point this at a fast model to minimize latency on every request.
+ */
+export function createGuardrailModel() {
+  return createChatModel(process.env.LLM_GUARDRAIL_MODEL);
+}
+
 /** Embedding vector dimension from environment (default: 1024 for Titan V2). */
 export const EMBEDDING_DIMENSION = Number(process.env.EMBEDDING_DIMENSION ?? 1024);

@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 
-interface ThreadListItem {
+export interface ThreadListItem {
   id: string;
   title: string;
   resourceId: string;
@@ -8,7 +8,7 @@ interface ThreadListItem {
   updatedAt: string;
 }
 
-interface ThreadListResponse {
+export interface ThreadListResponse {
   threads: ThreadListItem[];
   total: number;
   page: number;

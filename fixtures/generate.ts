@@ -233,7 +233,8 @@ async function generatePdf() {
   const pageHeight = 792;
   const margin = 60;
   const lineHeight = 16;
-  const headingSize = 18;
+  const h2Size = 18;
+  const h3Size = 14;
   const bodySize = 10;
 
   let page = pdfDoc.addPage([pageWidth, pageHeight]);
@@ -284,12 +285,51 @@ async function generatePdf() {
 
   function heading(text: string) {
     y -= 8;
-    drawText(text, { size: headingSize, fontType: boldFont });
+    drawText(text, { size: h2Size, fontType: boldFont });
     y -= 4;
+  }
+
+  function subheading(text: string) {
+    y -= 6;
+    drawText(text, { size: h3Size, fontType: boldFont });
+    y -= 2;
   }
 
   function body(text: string, indent = 0) {
     drawText(text, { size: bodySize, fontType: font, indent });
+  }
+
+  function bullet(text: string) {
+    drawText(`• ${text}`, { size: bodySize, fontType: font, indent: 16 });
+  }
+
+  function drawTable(headers: string[], rows: string[][], colWidths: number[]) {
+    const colX: number[] = [colWidths[0]];
+    for (let i = 1; i < colWidths.length; i++) {
+      colX.push(colX[i - 1] + colWidths[i - 1]);
+    }
+
+    // Header row (bold)
+    for (let c = 0; c < headers.length; c++) {
+      if (y < margin + lineHeight) {
+        page = pdfDoc.addPage([pageWidth, pageHeight]);
+        y = pageHeight - margin;
+      }
+      page.drawText(headers[c], { x: colX[c], y, size: bodySize, font: boldFont, color: rgb(0.1, 0.1, 0.1) });
+    }
+    y -= lineHeight;
+
+    // Data rows
+    for (const row of rows) {
+      for (let c = 0; c < row.length; c++) {
+        if (y < margin + lineHeight) {
+          page = pdfDoc.addPage([pageWidth, pageHeight]);
+          y = pageHeight - margin;
+        }
+        page.drawText(row[c], { x: colX[c], y, size: bodySize, font, color: rgb(0.1, 0.1, 0.1) });
+      }
+      y -= lineHeight;
+    }
   }
 
   function gap() {
@@ -315,40 +355,60 @@ async function generatePdf() {
   y -= 32;
 
   heading('1. Create Your Account');
+  subheading('Sign Up');
   body(
     'Visit app.typhooncloudvault.com and click "Get Started" to create your account. You can sign up with your email address or use Google/Microsoft SSO. All new accounts begin with a 14-day free trial of the Professional plan — no credit card required.',
   );
   gap();
+  subheading('Complete Your Profile');
   body(
     'After signing up, verify your email address by clicking the confirmation link. Then complete your profile by entering your name and organization. If you received an invitation from a team member, clicking the invite link will automatically associate you with their organization.',
   );
   gap();
 
   heading('2. Install the Desktop App');
+  subheading('Download and Install');
   body(
     'Download the CloudVault desktop application from app.typhooncloudvault.com/download. The app is available for Windows 10 and later, macOS 12 and later, and Ubuntu 22.04 and later. Installation takes about two minutes.',
   );
   gap();
+  subheading('Sync Folder Locations');
   body(
     'After installation, sign in with your account credentials. The app will create a sync folder on your computer at the following default locations:',
   );
   gap();
-  body('Windows: C:\\Users\\<your-name>\\CloudVault', 16);
-  body('macOS: ~/CloudVault', 16);
-  body('Linux: ~/CloudVault', 16);
+  bullet('Windows: C:\\Users\\<your-name>\\CloudVault');
+  bullet('macOS: ~/CloudVault');
+  bullet('Linux: ~/CloudVault');
   gap();
   body(
     'Any file you place in this folder will automatically sync to the cloud. Files added from other devices or the web interface will appear here as well.',
   );
   gap();
 
+  subheading('System Requirements');
+  gap();
+  drawTable(
+    ['Component', 'Minimum', 'Recommended'],
+    [
+      ['Operating System', 'Windows 10 / macOS 12', 'Windows 11 / macOS 14'],
+      ['RAM', '4 GB', '8 GB'],
+      ['Disk Space', '500 MB', '1 GB'],
+      ['Internet', '5 Mbps', '25 Mbps'],
+    ],
+    [margin, 170, 170],
+  );
+  gap();
+
   heading('3. Upload Your First Files');
+  subheading('Upload Methods');
   body('You can add files to CloudVault in three ways:');
   gap();
-  body('Drag and drop: Move files into your CloudVault sync folder or drag them into the web interface.', 16);
-  body('File browser: Click "Upload" in the web interface to select files from your computer.', 16);
-  body('Mobile app: Use the iOS or Android app to upload photos, videos, and documents directly from your device.', 16);
+  bullet('Drag and drop: Move files into your CloudVault sync folder or drag them into the web interface.');
+  bullet('File browser: Click "Upload" in the web interface to select files from your computer.');
+  bullet('Mobile app: Use the iOS or Android app to upload photos, videos, and documents directly from your device.');
   gap();
+  subheading('Supported Formats');
   body(
     'CloudVault supports all file types. There are no format restrictions. Upload speeds depend on your internet connection — the app shows progress for each file in the sync status panel.',
   );
@@ -359,36 +419,43 @@ async function generatePdf() {
     'Create folders to organize your files. Right-click in the sync folder or web interface and select "New Folder." Folders sync across all your devices automatically.',
   );
   gap();
+  subheading('Naming Conventions');
   body(
     'Tip: Use a consistent naming convention for your folders. We recommend organizing by project or department rather than by date. For example: "Marketing/Campaign-Q1-2026" is easier to navigate than "2026/01/Marketing".',
   );
   gap();
 
   heading('5. Share Files and Collaborate');
+  subheading('Share Links');
   body(
     'Right-click any file or folder and select "Share" to generate a share link. You can set permissions to view-only or edit access, add password protection, set expiration dates, or restrict sharing to your organization.',
   );
   gap();
+  subheading('Team Folders');
   body(
     'On Professional and Enterprise plans, you can create Team Folders — shared spaces where multiple team members collaborate. Team folders appear under a dedicated "Teams" section in your sync folder. Changes made by any team member sync in real time.',
   );
   gap();
 
   heading('6. Enable Security Features');
+  subheading('Two-Factor Authentication');
   body(
     'We strongly recommend enabling two-factor authentication (2FA) immediately after creating your account. Go to Account Settings, then Security, and click "Enable Two-Factor Authentication." CloudVault supports authenticator apps (Google Authenticator, Authy), SMS codes, and hardware security keys.',
   );
   gap();
+  subheading('Single Sign-On');
   body(
     "Enterprise administrators should also configure SSO via SAML 2.0 or OIDC from the Admin Console. This ensures all team members authenticate through your organization's identity provider.",
   );
   gap();
 
   heading('7. Set Up Mobile Backup');
+  subheading('Camera Backup');
   body(
     'Install the CloudVault mobile app from the App Store (iOS) or Google Play (Android). Sign in and enable automatic photo and video backup under Settings, then Camera Backup. New photos and videos will upload automatically when you are connected to Wi-Fi.',
   );
   gap();
+  subheading('Document Scanning');
   body(
     'You can also enable document scanning — open the app, tap the camera icon, and scan receipts, whiteboards, or paper documents. Scanned files are saved as searchable PDFs with OCR.',
   );
@@ -397,13 +464,10 @@ async function generatePdf() {
   heading('8. Next Steps');
   body('Once you are set up, explore these additional features:');
   gap();
-  body('Version History: Browse and restore previous versions of any file from the web interface.', 16);
-  body(
-    'Offline Access: Mark files or folders as "Available Offline" to access them without an internet connection.',
-    16,
-  );
-  body('Integrations: Connect CloudVault to Slack, Google Workspace, or Microsoft 365 from the Integrations page.', 16);
-  body('Admin Console: Organization admins can manage users, view analytics, and enforce policies.', 16);
+  bullet('Version History: Browse and restore previous versions of any file from the web interface.');
+  bullet('Offline Access: Mark files or folders as "Available Offline" to access them without an internet connection.');
+  bullet('Integrations: Connect CloudVault to Slack, Google Workspace, or Microsoft 365 from the Integrations page.');
+  bullet('Admin Console: Organization admins can manage users, view analytics, and enforce policies.');
   gap();
   body('For questions or help, visit our Help Center at help.typhooncloudvault.com or email support@typhooncloudvault.com.');
 

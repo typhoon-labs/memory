@@ -24,7 +24,7 @@ export function SyncJobDetailSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="sm:max-w-lg overflow-y-auto">
+      <SheetContent resizable className="overflow-y-auto sm:max-w-lg">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-3">
             Sync Job

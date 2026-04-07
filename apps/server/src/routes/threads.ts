@@ -1,5 +1,3 @@
-import type { MastraDBMessage } from '@mastra/core/agent';
-import { AIV5Adapter } from '@mastra/core/agent/message-list';
 import { registerApiRoute } from '@mastra/core/server';
 import { messages, threads } from '@typhoon/db';
 import { and, asc, count, desc, eq } from 'drizzle-orm';
@@ -21,16 +19,46 @@ function getUserId(c: { get: (key: never) => unknown }): string {
   return (c.get('user' as never) as { id: string }).id;
 }
 
-/** Convert Mastra DB message content to AI SDK V5 UIMessage format */
+/**
+ * Mastra persists tool calls in the legacy v4 part shape:
+ *   { type: 'tool-invocation', toolInvocation: { state: 'call'|'result', toolName, args, result } }
+ * AI SDK v6 (used by useChat) expects the static-tool shape:
+ *   { type: 'tool-{toolName}', toolCallId, state: 'input-available'|'output-available', input, output }
+ * Without this normalisation, persisted messages re-render as a stuck "Running Invocation..."
+ * spinner because the UI can't resolve the tool name or completion state.
+ */
+function normalizeToolPart(part: unknown): unknown {
+  if (typeof part !== 'object' || part === null) return part;
+  const p = part as { type?: string; toolInvocation?: Record<string, unknown> };
+  if (p.type !== 'tool-invocation' || !p.toolInvocation) return part;
+
+  const inv = p.toolInvocation as {
+    state?: string;
+    toolCallId?: string;
+    toolName?: string;
+    args?: unknown;
+    result?: unknown;
+  };
+  const hasResult = inv.state === 'result';
+  return {
+    type: `tool-${inv.toolName ?? 'unknown'}`,
+    toolCallId: inv.toolCallId,
+    state: hasResult ? 'output-available' : 'input-available',
+    input: inv.args,
+    ...(hasResult ? { output: inv.result } : {}),
+  };
+}
+
+/** Convert Mastra DB message content to AI SDK UIMessage format */
 function toUIMessage(msg: { externalId: string; role: string; content: Record<string, unknown>; createdAt: Date }) {
-  const dbMsg = {
+  const content = msg.content as { format?: number; parts?: unknown[]; content?: string };
+  const parts = content.parts ?? [{ type: 'text', text: content.content ?? '' }];
+  return {
     id: msg.externalId,
-    role: msg.role as MastraDBMessage['role'],
-    content: msg.content as MastraDBMessage['content'],
+    role: msg.role,
+    parts: parts.map(normalizeToolPart),
     createdAt: msg.createdAt,
   };
-  const uiMsg = AIV5Adapter.toUIMessage(dbMsg);
-  return { ...uiMsg, createdAt: msg.createdAt };
 }
 
 /** Map thread row to API response, exposing externalId as id */

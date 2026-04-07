@@ -1,7 +1,7 @@
 /**
  * E2E auth test — verifies login flow via Playwright.
  *
- * Usage: bun run tests/e2e/auth.test.ts
+ * Usage: bun run tests/e2e/auth.e2e.ts
  */
 import { chromium } from 'playwright';
 

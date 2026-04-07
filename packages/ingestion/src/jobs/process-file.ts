@@ -1,68 +1,98 @@
 import type { Db } from '@typhoon/db';
-import { documents } from '@typhoon/db';
+import { documents, syncTargets } from '@typhoon/db';
 import { createAppLogger } from '@typhoon/logger';
 import type { PgVector } from '@typhoon/pg';
-import { createS3Client, downloadObject } from '@typhoon/storage';
 import type { Job } from 'bullmq';
+import { UnrecoverableError } from 'bullmq';
 import { eq } from 'drizzle-orm';
 import { deleteDocumentVectors, processFile } from '../pipeline.js';
-import { getSource } from '../source-registry.js';
+import { getProvider } from '../providers/index.js';
+import { asUnrecoverable, isUnrecoverable } from '../util/classify-error.js';
+import { withTimeout } from '../util/with-timeout.js';
 import type { ProcessFileJobData } from './queues.js';
 
 const log = createAppLogger('process-file');
 
+const STAGE_TIMEOUTS = {
+  download: 60_000,
+  vectorDelete: 30_000,
+} as const;
+
 export async function handleProcessFileJob(job: Job<ProcessFileJobData>, db: Db, vectorStore: PgVector): Promise<void> {
-  const { documentId, s3Key, bucketName, sourceName, isUpdate } = job.data;
+  const { documentId, sourceKey, sourceType, sourceName, isUpdate, syncTargetId } = job.data;
+  const tStart = Date.now();
 
-  const source = sourceName ? getSource(sourceName) : undefined;
-  const s3Client = createS3Client({
-    S3_ENDPOINT: source?.credentials.endpoint ?? process.env.S3_ENDPOINT ?? 'http://localhost:9000',
-    S3_REGION: source?.credentials.region ?? process.env.S3_REGION ?? 'us-east-1',
-    S3_ACCESS_KEY: source?.credentials.accessKey ?? process.env.S3_ACCESS_KEY ?? '',
-    S3_SECRET_KEY: source?.credentials.secretKey ?? process.env.S3_SECRET_KEY ?? '',
-    S3_BUCKET: bucketName,
-  });
+  log.info('Processing file', { documentId, sourceKey, sourceType, isUpdate });
 
-  log.info('Processing file', { documentId, s3Key, isUpdate });
+  // Look up sync target config for the provider
+  const [target] = await db.select().from(syncTargets).where(eq(syncTargets.id, syncTargetId));
+  if (!target) {
+    // Permanent failure: the sync target was deleted between scan and
+    // process-file. Retrying won't bring it back.
+    throw new UnrecoverableError(`Sync target not found: ${syncTargetId}`);
+  }
+
+  const provider = getProvider(sourceType);
+  const config = target.config as Record<string, unknown>;
+
+  // Records the current pipeline stage on the BullMQ job. The progress
+  // payload flows through QueueEvents → SSE → admin so the job detail sheet
+  // shows live "current stage: X" with no polling.
+  const setStage = (stage: string) => job.updateProgress({ stage, startedAt: Date.now() });
 
   try {
-    // Download file from S3
-    const content = await downloadObject(s3Client, bucketName, s3Key);
+    await setStage('download');
+    const tDownload = Date.now();
+    const content = await withTimeout(
+      provider.download(config, sourceKey, sourceName),
+      STAGE_TIMEOUTS.download,
+      'download',
+    );
+    log.info('Downloaded file', { sourceKey, bytes: content.length, ms: Date.now() - tDownload });
 
-    // If updating, delete old vectors first
     if (isUpdate) {
-      await deleteDocumentVectors(vectorStore, documentId);
+      await setStage('vectorDelete');
+      const tDel = Date.now();
+      await withTimeout(deleteDocumentVectors(vectorStore, documentId), STAGE_TIMEOUTS.vectorDelete, 'vectorDelete');
+      log.info('Deleted old vectors', { documentId, ms: Date.now() - tDel });
     }
 
-    // Process through pipeline: parse → chunk → embed → upsert
     const result = await processFile(
       {
         content,
-        filename: s3Key,
+        filename: sourceKey,
         documentId,
-        syncTargetId: job.data.syncTargetId,
-        s3Key,
+        syncTargetId,
+        sourceKey,
+        onStage: setStage,
       },
       vectorStore,
     );
 
-    // Update document record
     await db
       .update(documents)
       .set({
         status: 'ready',
+        title: result.title,
+        description: result.description,
         chunkCount: result.chunkCount,
-        mimeType: guessMimeType(s3Key),
+        mimeType: guessMimeType(sourceKey),
         updatedAt: new Date(),
       })
       .where(eq(documents.id, documentId));
 
-    log.info('File processed', { documentId, s3Key, chunkCount: result.chunkCount });
+    log.info('File processed', {
+      documentId,
+      sourceKey,
+      chunkCount: result.chunkCount,
+      totalMs: Date.now() - tStart,
+    });
   } catch (error) {
     log.error('File processing failed', {
       documentId,
-      s3Key,
+      sourceKey,
       error: error instanceof Error ? error.message : String(error),
+      totalMs: Date.now() - tStart,
     });
     await db
       .update(documents)
@@ -72,6 +102,13 @@ export async function handleProcessFileJob(job: Job<ProcessFileJobData>, db: Db,
         updatedAt: new Date(),
       })
       .where(eq(documents.id, documentId));
+
+    // Skip BullMQ retries for permanent failures (404 from source, missing
+    // parser, malformed config, etc.). Recoverable errors fall through and
+    // retry with the queue's exponential backoff.
+    if (isUnrecoverable(error)) {
+      throw asUnrecoverable(error, 'process-file');
+    }
     throw error;
   }
 }

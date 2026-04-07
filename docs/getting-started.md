@@ -72,23 +72,24 @@ This starts all services via Turborepo:
 
 ### Bifrost (LLM Gateway)
 
-Routes LLM requests through a local gateway with retry logic and logging:
+Bifrost starts automatically as part of the `infra` profile when you run `bun run setup` or `bun run docker:up`. To start it standalone:
 
 ```bash
-docker compose -f infra/docker/docker-compose.yml --profile gateway up bifrost -d
+./scripts/docker.sh up bifrost -d
 ```
 
 Then set in `.env`:
 ```
-BIFROST_API_URL=http://localhost:8787
+LLM_BASE_URL=http://localhost:8787/v1
+LLM_API_KEY=changeme
 ```
 
 ### Dex (OIDC Provider)
 
-For testing SSO/OIDC flows locally:
+Dex starts automatically as part of the `infra` profile when you run `bun run setup` or `bun run docker:up`. To start it standalone:
 
 ```bash
-docker compose -f infra/docker/docker-compose.yml --profile oidc up dex -d
+./scripts/docker.sh up dex -d
 ```
 
 Login: `admin@typhoon.local` / `password`

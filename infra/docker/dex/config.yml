@@ -1,6 +1,7 @@
 # Dex configuration for local OIDC testing.
-# Start with: docker compose --profile oidc up dex
-issuer: http://localhost:5556/dex
+# Placeholders are substituted at startup via the docker-compose entrypoint
+# using OIDC_ISSUER_URL and AUTH_URL from .env.
+issuer: __ISSUER__
 
 storage:
   type: sqlite3
@@ -18,7 +19,8 @@ staticClients:
     name: Typhoon
     secret: typhoon-secret
     redirectURIs:
-      - http://localhost:5172/v1/auth/oauth2/callback/oidc
+      - __AUTH_URL__/v1/auth/oauth2/callback/oidc
+      - http://host.docker.internal:5172/v1/auth/oauth2/callback/oidc
 
 enablePasswordDB: true
 

@@ -19,6 +19,10 @@ export async function initVectorIndex(sqlClient: Sql): Promise<void> {
     await pgVector.createIndex({
       indexName: 'knowledge_base',
       dimension: EMBEDDING_DIMENSION,
+      indexConfig: {
+        type: 'hnsw',
+        hnsw: { m: 16, efConstruction: 64 },
+      },
     });
     log.info('Vector index ready', { index: 'knowledge_base' });
   } catch (error) {
@@ -30,6 +34,17 @@ export async function initVectorIndex(sqlClient: Sql): Promise<void> {
       throw error;
     }
   }
+
+  // Backfill tsvector for rows that predate hybrid search support.
+  // The trigger handles all future inserts/updates, so this only matters once.
+  const backfilled = await sqlClient
+    .unsafe(
+      `UPDATE "knowledge_base" SET content_tsvector = to_tsvector('english', COALESCE(metadata->>'text', ''))
+       WHERE content_tsvector IS NULL`,
+    )
+    .catch(() => ({ count: 0 }));
+  const backfillCount = 'count' in backfilled ? Number(backfilled.count) : 0;
+  if (backfillCount > 0) log.info('Backfilled tsvector', { rows: backfillCount });
 }
 
 /**

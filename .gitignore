@@ -17,9 +17,13 @@ out/
 .env.local
 .env.*.local
 !.env.example
+!infra/docker/.env
 
 # Test coverage
 coverage/
+
+# Playwright MCP
+.playwright-mcp/
 
 # OS artifacts
 .DS_Store

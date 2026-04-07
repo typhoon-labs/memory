@@ -2,6 +2,8 @@
 
 **Base URL:** `http://localhost:5172`
 
+All custom routes require authentication (session cookie or `Authorization: Bearer <api-key>` header) unless noted.
+
 ## Auto-Generated Endpoints (Mastra)
 
 These endpoints are automatically provided by the Mastra server for all registered agents and memory.
@@ -40,12 +42,23 @@ POST /v1/chat/:agentId                Stream chat with any agent (SSE, AI SDK pr
 ### Search
 
 ```
-POST /v1/search                        Server-side knowledge base search with embedding
+POST /v1/search                        Semantic search against the knowledge base
+POST /v1/search/hybrid                 Hybrid vector + keyword search
 ```
 
-**Search request:**
+**Semantic search request:**
 ```json
 POST /v1/search
+{
+  "query": "How do I process a refund?",
+  "topK": 10,
+  "minScore": 0.6
+}
+```
+
+**Hybrid search request:**
+```json
+POST /v1/search/hybrid
 {
   "query": "How do I process a refund?",
   "topK": 10
@@ -62,17 +75,28 @@ PATCH  /v1/threads/:threadId           Update thread title/metadata
 DELETE /v1/threads/:threadId           Delete thread and its messages
 ```
 
+### Sources
+
+```
+GET /v1/sources                        List available source types (e.g. s3)
+```
+
 ### Sync Targets
 
 ```
-GET    /v1/sync-targets                List all configured S3 sources
+GET    /v1/sync-targets                List all configured sync sources
 POST   /v1/sync-targets                Create a new sync source
 GET    /v1/sync-targets/:id            Get sync source details
 PATCH  /v1/sync-targets/:id            Update sync source
-DELETE /v1/sync-targets/:id            Delete sync source
-POST   /v1/sync-targets/:id/sync       Trigger manual sync
-POST   /v1/sync-targets/:id/purge     Purge all documents and vectors for a sync target
+DELETE /v1/sync-targets/:id            Delete sync source and all its document vectors
+POST   /v1/sync-targets/:id/sync       Trigger manual sync (body: { force?: boolean })
+POST   /v1/sync-targets/:id/purge      Purge all documents and vectors for a sync target
 GET    /v1/sync-targets/:id/jobs       List sync job history
+POST   /v1/sync-targets/:id/upload     Upload files (multipart form: files[], path?)
+GET    /v1/sync-targets/:id/browse     Browse source prefix (?path=)
+POST   /v1/sync-targets/:id/folders    Create folder (body: { path })
+POST   /v1/sync-targets/:id/folders/delete   Delete folder and all its contents (body: { path })
+POST   /v1/sync-targets/:id/folders/move     Move/rename folder (body: { oldPath, newPath })
 ```
 
 **Create sync target:**
@@ -80,16 +104,38 @@ GET    /v1/sync-targets/:id/jobs       List sync job history
 POST /v1/sync-targets
 {
   "name": "Support Docs",
-  "bucketName": "typhoon-documents",
-  "prefix": "support/"
+  "sourceType": "s3",
+  "config": { "bucketName": "typhoon-documents", "prefix": "support/" },
+  "cronSchedule": "0 */6 * * *"
 }
 ```
 
 ### Documents
 
 ```
-GET /v1/documents                      List all documents
-GET /v1/documents/:id                  Get document details
+GET    /v1/documents                      List all documents (?syncTargetId= to filter)
+GET    /v1/documents/:id                  Get document details
+DELETE /v1/documents/:id                  Delete document, vectors, and source object
+POST   /v1/documents/bulk-delete          Bulk delete up to 100 documents (body: { ids: string[] })
+GET    /v1/documents/:id/chunks           List stored vector chunks ordered by startIndex
+GET    /v1/documents/:id/parsed-content   Parse and return document text on demand
+GET    /v1/documents/:id/download         Download original source file (attachment)
+POST   /v1/documents/:id/retry            Re-queue a failed document (must be in parse_error or embed_error status)
+POST   /v1/documents/:id/move             Move/rename document (body: { newSourceKey })
+```
+
+### Queues
+
+BullMQ queue management. Available queue name: `sync`.
+
+```
+GET    /v1/queues                              List all queues with job counts and pause state
+GET    /v1/queues/:name/jobs                   List jobs (?state=all|waiting|active|completed|failed|delayed, ?start, ?pageSize max 200)
+POST   /v1/queues/:name/pause                  Pause a queue
+POST   /v1/queues/:name/resume                 Resume a paused queue
+POST   /v1/queues/:name/clean                  Remove old jobs (body: { state, grace?, limit? })
+POST   /v1/queues/:name/jobs/:jobId/retry      Retry a failed job
+DELETE /v1/queues/:name/jobs/:jobId            Remove a job
 ```
 
 ### Feedback

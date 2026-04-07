@@ -1,6 +1,8 @@
 import { Agent } from '@mastra/core/agent';
 import type { MastraMemory } from '@mastra/core/memory';
-import { createChatModel } from '@typhoon/ai';
+import { createChatModel, createGuardrailModel } from '@typhoon/ai';
+import { createInputGuardrails } from './guardrails/input.js';
+import { createOutputGuardrails } from './guardrails/output.js';
 import { createKnowledgeAgent } from './knowledge.js';
 
 const SUPERVISOR_INSTRUCTIONS = `You are Typhoon, an AI-powered customer service supervisor.
@@ -15,8 +17,20 @@ Routing guidelines:
 - If unsure whether a question can be answered from the knowledge base, route to the Knowledge Agent — it will indicate if it cannot help.
 - Never attempt to answer factual questions yourself — always delegate to the Knowledge Agent.`;
 
-export function createSupervisor(agentMemory: MastraMemory, supervisorMemory: MastraMemory) {
+export interface GuardrailsConfig {
+  promptInjection?: boolean;
+  moderation?: boolean;
+  piiDetection?: boolean;
+  systemPromptScrubbing?: boolean;
+}
+
+export function createSupervisor(
+  agentMemory: MastraMemory,
+  supervisorMemory: MastraMemory,
+  guardrails?: GuardrailsConfig,
+) {
   const knowledgeAgent = createKnowledgeAgent(agentMemory);
+  const guardrailModel = createGuardrailModel();
 
   return new Agent({
     id: 'typhoon-supervisor',
@@ -25,5 +39,7 @@ export function createSupervisor(agentMemory: MastraMemory, supervisorMemory: Ma
     instructions: SUPERVISOR_INSTRUCTIONS,
     agents: { knowledgeAgent },
     memory: supervisorMemory,
+    inputProcessors: createInputGuardrails(guardrailModel, guardrails),
+    outputProcessors: createOutputGuardrails(guardrailModel, guardrails),
   });
 }

@@ -9,7 +9,15 @@ import {
   useAuth,
   useSignOut,
 } from '@typhoon/ui';
-import { FileTextIcon, FolderSyncIcon, LayoutDashboardIcon, LogOutIcon, MessageSquareQuoteIcon } from 'lucide-react';
+import {
+  FileTextIcon,
+  FolderSyncIcon,
+  LayoutDashboardIcon,
+  ListChecksIcon,
+  LogOutIcon,
+  MessageSquareQuoteIcon,
+} from 'lucide-react';
+import { useQueueEvents } from '../lib/use-queue-events.js';
 
 const NAV_GROUPS = [
   {
@@ -18,6 +26,7 @@ const NAV_GROUPS = [
       { label: 'Sync Sources', href: '/sources', icon: <FolderSyncIcon /> },
       { label: 'Documents', href: '/documents', icon: <FileTextIcon /> },
       { label: 'Feedback', href: '/feedback', icon: <MessageSquareQuoteIcon /> },
+      { label: 'Queues', href: '/queues', icon: <ListChecksIcon /> },
     ],
   },
 ];
@@ -54,6 +63,7 @@ function NavLink({ item, children }: { item: NavItem; children: React.ReactNode 
 }
 
 export function AdminShell() {
+  useQueueEvents();
   return (
     <AppShell
       logo={

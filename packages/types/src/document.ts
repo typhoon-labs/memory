@@ -7,8 +7,8 @@ export type DocumentStatus = z.infer<typeof documentStatusEnum>;
 export const documentSchema = z.object({
   id: z.string().uuid(),
   syncTargetId: z.string().uuid(),
-  s3Key: z.string().min(1),
-  s3Etag: z.string().nullable().default(null),
+  sourceKey: z.string().min(1),
+  sourceEtag: z.string().nullable().default(null),
   mimeType: z.string().nullable().default(null),
   fileSize: z.number().int().nullable().default(null),
   title: z.string().nullable().default(null),

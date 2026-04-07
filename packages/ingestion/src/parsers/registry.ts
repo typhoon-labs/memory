@@ -1,4 +1,5 @@
 import { parseDocx } from './docx.js';
+import { parseHtml } from './html.js';
 import { parsePdf } from './pdf.js';
 import { parseXlsx } from './xlsx.js';
 
@@ -18,6 +19,8 @@ const parsers: Record<string, ParserFn> = {
   '.pdf': parsePdf,
   '.docx': parseDocx,
   '.xlsx': parseXlsx,
+  '.html': parseHtml,
+  '.htm': parseHtml,
 };
 
 export function getParser(filename: string): ParserFn | undefined {
@@ -31,9 +34,6 @@ export function getMDocFormat(filename: string): 'text' | 'html' | 'markdown' | 
     case '.md':
     case '.mdx':
       return 'markdown';
-    case '.html':
-    case '.htm':
-      return 'html';
     case '.json':
       return 'json';
     default:

@@ -50,6 +50,20 @@
       "when": 1775100000000,
       "tag": "0006_generic_sync_targets",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1775366985956,
+      "tag": "0007_tiny_vision",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1775500000000,
+      "tag": "0008_rename_s3_to_source",
+      "breakpoints": true
     }
   ]
 }

@@ -1,6 +1,6 @@
-import { XIcon } from 'lucide-react';
+import { GripVerticalIcon, XIcon } from 'lucide-react';
 import { Dialog as SheetPrimitive } from 'radix-ui';
-import type * as React from 'react';
+import * as React from 'react';
 
 import { cn } from '../../lib/utils.js';
 
@@ -38,18 +38,82 @@ function SheetContent({
   children,
   side = 'right',
   showCloseButton = true,
+  resizable = false,
+  defaultWidth = 512,
+  minWidth = 360,
+  maxWidth,
+  style,
   ...props
 }: React.ComponentProps<typeof SheetPrimitive.Content> & {
   side?: 'top' | 'right' | 'bottom' | 'left';
   showCloseButton?: boolean;
+  resizable?: boolean;
+  defaultWidth?: number;
+  minWidth?: number;
+  maxWidth?: number;
 }) {
+  const isHorizontal = side === 'left' || side === 'right';
+  const enableResize = resizable && isHorizontal;
+  const [width, setWidth] = React.useState(defaultWidth);
+  const dragStateRef = React.useRef<{ startX: number; startWidth: number } | null>(null);
+
+  const computeMaxWidth = React.useCallback(() => {
+    if (typeof window === 'undefined') return Number.POSITIVE_INFINITY;
+    const viewportCap = Math.min(window.innerWidth - 80, 1600);
+    return maxWidth != null ? Math.min(maxWidth, viewportCap) : viewportCap;
+  }, [maxWidth]);
+
+  const handlePointerDown = React.useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (event.button !== 0) return;
+      dragStateRef.current = { startX: event.clientX, startWidth: width };
+      event.currentTarget.setPointerCapture(event.pointerId);
+      document.body.style.userSelect = 'none';
+      document.body.style.cursor = 'col-resize';
+      event.preventDefault();
+    },
+    [width],
+  );
+
+  const handlePointerMove = React.useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      const drag = dragStateRef.current;
+      if (!drag) return;
+      const rawDelta = event.clientX - drag.startX;
+      // Right-anchored sheets widen when the pointer moves left (negative delta).
+      const delta = side === 'right' ? -rawDelta : rawDelta;
+      const next = Math.max(minWidth, Math.min(computeMaxWidth(), drag.startWidth + delta));
+      setWidth(next);
+    },
+    [side, minWidth, computeMaxWidth],
+  );
+
+  const endDrag = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (dragStateRef.current == null) return;
+    dragStateRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    document.body.style.userSelect = '';
+    document.body.style.cursor = '';
+  }, []);
+
+  // The width override is published as a CSS variable and only consumed by
+  // Tailwind's md: scope below — so on screens < 768px the original responsive
+  // classes (w-3/4, sm:max-w-lg overrides) still drive the layout.
+  const resizableStyle: React.CSSProperties | undefined = enableResize
+    ? ({ '--sheet-w': `${width}px`, ...style } as React.CSSProperties)
+    : style;
+
   return (
     <SheetPortal>
       <SheetOverlay />
       <SheetPrimitive.Content
         data-slot="sheet-content"
+        style={resizableStyle}
         className={cn(
-          'bg-background data-[state=open]:animate-in data-[state=closed]:animate-out fixed z-50 flex flex-col gap-4 shadow-lg transition ease-in-out data-[state=closed]:duration-300 data-[state=open]:duration-500',
+          'bg-background data-[state=open]:animate-in data-[state=closed]:animate-out fixed z-50 flex flex-col gap-4 shadow-lg ease-in-out data-[state=closed]:duration-300 data-[state=open]:duration-500',
+          enableResize ? 'transition-transform' : 'transition',
           side === 'right' &&
             'data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right inset-y-0 right-0 h-full w-3/4 border-l sm:max-w-sm',
           side === 'left' &&
@@ -59,10 +123,37 @@ function SheetContent({
           side === 'bottom' &&
             'data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom inset-x-0 bottom-0 h-auto border-t',
           className,
+          // Resize overrides come AFTER the caller's className so they win in
+          // tailwind-merge: we need to force overflow-hidden on the shell so the
+          // grip (which is absolutely positioned against SheetContent) does not
+          // scroll away with the content.
+          enableResize && 'overflow-hidden md:w-[var(--sheet-w)] md:max-w-none',
         )}
         {...props}
       >
-        {children}
+        {enableResize && (
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-valuenow={width}
+            aria-valuemin={minWidth}
+            aria-valuemax={maxWidth ?? 1600}
+            aria-label="Resize panel"
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={endDrag}
+            onPointerCancel={endDrag}
+            className={cn(
+              'group absolute inset-y-0 z-20 hidden w-2 cursor-col-resize touch-none items-center justify-center select-none md:flex',
+              side === 'right' ? '-left-1' : '-right-1',
+            )}
+          >
+            <div className="bg-border z-10 flex h-4 w-3 items-center justify-center rounded-sm border">
+              <GripVerticalIcon className="size-2.5" />
+            </div>
+          </div>
+        )}
+        {enableResize ? <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">{children}</div> : children}
         {showCloseButton && (
           <SheetPrimitive.Close className="ring-offset-background focus:ring-ring data-[state=open]:bg-secondary absolute top-4 right-4 rounded-xs opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none">
             <XIcon className="size-4" />

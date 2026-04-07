@@ -28,16 +28,18 @@ function formatTimestamp(value: Date | string): string {
   return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
-/** Extract source citations from tool-result parts for searchKnowledgeBase. */
+/**
+ * Extract citations from any completed tool whose output is an array of
+ * documents (objects with a `documentTitle` field). Duck-typed so new search
+ * tools or agents are picked up automatically — no allow-list to maintain.
+ */
 function extractCitations(message: UIMessage): SourceCitation[] {
   const citations: SourceCitation[] = [];
   for (const part of message.parts) {
     if (!part.type.startsWith('tool-')) continue;
-    const toolName = part.type.slice('tool-'.length);
-    if (toolName !== 'searchKnowledgeBase') continue;
-    const tp = part as unknown as { state?: string; output?: unknown };
-    if (tp.state !== 'output-available') continue;
-    const result = tp.output;
+    const invocation = part as unknown as { state?: string; output?: unknown };
+    if (invocation.state !== 'output-available') continue;
+    const result = invocation.output;
     if (!Array.isArray(result)) continue;
     for (const doc of result) {
       if (typeof doc === 'object' && doc !== null && 'documentTitle' in doc) {
@@ -174,19 +176,19 @@ export function TyphoonMessage({ message, isStreaming }: { message: ChatMessage;
 
         {/* Inline comment form */}
         {commentFormOpen && arrowLeft > 0 && (
-          <div className="relative mt-2 rounded-md border border-border bg-[oklch(0.14_0_0)] p-3.5">
+          <div className="relative mt-2 rounded-md border border-border bg-card p-3.5">
             <div
-              className="absolute -top-[5px] size-2 rotate-45 border-l border-t border-border bg-[oklch(0.14_0_0)]"
+              className="absolute -top-[5px] size-2 rotate-45 border-l border-t border-border bg-card"
               style={{ left: `${arrowLeft - 4}px` }}
             />
-            <p className="text-2xs mb-1.5 font-medium uppercase tracking-widest text-muted-foreground/50">
+            <p className="text-2xs mb-1.5 font-medium uppercase tracking-widest text-muted-foreground">
               What could be improved?
             </p>
             <textarea
               ref={commentRef}
               rows={2}
               placeholder="Share your feedback..."
-              className="w-full resize-none rounded bg-background/50 px-2 py-1.5 text-xs text-foreground placeholder:text-muted-foreground/40 focus:outline-none"
+              className="w-full resize-none rounded-md border border-input bg-background/50 px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground/40 outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
               onInput={(e) => {
                 const el = e.currentTarget;
                 el.style.height = 'auto';
@@ -198,11 +200,11 @@ export function TyphoonMessage({ message, isStreaming }: { message: ChatMessage;
                 }
               }}
             />
-            <div className="mt-1.5 flex justify-end">
+            <div className="mt-2 flex justify-end">
               <button
                 type="button"
                 onClick={handleSubmitNegative}
-                className="rounded bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+                className="inline-flex h-6 items-center rounded-md bg-primary px-2 text-xs font-medium text-primary-foreground outline-none transition-all hover:bg-primary/90 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
               >
                 Submit
               </button>
@@ -212,12 +214,12 @@ export function TyphoonMessage({ message, isStreaming }: { message: ChatMessage;
 
         {/* Existing comment display */}
         {!commentFormOpen && feedbackComment && arrowLeft > 0 && (
-          <div className="relative mt-2 rounded-md border border-border bg-[oklch(0.14_0_0)] px-3.5 py-2.5">
+          <div className="relative mt-2 rounded-md border border-border bg-card px-3.5 py-2.5">
             <div
-              className="absolute -top-[5px] size-2 rotate-45 border-l border-t border-border bg-[oklch(0.14_0_0)]"
+              className="absolute -top-[5px] size-2 rotate-45 border-l border-t border-border bg-card"
               style={{ left: `${arrowLeft - 4}px` }}
             />
-            <p className="cursor-text select-text text-xs text-foreground/70">{feedbackComment}</p>
+            <p className="cursor-text select-text text-xs text-foreground/90">{feedbackComment}</p>
           </div>
         )}
 
@@ -262,32 +264,39 @@ function FeedbackButtons({
   const config = useChatConfig();
   const currentRating = messageId ? config.feedbackState?.get(messageId)?.rating : undefined;
 
+  // Thumbs up: toggle positive off only when it's visually active (saved positive, form closed).
+  // If the comment form is open we treat thumbs up as inactive regardless of saved rating,
+  // so clicking it always sets positive and dismisses the form rather than accidentally clearing it.
   const handleThumbsUp = useCallback(() => {
     if (!messageId) return;
-    config.onFeedback?.(messageId, currentRating === 'positive' ? null : 'positive');
-  }, [config, messageId, currentRating]);
+    config.onFeedback?.(messageId, currentRating === 'positive' && !commentFormOpen ? null : 'positive');
+    if (commentFormOpen) onCommentFormOpen(false);
+  }, [config, messageId, currentRating, commentFormOpen, onCommentFormOpen]);
 
+  // Thumbs down: if already negative, clicking again removes it. Otherwise toggle the comment form.
   const handleThumbsDown = useCallback(() => {
     if (!messageId) return;
     if (currentRating === 'negative') {
       config.onFeedback?.(messageId, null);
       return;
     }
-    onCommentFormOpen(true);
-  }, [config, messageId, currentRating, onCommentFormOpen]);
+    onCommentFormOpen(!commentFormOpen);
+  }, [config, messageId, currentRating, commentFormOpen, onCommentFormOpen]);
 
   if (!config.onFeedback || !messageId) return null;
 
+  // Thumbs up is inactive while the comment form is open so the two buttons are never both highlighted.
+  const thumbsUpActive = currentRating === 'positive' && !commentFormOpen;
   const thumbsDownActive = currentRating === 'negative' || commentFormOpen;
 
   return (
     <>
       <MessageAction
         label="Thumbs up"
-        active={currentRating === 'positive'}
+        active={thumbsUpActive}
         activeClassName="text-emerald-400"
         onClick={handleThumbsUp}
-        className={currentRating === 'positive' ? 'text-emerald-400 hover:text-emerald-300' : 'hover:text-emerald-400'}
+        className={thumbsUpActive ? 'text-emerald-400 hover:text-emerald-300' : 'hover:text-emerald-400'}
       >
         <ThumbsUpIcon className="size-3.5" />
       </MessageAction>

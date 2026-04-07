@@ -3,9 +3,9 @@ import { cn } from '../lib/utils.js';
 
 export interface PageHeaderProps {
   /** Page title displayed as h1. */
-  title: string;
-  /** Optional description text below the title. */
-  description?: string;
+  title: ReactNode;
+  /** Optional description text or element below the title. */
+  description?: ReactNode;
   /** Optional action elements (buttons, etc.) aligned to the right. */
   actions?: ReactNode;
   /** Additional CSS classes. */

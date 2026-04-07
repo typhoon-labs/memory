@@ -30,11 +30,12 @@ export interface SyncJob {
 export interface Document {
   id: string;
   syncTargetId: string;
-  s3Key: string;
-  s3Etag: string | null;
+  sourceKey: string;
+  sourceEtag: string | null;
   mimeType: string | null;
   fileSize: number | null;
   title: string | null;
+  description: string | null;
   author: string | null;
   pageCount: number | null;
   status: 'pending' | 'processing' | 'ready' | 'parse_error' | 'embed_error' | 'deleted';
@@ -79,6 +80,43 @@ export function formatDuration(startedAt: string, completedAt: string | null): s
   const minutes = Math.floor(seconds / 60);
   const remainingSeconds = seconds % 60;
   return `${minutes}m ${remainingSeconds}s`;
+}
+
+export function formatCron(cron: string): string {
+  const parts = cron.trim().split(/\s+/);
+  if (parts.length !== 5) return cron;
+  const [minute, hour, dayOfMonth, month, dayOfWeek] = parts;
+
+  // Every N minutes: */N * * * *
+  if (hour === '*' && dayOfMonth === '*' && month === '*' && dayOfWeek === '*') {
+    if (minute === '*') return 'Every minute';
+    const match = minute?.match(/^\*\/(\d+)$/);
+    if (match?.[1]) {
+      const n = Number(match[1]);
+      return n === 1 ? 'Every minute' : `Every ${n} minutes`;
+    }
+  }
+
+  // Every N hours: 0 */N * * * or specific minute
+  if (dayOfMonth === '*' && month === '*' && dayOfWeek === '*') {
+    const hourMatch = hour?.match(/^\*\/(\d+)$/);
+    if (hourMatch?.[1]) {
+      const n = Number(hourMatch[1]);
+      return n === 1 ? 'Every hour' : `Every ${n} hours`;
+    }
+    // Daily at specific time: 0 8 * * *
+    if (hour !== '*' && !hour?.includes('/') && !hour?.includes(',')) {
+      const h = Number(hour);
+      const m = Number(minute);
+      if (!Number.isNaN(h) && !Number.isNaN(m)) {
+        const period = h >= 12 ? 'PM' : 'AM';
+        const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+        return `Daily at ${h12}:${String(m).padStart(2, '0')} ${period}`;
+      }
+    }
+  }
+
+  return cron;
 }
 
 export function formatBytes(bytes: number): string {

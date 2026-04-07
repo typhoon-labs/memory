@@ -7,8 +7,11 @@ export { AuthProvider, useAuth, useSignOut } from './auth-provider.js';
 // === Custom Compound Components ===
 export type { AppShellProps, NavGroup, NavItem } from './components/AppShell.js';
 export { AppShell } from './components/AppShell.js';
+export { CsvTableViewer } from './components/CsvTableViewer.js';
 export type { DataTableProps } from './components/DataTable.js';
 export { DataTable } from './components/DataTable.js';
+export type { DocumentContentViewerProps } from './components/DocumentContentViewer.js';
+export { createDocumentMarkdownComponents, DocumentContentViewer } from './components/DocumentContentViewer.js';
 export type { EmptyStateProps } from './components/EmptyState.js';
 export { EmptyState } from './components/EmptyState.js';
 export {
@@ -57,6 +60,7 @@ export {
   CardHeader,
   CardTitle,
 } from './components/ui/card.js';
+export { Checkbox } from './components/ui/checkbox.js';
 export {
   Collapsible,
   CollapsibleContent,
@@ -110,6 +114,7 @@ export {
   PopoverContent,
   PopoverTrigger,
 } from './components/ui/popover.js';
+export { ResizableHandle, ResizablePanel, ResizablePanelGroup } from './components/ui/resizable.js';
 export { ScrollArea, ScrollBar } from './components/ui/scroll-area.js';
 export {
   Select,

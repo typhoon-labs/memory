@@ -15,7 +15,7 @@ fi
 
 # 3. Start infrastructure
 echo "Starting Docker services..."
-docker compose -f infra/docker/docker-compose.yml up -d
+./scripts/docker.sh up -d
 
 # 4. Wait for PostgreSQL
 echo "Waiting for PostgreSQL..."
