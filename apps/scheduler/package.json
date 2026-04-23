@@ -1,0 +1,22 @@
+{
+  "name": "@typhoon/scheduler",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "start": "bun run src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@typhoon/config": "workspace:*",
+    "@typhoon/db": "workspace:*",
+    "@typhoon/ingestion": "workspace:*",
+    "@typhoon/logger": "workspace:*",
+    "@typhoon/telemetry": "workspace:*",
+    "bullmq": "^5.34.0",
+    "croner": "^10.0.1",
+    "drizzle-orm": "^0.45.1",
+    "postgres": "^3.4.7"
+  }
+}

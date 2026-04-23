@@ -1,11 +1,11 @@
-export type { Document, DocumentStatus } from './document.js';
-export { documentSchema, documentStatusEnum } from './document.js';
+export type { Document, DocumentStatus } from './document';
+export { documentSchema, documentStatusEnum } from './document';
 
-export type { CreateFeedback, Feedback, FeedbackRating } from './feedback.js';
-export { createFeedbackSchema, feedbackRatingEnum, feedbackSchema } from './feedback.js';
+export type { CreateFeedback, Feedback, FeedbackRating } from './feedback';
+export { createFeedbackSchema, feedbackRatingEnum, feedbackSchema } from './feedback';
 
-export type { SyncJob, SyncJobStatus } from './sync-job.js';
-export { syncJobSchema, syncJobStatusEnum } from './sync-job.js';
+export type { SyncJob, SyncJobStatus } from './sync-job';
+export { syncJobSchema, syncJobStatusEnum } from './sync-job';
 
 export type {
   ConfigSyncTarget,
@@ -13,11 +13,11 @@ export type {
   CreateSyncTarget,
   SyncTarget,
   UpdateSyncTarget,
-} from './sync-target.js';
+} from './sync-target';
 export {
   configSyncTargetSchema,
   createSyncTargetSchema,
   syncTargetConfigSchemas,
   syncTargetSchema,
   updateSyncTargetSchema,
-} from './sync-target.js';
+} from './sync-target';

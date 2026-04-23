@@ -16,7 +16,7 @@ Customer ──► Widget (API key) ──► Same Agent ──► Same Flow ─
 
 Built with **Bun workspaces** for dependency management and **Turborepo** for task orchestration.
 
-- `apps/` — Deployable applications (server, desk, admin, widget)
+- `apps/` — Deployable applications (api, worker, scheduler, desk, admin, widget)
 - `packages/` — Shared libraries consumed by apps
 - `infra/` — Docker Compose infrastructure
 - `scripts/` — Development automation
@@ -25,7 +25,7 @@ Built with **Bun workspaces** for dependency management and **Turborepo** for ta
 
 ```
 Layer 2:  agents, ingestion, chat, ui    Domain logic & UI
-Layer 1:  db, ai, pg, storage, logger    Infrastructure clients
+Layer 1:  db, ai, storage, logger, telemetry  Infrastructure clients
 Layer 0:  config, types                  Foundations
 ```
 
@@ -39,9 +39,9 @@ Higher layers import from lower layers. No circular dependencies. Turborepo enfo
 | `@typhoon/types` | 0 | Zod schemas for domain entities |
 | `@typhoon/db` | 1 | Drizzle ORM schemas + migrations (non-Mastra tables) |
 | `@typhoon/ai` | 1 | LLM + embedding model factories (AI SDK, OpenAI-compatible) |
-| `@typhoon/pg` | 1 | PostgreSQL storage + PgVector for Mastra |
 | `@typhoon/storage` | 1 | S3/MinIO client (list, download, delete) |
 | `@typhoon/logger` | 1 | Structured logging via Mastra logger |
+| `@typhoon/telemetry` | 1 | OpenTelemetry SDK, custom metrics, Hono middleware |
 | `@typhoon/agents` | 2 | Mastra supervisor + knowledge agent with RAG tools |
 | `@typhoon/ingestion` | 2 | Document parsers, MDocument pipeline, BullMQ sync jobs |
 | `@typhoon/chat` | 2 | React chat UI components (streaming, markdown rendering) |
@@ -49,13 +49,42 @@ Higher layers import from lower layers. No circular dependencies. Turborepo enfo
 
 ## Application Architecture
 
-### API Server (`apps/server`)
+The backend is split into three independently scalable processes:
+
+```
+┌──────────┐    enqueue    ┌─────────┐    consume    ┌──────────┐
+│   API    │ ────────────►│  Redis  │◄──────────── │  Worker  │
+│  (Hono)  │  queue admin │ (BullMQ)│              │ (BullMQ) │
+└──────────┘   SSE events └─────────┘              └──────────┘
+                               ▲
+                               │ enqueue scan jobs
+                          ┌────┴─────┐
+                          │Scheduler │
+                          │ (Croner) │
+                          └──────────┘
+         All three ──► PostgreSQL + pgvector
+```
+
+### API Server (`apps/api`)
 
 - **Framework:** Mastra + Hono (`@mastra/hono`)
 - **Auto-generated endpoints:** Agent generate/stream, memory threads/messages, working memory
-- **Custom routes:** Sync targets CRUD, document browsing, feedback, widget chat, auth
-- **Background workers:** BullMQ for S3 sync pipeline
+- **Custom routes:** Sync targets CRUD, document browsing, feedback, widget chat, auth, queue admin
 - **Storage:** PostgresStore (threads, messages, memory) + PgVector (embeddings)
+- Enqueues BullMQ jobs but does not consume them
+
+### Worker (`apps/worker`)
+
+- **Headless BullMQ consumer** — processes scan, process-file, and delete-file jobs
+- Downloads files from S3/MinIO, parses, chunks, embeds, and upserts vectors
+- Scales horizontally (multiple replicas via K8s HPA/KEDA)
+- Minimal `/healthz` HTTP endpoint for K8s probes (port 5170)
+
+### Scheduler (`apps/scheduler`)
+
+- **Single-replica cron producer** — reads sync target schedules from DB, enqueues scan jobs
+- Uses Croner for cron parsing, polls DB every 60s for schedule changes
+- Minimal `/healthz` HTTP endpoint for K8s probes (port 5171)
 
 ### Rep Workspace (`apps/desk`)
 
@@ -68,7 +97,7 @@ Higher layers import from lower layers. No circular dependencies. Turborepo enfo
 ### Admin Dashboard (`apps/admin`)
 
 - Same stack as desk (without chat components)
-- **Pages:** Dashboard, Sync Sources, Sync Source Detail, Documents, Feedback
+- **Pages:** Dashboard, Sources, Source Detail, Documents, Reviews, Datasets, Experiments, Scorers, Traces, Queues
 
 ### Customer Widget (`apps/widget`)
 
@@ -97,15 +126,19 @@ Higher layers import from lower layers. No circular dependencies. Turborepo enfo
 
 ## Agent System
 
-A supervisor agent classifies queries and routes to specialized subagents.
+A supervisor agent routes queries to a knowledge search tool that wraps a specialized knowledge agent.
 
 ### Supervisor Agent
 
-Routes all interactions. Currently delegates to the Knowledge Agent; extensible for future agents (billing, account, escalation).
+Routes all interactions via a single `searchKnowledge` tool call per message. Passes the user's full message verbatim — never splits multi-topic questions. Extensible for future agents (billing, account, escalation).
 
 ### Knowledge Agent
 
-RAG-powered agent that searches the knowledge base using `createVectorQueryTool`. Answers only from ingested documents with source citations.
+RAG-powered agent with two search tools:
+- **searchKnowledgeBaseHybrid** — keyword (BM25) + vector similarity via weighted RRF (vector 0.7, FTS 0.3), followed by LLM reranking
+- **searchKnowledgeBaseGraph** — graph-based retrieval for relationship/comparison queries
+
+Called via `searchKnowledge` wrapper tool (two-phase): Phase 1 searches the knowledge base (`toolChoice: auto`, up to 7 steps), Phase 2 generates a cited response with `[Source: N]` references. Results are deduped, filtered (score >= 0.25), and capped at 10 chunks.
 
 ### Memory System (Mastra built-in)
 

@@ -1,20 +1,24 @@
 import { boolean, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 
-export const datasets = pgTable('datasets', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  name: text('name').notNull(),
-  description: text('description'),
-  metadata: jsonb('metadata').$type<Record<string, unknown>>(),
-  inputSchema: jsonb('input_schema'),
-  groundTruthSchema: jsonb('ground_truth_schema'),
-  requestContextSchema: jsonb('request_context_schema'),
-  version: integer('version').notNull().default(0),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp('updated_at', { withTimezone: true })
-    .defaultNow()
-    .notNull()
-    .$onUpdate(() => new Date()),
-});
+export const datasets = pgTable(
+  'datasets',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    name: text('name').notNull(),
+    description: text('description'),
+    metadata: jsonb('metadata').$type<Record<string, unknown>>(),
+    inputSchema: jsonb('input_schema'),
+    groundTruthSchema: jsonb('ground_truth_schema'),
+    requestContextSchema: jsonb('request_context_schema'),
+    version: integer('version').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .defaultNow()
+      .notNull()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [index('datasets_created_at_idx').on(table.createdAt)],
+);
 
 export const datasetItems = pgTable(
   'dataset_items',
@@ -39,6 +43,7 @@ export const datasetItems = pgTable(
   (table) => [
     primaryKey({ columns: [table.id, table.datasetVersion] }),
     index('dataset_items_dataset_id_idx').on(table.datasetId),
+    index('dataset_items_dataset_id_is_deleted_idx').on(table.datasetId, table.isDeleted),
   ],
 );
 

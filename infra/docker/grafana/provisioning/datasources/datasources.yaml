@@ -1,0 +1,50 @@
+# Override datasource configuration to enable bidirectional trace-log correlation.
+# The otel-lgtm image pre-configures Loki→Tempo (log→trace via derivedFields).
+# This file adds Tempo→Loki (trace→log) so you can jump from a trace to its logs.
+apiVersion: 1
+
+datasources:
+  - name: Tempo
+    type: tempo
+    uid: tempo
+    url: http://127.0.0.1:3200
+    access: proxy
+    isDefault: false
+    jsonData:
+      tracesToLogsV2:
+        datasourceUid: loki
+        spanStartTimeShift: '-1h'
+        spanEndTimeShift: '1h'
+        filterByTraceID: true
+        filterBySpanID: false
+        customQuery: false
+      tracesToMetrics:
+        datasourceUid: prometheus
+      nodeGraph:
+        enabled: true
+      serviceMap:
+        datasourceUid: prometheus
+      lokiSearch:
+        datasourceUid: loki
+
+  - name: Loki
+    type: loki
+    uid: loki
+    url: http://127.0.0.1:3100
+    access: proxy
+    isDefault: false
+    jsonData:
+      derivedFields:
+        - datasourceUid: tempo
+          matcherRegex: '"trace_id":"([a-f0-9]+)"'
+          matcherType: regex
+          name: trace_id
+          url: '$${__value.raw}'
+          urlDisplayLabel: 'View Trace'
+
+  - name: Prometheus
+    type: prometheus
+    uid: prometheus
+    url: http://127.0.0.1:9090
+    access: proxy
+    isDefault: true

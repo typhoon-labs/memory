@@ -1,4 +1,4 @@
-import type { ParseResult } from './registry.js';
+import type { ParseResult } from './registry';
 
 let patched = false;
 
@@ -46,21 +46,21 @@ const MIN_TABLE_COLS = 2;
 const LIST_INDENT_THRESHOLD = 15;
 const LIST_MARKER_RE = /^[•\-–*]\s|^\d+[.)]\s|^[a-z][.)]\s/;
 
-function getFontSize(transform: number[]): number {
+export function getFontSize(transform: number[]): number {
   return Math.hypot(transform[0], transform[1]);
 }
 
-function roundSize(size: number): number {
+export function roundSize(size: number): number {
   return Math.round(size * 10) / 10;
 }
 
-function escapeHtml(text: string): string {
+export function escapeHtml(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 // ── Font analysis ──────────────────────────────────────────────
 
-function buildHeadingMap(items: TextItemLike[]): Map<number, string> {
+export function buildHeadingMap(items: TextItemLike[]): Map<number, string> {
   const freq = new Map<number, number>();
   for (const item of items) {
     if (!item.str.trim()) continue;
@@ -88,7 +88,7 @@ function buildHeadingMap(items: TextItemLike[]): Map<number, string> {
 
 // ── Line grouping ──────────────────────────────────────────────
 
-function groupIntoLines(items: TextItemLike[]): Line[] {
+export function groupIntoLines(items: TextItemLike[]): Line[] {
   const lines: Line[] = [];
   let currentLine: Line | null = null;
 
@@ -120,7 +120,7 @@ function groupIntoLines(items: TextItemLike[]): Line[] {
 
 // ── Body x-baseline (for list detection) ───────────────────────
 
-function getBodyXBaseline(lines: Line[], headingMap: Map<number, string>): number {
+export function getBodyXBaseline(lines: Line[], headingMap: Map<number, string>): number {
   const xFreq = new Map<number, number>();
   for (const line of lines) {
     if (line.items.length === 0) continue;
@@ -142,11 +142,11 @@ function getBodyXBaseline(lines: Line[], headingMap: Map<number, string>): numbe
 
 // ── Table detection ────────────────────────────────────────────
 
-function getColumnSignature(line: Line): number[] {
+export function getColumnSignature(line: Line): number[] {
   return line.items.map((item) => Math.round(item.x / COLUMN_TOLERANCE) * COLUMN_TOLERANCE);
 }
 
-function signaturesMatch(a: number[], b: number[]): boolean {
+export function signaturesMatch(a: number[], b: number[]): boolean {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) {
     if (Math.abs(a[i] - b[i]) > COLUMN_TOLERANCE) return false;
@@ -155,7 +155,7 @@ function signaturesMatch(a: number[], b: number[]): boolean {
 }
 
 /** Find table regions: runs of 3+ consecutive lines with the same column structure (2+ cols). */
-function detectTableRegions(lines: Line[], headingMap: Map<number, string>): Set<number> {
+export function detectTableRegions(lines: Line[], headingMap: Map<number, string>): Set<number> {
   const tableLineIndices = new Set<number>();
   let runStart = -1;
   let runEnd = -1;
@@ -191,11 +191,11 @@ function detectTableRegions(lines: Line[], headingMap: Map<number, string>): Set
 
 // ── HTML generation ────────────────────────────────────────────
 
-function lineToText(line: Line): string {
+export function lineToText(line: Line): string {
   return line.items.map((item) => item.str).join(' ');
 }
 
-function buildHtml(lines: Line[], headingMap: Map<number, string>): string {
+export function buildHtml(lines: Line[], headingMap: Map<number, string>): string {
   const tableLines = detectTableRegions(lines, headingMap);
   const bodyBaseline = getBodyXBaseline(lines, headingMap);
   const parts: string[] = [];

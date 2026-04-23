@@ -10,6 +10,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
+  apiFetch,
   Button,
   DropdownMenu,
   DropdownMenuContent,
@@ -22,12 +23,12 @@ import {
   TabsList,
   TabsTrigger,
 } from '@typhoon/ui';
-import { ChevronDownIcon, ChevronRightIcon, RefreshCwIcon, Trash2Icon } from 'lucide-react';
-import { DocumentsTab } from './sync-source-detail/documents-tab.js';
-import { OverviewTab } from './sync-source-detail/overview-tab.js';
-import type { SyncTarget } from './sync-source-detail/shared.js';
-import { formatConfig, formatCron } from './sync-source-detail/shared.js';
-import { SyncLogTab } from './sync-source-detail/sync-log-tab.js';
+import { ChevronDownIcon, ChevronRightIcon, RefreshCwIcon, SquareIcon, Trash2Icon } from 'lucide-react';
+import { DocumentsTab } from './sync-source-detail/documents-tab';
+import { OverviewTab } from './sync-source-detail/overview-tab';
+import type { SyncJob, SyncTarget } from './sync-source-detail/shared';
+import { formatConfig, formatCron } from './sync-source-detail/shared';
+import { SyncLogTab } from './sync-source-detail/sync-log-tab';
 
 export function SyncSourceDetailPage() {
   const { sourceId } = useParams({ strict: false }) as { sourceId: string };
@@ -48,14 +49,30 @@ export function SyncSourceDetailPage() {
 
   const { data: target, isLoading } = useQuery<SyncTarget>({
     queryKey: ['sync-targets', sourceId],
-    queryFn: () => fetch(`/api/v1/sync-targets/${sourceId}`, { credentials: 'include' }).then((r) => r.json()),
+    queryFn: () => apiFetch(`/api/v1/sync-targets/${sourceId}`),
+  });
+
+  const { data: syncJobs } = useQuery<SyncJob[]>({
+    queryKey: ['sync-targets', sourceId, 'jobs'],
+    queryFn: () => apiFetch(`/api/v1/sync-targets/${sourceId}/jobs`),
+  });
+
+  const hasRunningSync = syncJobs?.some((j) => j.status === 'running') ?? false;
+
+  const cancelSync = useMutation({
+    mutationFn: () =>
+      apiFetch(`/api/v1/sync-targets/${sourceId}/cancel`, {
+        method: 'POST',
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sync-targets', sourceId, 'jobs'] });
+    },
   });
 
   const triggerSync = useMutation({
     mutationFn: (force?: boolean) =>
-      fetch(`/api/v1/sync-targets/${sourceId}/sync`, {
+      apiFetch(`/api/v1/sync-targets/${sourceId}/sync`, {
         method: 'POST',
-        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ force: !!force }),
       }),
@@ -63,7 +80,7 @@ export function SyncSourceDetailPage() {
   });
 
   const purgeDocuments = useMutation({
-    mutationFn: () => fetch(`/api/v1/sync-targets/${sourceId}/purge`, { method: 'POST', credentials: 'include' }),
+    mutationFn: () => apiFetch(`/api/v1/sync-targets/${sourceId}/purge`, { method: 'POST' }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['documents', { syncTargetId: sourceId }] });
       queryClient.invalidateQueries({ queryKey: ['sync-targets', sourceId, 'jobs'] });
@@ -71,7 +88,7 @@ export function SyncSourceDetailPage() {
   });
 
   const deleteTarget = useMutation({
-    mutationFn: () => fetch(`/api/v1/sync-targets/${sourceId}`, { method: 'DELETE', credentials: 'include' }),
+    mutationFn: () => apiFetch(`/api/v1/sync-targets/${sourceId}`, { method: 'DELETE' }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sync-targets'] });
       navigate({ to: '/sources' });
@@ -113,6 +130,12 @@ export function SyncSourceDetailPage() {
           description={`${formatConfig(target.sourceType, target.config)} \u2014 ${formatCron(target.cronSchedule)}`}
           actions={
             <div className="flex items-center gap-2">
+              {target.isActive && hasRunningSync && (
+                <Button variant="outline" size="sm" onClick={() => cancelSync.mutate()} disabled={cancelSync.isPending}>
+                  <SquareIcon className="mr-1.5 size-3.5" />
+                  {cancelSync.isPending ? 'Cancelling...' : 'Cancel Sync'}
+                </Button>
+              )}
               {target.isActive && (
                 <div className="flex items-center">
                   <Button

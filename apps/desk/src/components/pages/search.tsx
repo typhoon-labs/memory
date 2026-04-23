@@ -1,5 +1,6 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  apiFetch,
   Badge,
   Button,
   Card,
@@ -7,16 +8,20 @@ import {
   CardHeader,
   cn,
   EmptyState,
-  Input,
   LoadingSpinner,
   PageHeader,
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
 } from '@typhoon/ui';
-import { DatabaseIcon, FileTextIcon, SearchIcon } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { DocumentViewerPanel } from './document-viewer-panel.js';
+import { DatabaseIcon, FileTextIcon, SearchIcon, SparklesIcon } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { documentContentQuery, documentParsedQuery } from '../../lib/document-queries';
+import { DocumentViewerPanel } from './document-viewer-panel';
 
 // ── Types ───────────────────────────────────────────────────────
 
@@ -88,7 +93,17 @@ export function SearchPage() {
   const [hasSearched, setHasSearched] = useState(false);
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
   const [visibleGroupCount, setVisibleGroupCount] = useState(GROUPS_PER_PAGE);
+  const [preciseMode, setPreciseMode] = useState(false);
   const sentinelRef = useRef<HTMLDivElement>(null);
+  const queryClient = useQueryClient();
+
+  const prefetchDocument = useCallback(
+    (docId: string) => {
+      queryClient.prefetchQuery(documentContentQuery(docId));
+      queryClient.prefetchQuery(documentParsedQuery(docId));
+    },
+    [queryClient],
+  );
 
   const searchTerms = useMemo(
     () =>
@@ -103,13 +118,13 @@ export function SearchPage() {
 
   const { data: documentsData } = useQuery<DocumentRecord[]>({
     queryKey: ['documents'],
-    queryFn: () => fetch('/api/v1/documents', { credentials: 'include' }).then((r) => r.json()),
+    queryFn: () => apiFetch<DocumentRecord[]>('/api/v1/documents'),
     staleTime: 60_000,
   });
 
   const { data: syncTargetsData } = useQuery<SyncTargetRecord[]>({
     queryKey: ['sync-targets'],
-    queryFn: () => fetch('/api/v1/sync-targets', { credentials: 'include' }).then((r) => r.json()),
+    queryFn: () => apiFetch<SyncTargetRecord[]>('/api/v1/sync-targets'),
     staleTime: 60_000,
   });
 
@@ -133,19 +148,20 @@ export function SearchPage() {
     setIsSearching(true);
     setVisibleGroupCount(GROUPS_PER_PAGE);
     try {
-      const res = await fetch('/api/v1/search/hybrid', {
+      const data = await apiFetch<{ results?: SearchResult[] }>('/api/v1/search/hybrid', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, topK: INITIAL_TOP_K }),
+        body: JSON.stringify({
+          query,
+          topK: INITIAL_TOP_K,
+          ...(preciseMode && { rerank: true, minScore: 0.25, dedup: true }),
+        }),
       });
-      if (!res.ok) {
-        console.error('Search failed');
-        setResults([]);
-        setHasSearched(true);
-        return;
-      }
-      const data = await res.json();
       setResults(data.results ?? []);
+      setHasSearched(true);
+    } catch {
+      console.error('Search failed');
+      setResults([]);
       setHasSearched(true);
     } finally {
       setIsSearching(false);
@@ -208,24 +224,54 @@ export function SearchPage() {
       <div className={selectedDocId ? '' : 'mx-auto max-w-4xl'}>
         <PageHeader title="Search" description="Search across all knowledge base documents" />
 
-        <form onSubmit={handleSearch} className="mt-4 flex gap-2">
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search documents…"
-            className="flex-1"
-          />
-          <Button type="submit" disabled={isSearching}>
-            {isSearching ? <LoadingSpinner size="sm" /> : <SearchIcon className="mr-2 size-4" />}
-            {isSearching ? 'Searching…' : 'Search'}
-          </Button>
-        </form>
+        <div className="mt-4 space-y-3">
+          <form
+            onSubmit={handleSearch}
+            className="flex items-center gap-2 rounded-xl border border-border bg-card p-2.5 shadow-lg shadow-black/5"
+          >
+            <SearchIcon className="size-4 shrink-0 text-muted-foreground" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search documents…"
+              className="min-w-0 flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground/65 focus-visible:outline-none"
+            />
+            <button
+              type="submit"
+              disabled={isSearching}
+              className="flex size-[30px] shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-opacity hover:opacity-85 disabled:opacity-40"
+            >
+              {isSearching ? <LoadingSpinner size="sm" /> : <SearchIcon className="size-3.5" />}
+            </button>
+          </form>
 
-        {hasSearched && !isSearching && grouped.length > 0 && (
-          <p className="mt-4 text-xs text-muted-foreground">
-            {grouped.length} document{grouped.length !== 1 ? 's' : ''} found
-          </p>
-        )}
+          <div className="flex items-center gap-3">
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant={preciseMode ? 'default' : 'outline'}
+                    size="xs"
+                    onClick={() => setPreciseMode((p) => !p)}
+                  >
+                    <SparklesIcon className="size-3" />
+                    Precise
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" align="start">
+                  AI reranking for better relevance (slower)
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
+            {hasSearched && !isSearching && grouped.length > 0 && (
+              <span className="text-xs text-muted-foreground">
+                {grouped.length} document{grouped.length !== 1 ? 's' : ''} found
+              </span>
+            )}
+          </div>
+        </div>
 
         {isSearching && (
           <div className="flex justify-center py-16">
@@ -245,6 +291,7 @@ export function SearchPage() {
                     isActive && 'ring-2 ring-primary/40',
                   )}
                   onClick={() => setSelectedDocId(group.documentId)}
+                  onMouseEnter={() => prefetchDocument(group.documentId)}
                 >
                   <CardHeader className="pb-1.5">
                     <div className="flex items-start justify-between gap-3">

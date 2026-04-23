@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { EmptyState, LoadingSpinner, PageHeader, StatusBadge } from '@typhoon/ui';
+import { apiFetch, EmptyState, LoadingSpinner, PageHeader, StatusBadge } from '@typhoon/ui';
 import { MessageSquareQuoteIcon, ThumbsDownIcon, ThumbsUpIcon } from 'lucide-react';
 
 interface FeedbackEntry {
@@ -14,7 +14,7 @@ interface FeedbackEntry {
 export function FeedbackPage() {
   const { data: entries, isLoading } = useQuery<FeedbackEntry[]>({
     queryKey: ['feedback'],
-    queryFn: () => fetch('/api/v1/feedback', { credentials: 'include' }).then((r) => r.json()),
+    queryFn: () => apiFetch('/api/v1/feedback'),
   });
 
   return (

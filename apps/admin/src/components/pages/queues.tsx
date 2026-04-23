@@ -1,9 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import type { ColumnDef } from '@typhoon/ui';
-import { DataTable, EmptyState, LoadingSpinner, PageHeader, StatusBadge } from '@typhoon/ui';
+import { apiFetch, DataTable, EmptyState, LoadingSpinner, PageHeader, StatusBadge } from '@typhoon/ui';
 import { ListChecksIcon } from 'lucide-react';
-import type { QueueSummary } from './queue-detail/shared.js';
+import type { QueueSummary } from './queue-detail/shared';
 
 const columns: ColumnDef<QueueSummary, unknown>[] = [
   {
@@ -62,7 +62,7 @@ export function QueuesPage() {
 
   const { data: queues, isLoading } = useQuery<QueueSummary[]>({
     queryKey: ['queues'],
-    queryFn: () => fetch('/api/v1/queues', { credentials: 'include' }).then((r) => r.json()),
+    queryFn: () => apiFetch('/api/v1/queues'),
     refetchInterval: 60_000,
   });
 

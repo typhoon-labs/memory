@@ -10,14 +10,15 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
+  apiFetch,
   Button,
   DataTable,
   SectionLabel,
   StatCard,
 } from '@typhoon/ui';
 import { AlertTriangleIcon, CheckCircleIcon, ClockIcon, LoaderIcon, PauseCircleIcon } from 'lucide-react';
-import type { QueueSummary, QueueWorker } from './shared.js';
-import { formatSeconds } from './shared.js';
+import type { QueueSummary, QueueWorker } from './shared';
+import { formatSeconds } from './shared';
 
 const workerColumns: ColumnDef<QueueWorker, unknown>[] = [
   {
@@ -49,20 +50,16 @@ export function OverviewTab({ queue }: { queue: QueueSummary }) {
 
   const { data: workers } = useQuery<QueueWorker[]>({
     queryKey: ['queues', queue.name, 'workers'],
-    queryFn: () => fetch(`/api/v1/queues/${queue.name}/workers`, { credentials: 'include' }).then((r) => r.json()),
+    queryFn: () => apiFetch(`/api/v1/queues/${queue.name}/workers`),
     refetchInterval: 60_000,
   });
 
   const cleanMutation = useMutation({
     mutationFn: ({ state, limit }: { state: string; limit: number }) =>
-      fetch(`/api/v1/queues/${queue.name}/clean`, {
+      apiFetch(`/api/v1/queues/${queue.name}/clean`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ state, grace: 0, limit }),
-      }).then((r) => {
-        if (!r.ok) throw new Error('Clean failed');
-        return r.json();
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['queues'] });

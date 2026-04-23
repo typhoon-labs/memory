@@ -1,7 +1,7 @@
-export { agents, agentVersions, entityStatusEnum } from './agents.js';
-export { mcpClients, mcpClientVersions } from './mcp-clients.js';
-export { mcpServers, mcpServerVersions } from './mcp-servers.js';
-export { promptBlocks, promptBlockVersions } from './prompt-blocks.js';
-export { scorerDefinitions, scorerDefinitionVersions } from './scorer-definitions.js';
-export { skills, skillVersions } from './skills.js';
-export { workspaces, workspaceVersions } from './workspaces.js';
+export { agents, agentVersions, entityStatusEnum } from './agents';
+export { mcpClients, mcpClientVersions } from './mcp-clients';
+export { mcpServers, mcpServerVersions } from './mcp-servers';
+export { promptBlocks, promptBlockVersions } from './prompt-blocks';
+export { scorerDefinitions, scorerDefinitionVersions } from './scorer-definitions';
+export { skills, skillVersions } from './skills';
+export { workspaces, workspaceVersions } from './workspaces';

@@ -16,12 +16,14 @@ export interface SyncTarget {
 export interface SyncJob {
   id: string;
   syncTargetId: string;
-  status: 'running' | 'completed' | 'failed';
+  status: 'running' | 'completed' | 'failed' | 'cancelled';
   filesScanned: number;
   filesNew: number;
   filesUpdated: number;
   filesDeleted: number;
   filesErrored: number;
+  childJobsTotal: number;
+  childJobsCompleted: number;
   errorMessage: string | null;
   startedAt: string;
   completedAt: string | null;
@@ -51,6 +53,7 @@ export const JOB_STATUS_MAP: Record<string, StatusBadgeVariant> = {
   running: 'warning',
   completed: 'success',
   failed: 'error',
+  cancelled: 'pending',
 };
 
 export const DOC_STATUS_MAP: Record<string, StatusBadgeVariant> = {

@@ -1,7 +1,7 @@
 import { MenuIcon, XIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useState } from 'react';
-import { cn } from '../lib/utils.js';
+import { cn } from '../lib/utils';
 
 // =============================================================================
 // Types
@@ -71,7 +71,7 @@ function NavContent({ navGroups, renderLink }: NavContentProps): React.JSX.Eleme
       {navGroups.map((group: NavGroup, groupIdx: number) => (
         <div key={group.label ?? `group-${String(groupIdx)}`}>
           {group.label != null && (
-            <p className="mb-1 mt-2.5 px-2 text-xs font-semibold uppercase tracking-widest text-muted-foreground first:mt-1">
+            <p className="mb-1 mt-2.5 px-2 text-2xs font-semibold uppercase tracking-widest text-foreground/50 first:mt-1">
               {group.label}
             </p>
           )}
@@ -82,16 +82,14 @@ function NavContent({ navGroups, renderLink }: NavContentProps): React.JSX.Eleme
               <div
                 key={item.href}
                 className={cn(
-                  'flex min-w-0 cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors duration-75',
-                  isActive
-                    ? 'bg-accent text-foreground'
-                    : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+                  'flex min-w-0 cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-xs transition-colors duration-75',
+                  isActive ? 'bg-accent text-foreground' : 'text-foreground/70 hover:bg-accent hover:text-foreground',
                 )}
               >
                 <span
                   className={cn(
                     'shrink-0 [&>svg]:size-4 [&>svg]:shrink-0',
-                    isActive ? 'text-accent-foreground' : 'text-muted-foreground',
+                    isActive ? 'text-accent-foreground' : 'text-foreground/70',
                   )}
                 >
                   {item.icon}
@@ -261,7 +259,7 @@ export function AppShell({
         </nav>
 
         {/* -- Main content -- */}
-        <main className="flex-1 overflow-hidden bg-background">{children}</main>
+        <main className="grid flex-1 overflow-hidden bg-background">{children}</main>
       </div>
     </div>
   );

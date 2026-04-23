@@ -32,7 +32,7 @@ All services require a profile. Use `--profile <name>` to select which services 
 |---------|----------|
 | `all` | Everything (infra + app) |
 | `infra` | postgres, redis, minio, minio-init, bifrost, dex |
-| `app` | migrate, server, desk, admin, widget |
+| `app` | migrate, api, worker, scheduler, desk, admin, widget |
 | `migrate` | migrate only |
 
 `scripts/docker.sh` always uses `--profile all`.
@@ -48,7 +48,9 @@ All services require a profile. Use `--profile <name>` to select which services 
 | `bifrost` | `maximhq/bifrost:v1.4.7` | 8787 | infra | LLM gateway proxy (Anthropic, OpenAI, Bedrock) |
 | `dex` | `dexidp/dex:v2.41.1` | 5556 | infra | OIDC provider for local SSO testing |
 | `migrate` | (local build) | — | app | Database migrations (one-shot) |
-| `server` | (local build) | 5172 | app | Typhoon API server |
+| `worker` | (local build) | 5170 (health) | app | BullMQ job consumer (ingestion) |
+| `scheduler` | (local build) | 5171 (health) | app | Cron scheduler (enqueues sync scans) |
+| `api` | (local build) | 5172 | app | Typhoon API server |
 | `desk` | (local build) | 5173 | app | Rep workspace SPA |
 | `admin` | (local build) | 5174 | app | Admin dashboard SPA |
 | `widget` | (local build) | 5175 | app | Embeddable chat widget |
@@ -66,7 +68,7 @@ All services require a profile. Use `--profile <name>` to select which services 
 
 In development, `docker-compose.dev.yml` overrides the app services to mount source code and enable hot-reload:
 
-- **server** — `bun run --watch` restarts on file changes
+- **api / worker / scheduler** — `bun run --watch` restarts on file changes
 - **desk / admin / widget** — Vite dev server with HMR (port 80 inside container, mapped to 5173/5174/5175)
 
 Source is mounted via a named volume (`dev_node_modules`) so `node_modules` stays inside the container and is not overwritten by the host mount.
@@ -103,6 +105,101 @@ Access the MinIO web console at `http://localhost:9001`:
 - **Password:** `minioadmin`
 
 Use it to upload documents to the `typhoon-documents` bucket for testing.
+
+## Observability (Grafana LGTM)
+
+Locally, all observability runs in a single **`otel-lgtm`** container (Grafana + Loki + Tempo + Prometheus) with an overridden internal OTel Collector that handles everything: app OTLP, PostgreSQL/Redis metrics via built-in receivers, Prometheus scrape for MinIO/Bifrost/Dex, Docker container logs via filelog, and LLM metric derivation via spanmetrics. No sidecar containers needed.
+
+In non-prod/prod, the same OTel instrumentation exports to an external provider — only the `OTEL_EXPORTER_OTLP_ENDPOINT` changes. In K8s, replace the filelog receiver with your existing log forwarder (Fluent Bit, Grafana Alloy, etc.).
+
+### Services
+
+| Service | Image | Port | Purpose |
+|---------|-------|------|---------|
+| `otel-lgtm` | `grafana/otel-lgtm:latest` | 3000 (Grafana), 4317 (gRPC), 4318 (HTTP) | All-in-one Grafana + Loki + Tempo + Prometheus + OTel Collector |
+
+The internal OTel Collector config is overridden to include:
+- **OTLP receiver** — app traces + metrics from api, worker, scheduler, bifrost
+- **PostgreSQL receiver** — direct connection to postgres:5432 (replaces postgres-exporter)
+- **Redis receiver** — direct connection to redis:6379 (replaces redis-exporter)
+- **Prometheus scrape** — MinIO, Bifrost, Dex native `/metrics` endpoints
+- **filelog receiver** — Docker container logs from `/var/lib/docker/containers` (replaces promtail)
+- **spanmetrics connector** — derives LLM/queue Prometheus metrics from span attributes
+
+### Configuration Files
+
+| File | Purpose |
+|------|---------|
+| `infra/docker/otel/otel-collector-config.yaml` | Consolidated collector config: all receivers, spanmetrics connector, localhost exporters |
+| `infra/docker/grafana/provisioning/datasources/` | Prometheus, Loki, Tempo datasource configs with bidirectional trace↔log links |
+| `infra/docker/grafana/dashboards/` | Dashboard JSON files organized into folders |
+
+### Grafana Dashboards
+
+Access Grafana at `http://localhost:3000` (admin/admin). Dashboards are organized into three folders:
+
+**Overview**
+
+| Dashboard | What it shows |
+|-----------|---------------|
+| Golden Signals | Service health (PostgreSQL, Redis, MinIO, Bifrost, Dex), key metrics per component, error logs |
+
+**App**
+
+| Dashboard | What it shows |
+|-----------|---------------|
+| API Server | HTTP request rate/duration/errors by route, active requests, conversations, agent traces |
+| Worker (BullMQ) | Job processing duration and call rate (from spanmetrics), traces, logs |
+| LLM Operations | LLM call rate/duration by model (from spanmetrics), agent invocations, conversations |
+
+**Infrastructure**
+
+| Dashboard | Source | What it shows |
+|-----------|--------|---------------|
+| PostgreSQL | Custom (OTel receiver metrics) | Connections, cache hit ratio, transactions, row ops, dead tuples, seq scans, locks, bgwriter |
+| Redis | Custom (OTel receiver metrics) | Memory, fragmentation, commands/s, hit rate, evictions, keys by DB, network I/O, clients |
+| MinIO (S3) | [Grafana #13502](https://grafana.com/grafana/dashboards/13502) | Storage capacity, objects, S3 request rate/errors, TTFB, network, cluster health, drive status |
+| Bifrost (LLM Gateway) | Custom | Request rate/latency by provider/model, token usage, cost (USD), TTFT, ITL, cache hits, traces, logs |
+| OTel Collector | [Grafana #15983](https://grafana.com/grafana/dashboards/15983) | Pipeline stats, exporter queue, scrape targets, receiver/processor/exporter metrics |
+
+### How It Fits Together
+
+```
+App (api/worker/scheduler) + Bifrost
+  │  OTLP traces + metrics
+  ▼
+otel-lgtm (single container)
+  ├── OTel Collector (overridden config)
+  │   ├── postgresql receiver → Prometheus (localhost)
+  │   ├── redis receiver → Prometheus (localhost)
+  │   ├── prometheus scrape (minio, bifrost, dex) → Prometheus (localhost)
+  │   ├── spanmetrics connector → derives LLM/queue metrics
+  │   ├── filelog receiver → Loki (localhost)
+  │   └── OTLP traces → Tempo (localhost)
+  ├── Grafana (:3000)
+  ├── Prometheus (:9090)
+  ├── Loki (:3100)
+  └── Tempo (:4418)
+```
+
+### Trace-Log Correlation
+
+Bidirectional, works automatically:
+- **Log → Trace**: Structured JSON logs include `trace_id` and `span_id` fields. Loki derivedFields link to Tempo.
+- **Trace → Log**: Tempo `tracesToLogsV2` filters Loki by trace ID when viewing a trace.
+
+### Application Instrumentation
+
+All three backend services import `@typhoon/telemetry/instrumentation` as their first import, which auto-instruments:
+- **PostgreSQL** queries (`@opentelemetry/instrumentation-pg`)
+- **Redis** commands (`@opentelemetry/instrumentation-ioredis`)
+- **BullMQ** job publish/process (`@appsignal/opentelemetry-instrumentation-bullmq`)
+- **HTTP** requests (`@hono/otel`)
+- **Mastra** agent/model/tool spans (`@mastra/otel-bridge`)
+
+LLM token usage, request duration, and queue job metrics are **derived from spans** by the spanmetrics connector — not manually recorded. The only manual metric is `conversationStarted` (a business metric with no corresponding span).
+
+See the [`@typhoon/telemetry` README](../packages/telemetry/README.md) for usage details.
 
 ## Health Checks
 

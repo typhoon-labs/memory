@@ -1,0 +1,162 @@
+{
+  "editable": true,
+  "graphTooltip": 1,
+  "panels": [
+    {
+      "title": "Service Status",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 24, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "clamp_max(postgresql_backends, 1)",
+          "legendFormat": "PostgreSQL"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "clamp_max(redis_uptime_seconds_total, 1)",
+          "legendFormat": "Redis"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "up{job=\"minio\"}",
+          "legendFormat": "MinIO"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "up{job=\"bifrost\"}",
+          "legendFormat": "Bifrost"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "up{job=\"dex\"}",
+          "legendFormat": "Dex"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "type": "value",
+              "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "title": "PostgreSQL — Connections / Transactions / Cache Hit",
+      "type": "timeseries",
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 4 },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum(postgresql_backends)",
+          "legendFormat": "connections"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum(rate(postgresql_commits[5m]))",
+          "legendFormat": "commits/s"
+        }
+      ]
+    },
+    {
+      "title": "Redis — Memory / Ops",
+      "type": "timeseries",
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 4 },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "redis_memory_used_bytes",
+          "legendFormat": "memory used"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "rate(redis_commands_processed_total[5m])",
+          "legendFormat": "ops/s"
+        }
+      ]
+    },
+    {
+      "title": "MinIO — Storage / Requests",
+      "type": "timeseries",
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 4 },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum(rate(minio_s3_requests_total[5m]))",
+          "legendFormat": "requests/s"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum(rate(minio_s3_requests_errors_total[5m]))",
+          "legendFormat": "errors/s"
+        }
+      ]
+    },
+    {
+      "title": "API — Request Rate / Latency",
+      "type": "timeseries",
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 10 },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum(rate(http_server_request_duration_seconds_count{job=\"typhoon-api\"}[5m]))",
+          "legendFormat": "requests/s"
+        }
+      ]
+    },
+    {
+      "title": "Worker — Job Duration / Failures",
+      "type": "timeseries",
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 10 },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "histogram_quantile(0.95, rate(traces_span_metrics_duration_milliseconds_bucket{span_name=~\"sync .*\", job=\"typhoon-worker\"}[5m]))",
+          "legendFormat": "job p95 (ms)"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "rate(traces_span_metrics_calls_total{span_name=~\"sync .*\", job=\"typhoon-worker\", status_code=\"STATUS_CODE_ERROR\"}[5m])",
+          "legendFormat": "failures/s"
+        }
+      ]
+    },
+    {
+      "title": "LLM — Calls / Latency",
+      "type": "timeseries",
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 10 },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum(rate(traces_span_metrics_calls_total{span_name=~\"chat .*\"}[5m]))",
+          "legendFormat": "LLM calls/s"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "histogram_quantile(0.95, rate(traces_span_metrics_duration_milliseconds_bucket{span_name=~\"chat .*\"}[5m]))",
+          "legendFormat": "LLM p95 (ms)"
+        }
+      ]
+    },
+    {
+      "title": "Recent Error Logs",
+      "type": "logs",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 16 },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "{service_name=\"unknown_service\"} |= \"error\" | json",
+          "legendFormat": ""
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["typhoon", "overview"],
+  "time": { "from": "now-1h", "to": "now" },
+  "title": "Golden Signals Overview",
+  "uid": "typhoon-golden-signals"
+}

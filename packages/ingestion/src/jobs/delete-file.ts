@@ -1,14 +1,16 @@
 import type { Db } from '@typhoon/db';
 import { documents, syncTargets } from '@typhoon/db';
+import type { PgVector } from '@typhoon/db/drivers/pg';
 import { createAppLogger } from '@typhoon/logger';
-import type { PgVector } from '@typhoon/pg';
 import type { Job } from 'bullmq';
 import { eq } from 'drizzle-orm';
-import { deleteDocumentVectors } from '../pipeline.js';
-import { getProvider } from '../providers/index.js';
-import { asUnrecoverable, isUnrecoverable } from '../util/classify-error.js';
-import { withTimeout } from '../util/with-timeout.js';
-import type { DeleteFileJobData } from './queues.js';
+import { deleteDocumentVectors } from '../pipeline';
+import { getProvider } from '../providers/index';
+import { asUnrecoverable, isUnrecoverable } from '../util/classify-error';
+import { withTimeout } from '../util/with-timeout';
+import { isSyncJobCancelled } from './check-cancelled';
+import { incrementSyncJobCompletion } from './complete-sync-job';
+import type { DeleteFileJobData } from './queues';
 
 const log = createAppLogger('delete-file');
 
@@ -29,6 +31,11 @@ export async function handleDeleteFileJob(job: Job<DeleteFileJobData>, db: Db, v
   const setStage = (stage: string) => job.updateProgress({ stage, startedAt: Date.now() });
 
   try {
+    if (await isSyncJobCancelled(db, job.data.syncJobId)) {
+      log.info('Delete job cancelled', { documentId });
+      return;
+    }
+
     await setStage('vectorDelete');
     await withTimeout(deleteDocumentVectors(vectorStore, documentId), STAGE_TIMEOUTS.vectorDelete, 'vectorDelete');
 
@@ -65,6 +72,8 @@ export async function handleDeleteFileJob(job: Job<DeleteFileJobData>, db: Db, v
         });
       }
     }
+
+    await incrementSyncJobCompletion(db, job.data.syncJobId, false);
 
     log.info('Document marked deleted', { documentId, totalMs: Date.now() - tStart });
   } catch (error) {

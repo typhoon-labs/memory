@@ -1,4 +1,4 @@
-import type { ParseResult } from './registry.js';
+import type { ParseResult } from './registry';
 
 export async function parseXlsx(buffer: Buffer, filename: string): Promise<ParseResult> {
   const XLSX = await import('xlsx');

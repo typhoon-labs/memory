@@ -11,6 +11,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
+  apiFetch,
   Button,
   DataTable,
   EmptyState,
@@ -26,9 +27,9 @@ import {
 } from '@typhoon/ui';
 import { DatabaseIcon, FileTextIcon, Trash2Icon } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { DocumentDetailSheet } from './sync-source-detail/document-detail-sheet.js';
-import type { Document } from './sync-source-detail/shared.js';
-import { DOC_STATUS_MAP, formatBytes } from './sync-source-detail/shared.js';
+import { DocumentDetailSheet } from './sync-source-detail/document-detail-sheet';
+import type { Document } from './sync-source-detail/shared';
+import { DOC_STATUS_MAP, formatBytes } from './sync-source-detail/shared';
 
 interface SyncTargetRecord {
   id: string;
@@ -67,13 +68,13 @@ export function AdminDocumentsPage() {
       const url = syncTargetId
         ? `/api/v1/documents?syncTargetId=${encodeURIComponent(syncTargetId)}`
         : '/api/v1/documents';
-      return fetch(url, { credentials: 'include' }).then((r) => r.json());
+      return apiFetch(url);
     },
   });
 
   const { data: syncTargets } = useQuery<SyncTargetRecord[]>({
     queryKey: ['sync-targets'],
-    queryFn: () => fetch('/api/v1/sync-targets', { credentials: 'include' }).then((r) => r.json()),
+    queryFn: () => apiFetch('/api/v1/sync-targets'),
     staleTime: 60_000,
   });
 
@@ -85,14 +86,10 @@ export function AdminDocumentsPage() {
 
   const bulkDeleteMutation = useMutation({
     mutationFn: (ids: string[]) =>
-      fetch('/api/v1/documents/bulk-delete', {
+      apiFetch('/api/v1/documents/bulk-delete', {
         method: 'POST',
-        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids }),
-      }).then((r) => {
-        if (!r.ok) throw new Error('Delete failed');
-        return r.json();
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['documents'] });

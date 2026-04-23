@@ -12,11 +12,6 @@
       "cache": false,
       "persistent": true
     },
-    "test": {
-      "dependsOn": ["^build"],
-      "inputs": ["src/**", "tests/**", "*.test.*", "vitest.config.*", "tsconfig.json", "package.json"],
-      "outputs": ["coverage/**"]
-    },
     "lint": {
       "dependsOn": [],
       "inputs": ["src/**", "tests/**", "biome.json", "package.json"],

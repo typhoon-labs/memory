@@ -1,11 +1,11 @@
 import { createRootRoute, createRoute } from '@tanstack/react-router';
-import { AuthGate } from '@typhoon/ui';
-import { ChatPage } from '../components/pages/chat.js';
-import { DashboardPage } from '../components/pages/dashboard.js';
-import { DocumentsPage } from '../components/pages/documents.js';
-import { DeskLoginPage } from '../components/pages/login.js';
-import { SearchPage } from '../components/pages/search.js';
-import { DeskShell } from '../layouts/desk-shell.js';
+import { ChatPage } from '../components/pages/chat';
+import { DashboardPage } from '../components/pages/dashboard';
+import { DocumentsPage } from '../components/pages/documents';
+import { DeskLoginPage } from '../components/pages/login';
+import { SearchPage } from '../components/pages/search';
+import { DeskShell } from '../layouts/desk-shell';
+import { DeskAuthGate } from './desk-auth-gate';
 
 const rootRoute = createRootRoute();
 
@@ -18,7 +18,7 @@ const loginRoute = createRoute({
 const authenticatedRoute = createRoute({
   getParentRoute: () => rootRoute,
   id: 'authenticated',
-  component: AuthGate,
+  component: DeskAuthGate,
 });
 
 const layoutRoute = createRoute({

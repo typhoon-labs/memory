@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
+  apiFetch,
   Button,
   Dialog,
   DialogContent,
@@ -50,16 +51,10 @@ export function UploadDialog({
       if (subPath.trim()) {
         formData.append('path', subPath.trim());
       }
-      const res = await fetch(`/api/v1/sync-targets/${sourceId}/upload`, {
+      return apiFetch(`/api/v1/sync-targets/${sourceId}/upload`, {
         method: 'POST',
-        credentials: 'include',
         body: formData,
       });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error ?? 'Upload failed');
-      }
-      return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['documents', { syncTargetId: sourceId }] });

@@ -1,5 +1,5 @@
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useRef } from 'react';
-import { authClient } from './auth-client.js';
+import { authClient } from './auth-client';
 
 type Session = typeof authClient.$Infer.Session.session;
 type User = typeof authClient.$Infer.Session.user;

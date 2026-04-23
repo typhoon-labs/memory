@@ -1,20 +1,19 @@
 import { useQuery } from '@tanstack/react-query';
-import { formatAbsoluteTime, formatRelativeTime, SectionLabel, StatCard, StatusBadge } from '@typhoon/ui';
+import { apiFetch, formatAbsoluteTime, formatRelativeTime, SectionLabel, StatCard, StatusBadge } from '@typhoon/ui';
 import { AlertTriangleIcon, CheckCircleIcon, FileTextIcon, LoaderIcon } from 'lucide-react';
 import { useMemo } from 'react';
-import type { Document, SyncJob, SyncTarget } from './shared.js';
-import { formatConfig, formatDuration, JOB_STATUS_MAP } from './shared.js';
+import type { Document, SyncJob, SyncTarget } from './shared';
+import { formatConfig, formatDuration, JOB_STATUS_MAP } from './shared';
 
 export function OverviewTab({ sourceId, target }: { sourceId: string; target: SyncTarget }) {
   const { data: docs } = useQuery<Document[]>({
     queryKey: ['documents', { syncTargetId: sourceId }],
-    queryFn: () =>
-      fetch(`/api/v1/documents?syncTargetId=${sourceId}`, { credentials: 'include' }).then((r) => r.json()),
+    queryFn: () => apiFetch(`/api/v1/documents?syncTargetId=${sourceId}`),
   });
 
   const { data: jobs } = useQuery<SyncJob[]>({
     queryKey: ['sync-targets', sourceId, 'jobs'],
-    queryFn: () => fetch(`/api/v1/sync-targets/${sourceId}/jobs`, { credentials: 'include' }).then((r) => r.json()),
+    queryFn: () => apiFetch(`/api/v1/sync-targets/${sourceId}/jobs`),
   });
 
   const stats = useMemo(() => {

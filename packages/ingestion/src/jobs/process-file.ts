@@ -1,15 +1,17 @@
 import type { Db } from '@typhoon/db';
 import { documents, syncTargets } from '@typhoon/db';
+import type { PgVector } from '@typhoon/db/drivers/pg';
 import { createAppLogger } from '@typhoon/logger';
-import type { PgVector } from '@typhoon/pg';
 import type { Job } from 'bullmq';
 import { UnrecoverableError } from 'bullmq';
 import { eq } from 'drizzle-orm';
-import { deleteDocumentVectors, processFile } from '../pipeline.js';
-import { getProvider } from '../providers/index.js';
-import { asUnrecoverable, isUnrecoverable } from '../util/classify-error.js';
-import { withTimeout } from '../util/with-timeout.js';
-import type { ProcessFileJobData } from './queues.js';
+import { deleteDocumentVectors, processFile } from '../pipeline';
+import { getProvider } from '../providers/index';
+import { asUnrecoverable, isUnrecoverable } from '../util/classify-error';
+import { withTimeout } from '../util/with-timeout';
+import { isSyncJobCancelled } from './check-cancelled';
+import { incrementSyncJobCompletion } from './complete-sync-job';
+import type { ProcessFileJobData } from './queues';
 
 const log = createAppLogger('process-file');
 
@@ -65,6 +67,7 @@ export async function handleProcessFileJob(job: Job<ProcessFileJobData>, db: Db,
         syncTargetId,
         sourceKey,
         onStage: setStage,
+        isCancelled: () => isSyncJobCancelled(db, job.data.syncJobId),
       },
       vectorStore,
     );
@@ -80,6 +83,8 @@ export async function handleProcessFileJob(job: Job<ProcessFileJobData>, db: Db,
         updatedAt: new Date(),
       })
       .where(eq(documents.id, documentId));
+
+    await incrementSyncJobCompletion(db, job.data.syncJobId, false);
 
     log.info('File processed', {
       documentId,
@@ -113,7 +118,7 @@ export async function handleProcessFileJob(job: Job<ProcessFileJobData>, db: Db,
   }
 }
 
-function guessMimeType(key: string): string {
+export function guessMimeType(key: string): string {
   const ext = key.slice(key.lastIndexOf('.')).toLowerCase();
   const mimeMap: Record<string, string> = {
     '.pdf': 'application/pdf',

@@ -61,9 +61,20 @@ POST /v1/search
 POST /v1/search/hybrid
 {
   "query": "How do I process a refund?",
-  "topK": 10
+  "topK": 10,
+  "minScore": 0.25,
+  "dedup": true,
+  "rerank": true
 }
 ```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `query` | string | required | Search query text |
+| `topK` | number (1-50) | 10 | Maximum candidates to retrieve |
+| `minScore` | number (0-1) | — | Discard results below threshold (applied after reranking) |
+| `dedup` | boolean | false | Deduplicate by documentId (keep highest score per document) |
+| `rerank` | boolean | false | LLM reranking for improved relevance ordering (~2-3s latency) |
 
 ### Threads
 

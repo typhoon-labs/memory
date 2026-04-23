@@ -1,8 +1,11 @@
+import { ExternalLinkIcon } from 'lucide-react';
 import type React from 'react';
 import { Children, useMemo } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
+import rehypeSlug from 'rehype-slug';
 import remarkGfm from 'remark-gfm';
-import { CsvTableViewer } from './CsvTableViewer.js';
+import { CsvTableViewer } from './CsvTableViewer';
+import { ExternalLinkDialog } from './ExternalLinkDialog';
 
 // ── Tabular MIME detection ──────────────────────────────────────
 
@@ -32,7 +35,7 @@ function highlightText(text: string, terms: string[]): React.ReactNode {
   while ((m = pattern.exec(text)) !== null) {
     if (m.index > lastIndex) nodes.push(text.slice(lastIndex, m.index));
     nodes.push(
-      <mark key={`h${m.index}`} className="search-match rounded-sm bg-primary/10 text-inherit">
+      <mark key={`h${m.index}`} className="search-match rounded-sm bg-yellow-200/60 text-inherit dark:bg-yellow-500/30">
         {m[0]}
       </mark>,
     );
@@ -57,45 +60,94 @@ function highlightChildren(children: React.ReactNode, terms: string[]): React.Re
  * Build the react-markdown `Components` map used by document content
  * rendering. Pass `terms` to enable inline search-match highlighting; an
  * empty array short-circuits the wrapping with no overhead.
+ *
+ * @param terms - Search terms to highlight inline
+ * @param onAnchorClick - Callback for in-document anchor links (e.g. ToC navigation)
  */
-export function createDocumentMarkdownComponents(terms: string[] = []): Components {
+export function createDocumentMarkdownComponents(
+  terms: string[] = [],
+  onAnchorClick?: (id: string) => void,
+): Components {
   return {
-    h1: ({ children }) => (
-      <h1 className="mt-6 border-b border-border pb-2 text-lg font-semibold first:mt-0">
+    h1: ({ children, id }) => (
+      <h1 id={id} className="mt-6 mb-2 text-xl font-semibold leading-tight first:mt-0">
         {highlightChildren(children, terms)}
       </h1>
     ),
-    h2: ({ children }) => (
-      <h2 className="mt-6 text-base font-semibold first:mt-0">{highlightChildren(children, terms)}</h2>
+    h2: ({ children, id }) => (
+      <h2 id={id} className="mt-5 mb-1.5 text-lg font-semibold leading-tight first:mt-0">
+        {highlightChildren(children, terms)}
+      </h2>
     ),
-    h3: ({ children }) => (
-      <h3 className="mt-4 text-sm font-semibold first:mt-0">{highlightChildren(children, terms)}</h3>
+    h3: ({ children, id }) => (
+      <h3 id={id} className="mt-4 mb-1 text-base font-semibold leading-snug first:mt-0">
+        {highlightChildren(children, terms)}
+      </h3>
     ),
-    h4: ({ children }) => <h4 className="mt-3 text-sm font-medium first:mt-0">{highlightChildren(children, terms)}</h4>,
-    h5: ({ children }) => (
-      <h5 className="mt-3 text-[13px] font-medium first:mt-0">{highlightChildren(children, terms)}</h5>
+    h4: ({ children, id }) => (
+      <h4 id={id} className="mt-3 mb-0.5 text-sm font-semibold first:mt-0">
+        {highlightChildren(children, terms)}
+      </h4>
     ),
-    h6: ({ children }) => (
-      <h6 className="mt-3 text-[13px] font-medium text-muted-foreground first:mt-0">
+    h5: ({ children, id }) => (
+      <h5 id={id} className="mt-3 text-sm font-medium first:mt-0">
+        {highlightChildren(children, terms)}
+      </h5>
+    ),
+    h6: ({ children, id }) => (
+      <h6 id={id} className="mt-3 text-sm font-medium text-muted-foreground first:mt-0">
         {highlightChildren(children, terms)}
       </h6>
     ),
     p: ({ children }) => (
-      <p className="mt-2 text-[13px] leading-relaxed first:mt-0">{highlightChildren(children, terms)}</p>
+      <p className="my-2 text-[13px] leading-relaxed break-words first:mt-0 last:mb-0">
+        {highlightChildren(children, terms)}
+      </p>
     ),
-    li: ({ children }) => <li className="mt-1 text-[13px] leading-relaxed">{highlightChildren(children, terms)}</li>,
-    ul: ({ children }) => <ul className="mt-2 list-disc space-y-0.5 pl-5 first:mt-0">{children}</ul>,
-    ol: ({ children }) => <ol className="mt-2 list-decimal space-y-0.5 pl-5 first:mt-0">{children}</ol>,
+    li: ({ children }) => (
+      <li className="pl-4 text-[13px] leading-relaxed break-words [&>p]:inline">
+        {highlightChildren(children, terms)}
+      </li>
+    ),
+    ul: ({ children }) => (
+      <ul className="my-2 list-inside list-disc space-y-0.5 [&_ul]:my-1 [&_ul]:list-[circle]">{children}</ul>
+    ),
+    ol: ({ children }) => <ol className="my-2 list-inside list-decimal space-y-0.5 [&_ol]:my-1">{children}</ol>,
     blockquote: ({ children }) => (
-      <blockquote className="mt-2 border-l-2 border-primary/30 pl-3 text-[13px] text-muted-foreground first:mt-0">
+      <blockquote className="my-3 rounded-r border-l-[3px] border-border bg-muted px-4 py-2 text-[13px] italic text-muted-foreground">
         {children}
       </blockquote>
     ),
-    a: ({ href, children }) => (
-      <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2">
-        {highlightChildren(children, terms)}
-      </a>
-    ),
+    a: ({ href, children }) => {
+      const isAnchor = href?.startsWith('#');
+
+      // Anchor link — scroll within the document viewer
+      if (isAnchor && href) {
+        const target = href.slice(1);
+        const handleClick = (e: React.MouseEvent) => {
+          e.preventDefault();
+          onAnchorClick?.(target);
+        };
+        return (
+          <a href={href} onClick={handleClick} className="text-primary underline underline-offset-2 hover:opacity-80">
+            {highlightChildren(children, terms)}
+          </a>
+        );
+      }
+
+      // External link — show confirmation dialog
+      return (
+        <ExternalLinkDialog href={href ?? '#'}>
+          <button
+            type="button"
+            className="inline cursor-pointer text-primary underline underline-offset-2 hover:opacity-80"
+          >
+            {highlightChildren(children, terms)}
+            <ExternalLinkIcon className="ml-0.5 mb-0.5 inline size-3 opacity-60" />
+          </button>
+        </ExternalLinkDialog>
+      );
+    },
     code: ({ className, children }) => {
       if (className?.includes('language-')) {
         return <code className={className}>{children}</code>;
@@ -105,23 +157,27 @@ export function createDocumentMarkdownComponents(terms: string[] = []): Componen
       );
     },
     pre: ({ children }) => (
-      <pre className="mt-3 overflow-x-auto rounded-md border border-border bg-muted/50 p-3 font-mono text-[0.8rem] leading-relaxed first:mt-0">
+      <pre className="my-3 overflow-x-auto rounded-xl border border-border bg-card p-4 font-mono text-[0.8125rem] leading-relaxed first:mt-0 [&>code]:bg-transparent [&>code]:p-0 [&>code]:rounded-none [&>code]:text-inherit">
         {children}
       </pre>
     ),
     table: ({ children }) => (
-      <div className="mt-3 overflow-x-auto rounded-md border border-border first:mt-0">
-        <table className="w-full text-[13px]">{children}</table>
+      <div className="my-4 overflow-x-auto rounded-lg border border-border">
+        <table className="w-full border-collapse text-sm">{children}</table>
       </div>
     ),
-    thead: ({ children }) => <thead className="border-b border-border bg-muted/50">{children}</thead>,
+    thead: ({ children }) => <thead className="bg-muted">{children}</thead>,
     th: ({ children }) => (
-      <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">
+      <th className="whitespace-nowrap border-r border-border px-4 py-2 text-left text-[0.8125rem] font-semibold last:border-r-0">
         {highlightChildren(children, terms)}
       </th>
     ),
-    td: ({ children }) => <td className="border-t border-border px-3 py-2">{highlightChildren(children, terms)}</td>,
-    hr: () => <hr className="my-4 border-border" />,
+    td: ({ children }) => (
+      <td className="border-t border-r border-border px-4 py-2 text-sm last:border-r-0">
+        {highlightChildren(children, terms)}
+      </td>
+    ),
+    hr: () => <hr className="my-6 border-t border-border" />,
     strong: ({ children }) => <strong className="font-semibold">{highlightChildren(children, terms)}</strong>,
     em: ({ children }) => <em>{highlightChildren(children, terms)}</em>,
     del: ({ children }) => <del className="text-muted-foreground">{highlightChildren(children, terms)}</del>,
@@ -137,6 +193,8 @@ export interface DocumentContentViewerProps {
   mimeType: string | null | undefined;
   /** Optional search terms to highlight inline. Pass `[]` for no highlighting. */
   searchTerms?: string[];
+  /** Callback when an in-document anchor link is clicked (e.g. ToC navigation). */
+  onAnchorClick?: (id: string) => void;
 }
 
 /**
@@ -145,15 +203,18 @@ export interface DocumentContentViewerProps {
  * the shared style overrides. Both paths support inline search-term
  * highlighting via the optional `searchTerms` prop.
  */
-export function DocumentContentViewer({ text, mimeType, searchTerms = [] }: DocumentContentViewerProps) {
-  const components = useMemo(() => createDocumentMarkdownComponents(searchTerms), [searchTerms]);
+export function DocumentContentViewer({ text, mimeType, searchTerms = [], onAnchorClick }: DocumentContentViewerProps) {
+  const components = useMemo(
+    () => createDocumentMarkdownComponents(searchTerms, onAnchorClick),
+    [searchTerms, onAnchorClick],
+  );
 
   if (isTabularMime(mimeType)) {
     return <CsvTableViewer text={text} searchTerms={searchTerms} />;
   }
 
   return (
-    <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+    <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSlug]} components={components}>
       {text}
     </ReactMarkdown>
   );

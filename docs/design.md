@@ -5,9 +5,9 @@
 > - **CopilotKit / AG-UI** was not adopted. Chat uses AI SDK React (`@ai-sdk/react` useChat) with Mastra `chatRoute` (SSE).
 > - **OpenTelemetry** frontend instrumentation was not implemented.
 > - **PDF parsing** uses `unpdf`, not `pdf-parse-new`.
-> - **`@mastra/pg`** was replaced by a custom `@typhoon/pg` package (see `packages/pg/DEVIATIONS.md`).
-> - **Additional packages** were created: `@typhoon/ai`, `@typhoon/pg`, `@typhoon/logger`, `@typhoon/chat`.
-> - **Admin pages** not yet built: Conversations, API Keys, Settings.
+> - **`@mastra/pg`** functionality was merged into `@typhoon/db` (see `packages/db/src/drivers/pg/`).
+> - **Additional packages** were created: `@typhoon/ai`, `@typhoon/logger`, `@typhoon/chat`.
+> - **Admin pages** partially built. Done: Reviews, Datasets, Experiments, Scorers, Traces, Queues. Not yet built: Conversations, API Keys, Settings.
 > - **Reports queue** (`feedback-digest` job) was not implemented.
 >
 > For current documentation, see [Architecture](architecture.md) and [README](../README.md).
@@ -19,6 +19,8 @@ Typhoon is a **RAG-powered customer service chatbot** that answers questions fro
 **Deployment model:** Everything is built and deployed together. The customer-facing widget is gated behind **deployment-level API keys** — each widget deployment (e.g., "Marketing Website", "Help Center") gets its own API key. No key = widget doesn't work. Admin creates keys per deployment for tracking, rate-limiting, and revocation control.
 
 **Architecture philosophy:** Use Mastra's built-in capabilities wherever possible. Only write custom code for gaps Mastra doesn't cover.
+
+**Reference architecture:** Draco (`/mnt/data/rocket/Projects/Playground/Draco/draco`) — patterns for project structure and conventions.
 
 ---
 
@@ -79,7 +81,7 @@ Typhoon is a **RAG-powered customer service chatbot** that answers questions fro
 ```
 typhoon/
 ├── apps/
-│   ├── server/                  # Mastra instance + custom routes + BullMQ workers
+│   ├── api/                     # Mastra instance + custom routes (enqueues jobs)
 │   │   └── src/
 │   │       ├── index.ts         # Mastra instance (agents, storage, vector, routes)
 │   │       ├── routes/          # Custom API routes via registerApiRoute
@@ -87,7 +89,9 @@ typhoon/
 │   │       │   ├── documents.ts
 │   │       │   ├── feedback.ts
 │   │       │   └── widget.ts
-│   │       └── workers.ts       # BullMQ worker startup
+│   │       └── queue.ts         # BullMQ queue producers + SSE event bus
+│   ├── worker/                  # BullMQ job consumer (headless)
+│   ├── scheduler/               # Cron scheduler (enqueues sync scans)
 │   │
 │   ├── desk/                    # Rep workspace (search + chat hybrid)
 │   ├── admin/                   # Admin dashboard
@@ -137,7 +141,7 @@ Layer 1:  db, storage                    ← Infrastructure clients
 Layer 0:  config, types                  ← Foundations
 ```
 
-`apps/server` composes packages — it imports agents, ingestion jobs, and DB schemas, then wires them into the Mastra instance.
+`apps/api` composes packages — it imports agents, ingestion jobs, and DB schemas, then wires them into the Mastra instance. `apps/worker` consumes BullMQ jobs and `apps/scheduler` manages cron-based sync scheduling.
 
 ---
 
@@ -156,7 +160,7 @@ Customer → Widget (API key gated) → Same Mastra Agent → Same flow
 ## 5. Mastra Instance Configuration
 
 ```typescript
-// apps/server/src/index.ts
+// apps/api/src/index.ts
 import { Mastra } from '@mastra/core';
 import { PgStore, PgVector } from '@mastra/pg';
 import { Memory } from '@mastra/memory';
@@ -572,9 +576,11 @@ Utilities:
 6. Docker Compose (PostgreSQL + pgvector, Redis, MinIO; Dex as optional profile for OIDC testing)
 
 ### Phase 2 — Mastra + Ingestion (Layer 2)
-1. `apps/server` — Mastra instance: PgStore, PgVector, Memory config, PgVector index creation
+1. `apps/api` — Mastra instance: PgStore, PgVector, Memory config, PgVector index creation
 2. `@typhoon/ingestion` — PDF/DOCX/XLSX parsers, MDocument pipeline, BullMQ sync jobs
-3. Custom routes in `apps/server`: sync target management, document browsing
+3. `apps/worker` — BullMQ job consumer for ingestion pipeline
+4. `apps/scheduler` — Cron scheduler for periodic sync scans
+5. Custom routes in `apps/api`: sync target management, document browsing
 
 ### Phase 3 — Agents + Chat
 1. `@typhoon/agents` — Knowledge Agent with `createVectorQueryTool`, Supervisor Agent

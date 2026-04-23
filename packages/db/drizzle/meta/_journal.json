@@ -64,6 +64,27 @@
       "when": 1775500000000,
       "tag": "0008_rename_s3_to_source",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1776891504783,
+      "tag": "0009_lively_raider",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1776892124082,
+      "tag": "0010_quiet_morph",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1776900000000,
+      "tag": "0011_scoring_indexes",
+      "breakpoints": true
     }
   ]
 }

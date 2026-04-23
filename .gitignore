@@ -17,7 +17,6 @@ out/
 .env.local
 .env.*.local
 !.env.example
-!infra/docker/.env
 
 # Test coverage
 coverage/

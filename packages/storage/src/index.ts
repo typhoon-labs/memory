@@ -1,4 +1,4 @@
-export type { ListPrefixResult, S3Object } from './client.js';
+export type { ListPrefixResult, S3Object } from './client';
 export {
   copyObject,
   createS3Client,
@@ -7,4 +7,4 @@ export {
   listObjects,
   listObjectsByPrefix,
   uploadObject,
-} from './client.js';
+} from './client';

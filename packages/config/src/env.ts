@@ -68,7 +68,8 @@ export const embeddingSchema = z.object({
   EMBEDDING_BASE_URL: z.string().url(),
   EMBEDDING_API_KEY: optionalString(''),
   EMBEDDING_MODEL: optionalString('amazon.titan-embed-text-v2:0'),
-  EMBEDDING_DIMENSION: z.coerce.number().int().default(1024),
+  EMBEDDING_DIMENSION: z.coerce.number().int().positive().default(1024),
+  EMBEDDING_MAX_CHUNK_CHARS: z.coerce.number().int().positive().default(24_000),
 });
 
 export type EmbeddingEnv = z.infer<typeof embeddingSchema>;
@@ -98,6 +99,18 @@ export const oidcSchema = z.object({
 export type OidcEnv = z.infer<typeof oidcSchema>;
 
 // =============================================================================
+// OpenTelemetry
+// =============================================================================
+
+export const otelSchema = z.object({
+  OTEL_EXPORTER_OTLP_ENDPOINT: optionalUrl().default('http://localhost:4318'),
+  OTEL_SERVICE_NAME: z.string().optional(),
+  OTEL_SERVICE_VERSION: z.string().optional(),
+});
+
+export type OtelEnv = z.infer<typeof otelSchema>;
+
+// =============================================================================
 // Logging
 // =============================================================================
 
@@ -119,6 +132,21 @@ export const serverSchema = z.object({
 export type ServerEnv = z.infer<typeof serverSchema>;
 
 // =============================================================================
+// Scoring / Evals
+// =============================================================================
+
+export const scoringSchema = z.object({
+  SCORING_ENABLED: z.enum(['true', 'false', '0', '1']).optional().default('true'),
+  LLM_SCORING_MODEL: optionalString('claude-haiku-4-5-20251001'),
+  SCORING_SAMPLE_RATE: z.coerce.number().min(0).max(1).default(1.0),
+  SCORING_CONCURRENCY: z.coerce.number().int().min(1).default(5),
+  SPAN_RETENTION_DAYS: z.coerce.number().int().min(1).default(90),
+  SCORE_RETENTION_DAYS: z.coerce.number().int().min(0).default(0),
+});
+
+export type ScoringEnv = z.infer<typeof scoringSchema>;
+
+// =============================================================================
 // Combined
 // =============================================================================
 
@@ -129,10 +157,18 @@ export const envSchema = databaseSchema
   .merge(embeddingSchema)
   .merge(authSchema)
   .merge(oidcSchema)
+  .merge(otelSchema)
   .merge(logSchema)
-  .merge(serverSchema);
+  .merge(serverSchema)
+  .merge(scoringSchema);
 
 export type Env = z.infer<typeof envSchema>;
+
+/** Returns `true` unless `SCORING_ENABLED` is explicitly `'false'` or `'0'`. */
+export function isScoringEnabled(env?: Record<string, string | undefined>): boolean {
+  const val = (env ?? process.env).SCORING_ENABLED;
+  return val === undefined || (val !== '0' && val !== 'false');
+}
 
 export function validateEnv(env: Record<string, string | undefined> = process.env): Env {
   const result = envSchema.safeParse(env);

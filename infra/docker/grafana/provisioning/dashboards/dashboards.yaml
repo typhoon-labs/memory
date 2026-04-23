@@ -1,0 +1,21 @@
+apiVersion: 1
+
+providers:
+  # Typhoon dashboards
+  - name: Typhoon
+    type: file
+    disableDeletion: false
+    editable: true
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: true
+
+  # Disable the default otel-lgtm dashboards by overriding the provider
+  # with an empty path. The default provider name in otel-lgtm is "default".
+  - name: default
+    type: file
+    disableDeletion: true
+    editable: false
+    options:
+      path: /var/lib/grafana/dashboards/disabled

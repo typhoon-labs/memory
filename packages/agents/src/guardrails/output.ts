@@ -19,7 +19,7 @@ import type { createGuardrailModel } from '@typhoon/ai';
  * This implementation batches text-deltas ourselves and defers any non-text
  * part that collides with a flush so it is emitted on the next call.
  */
-function createFixedBatchPartsProcessor(options: { batchSize: number }) {
+export function createFixedBatchPartsProcessor(options: { batchSize: number }) {
   const inner = new BatchPartsProcessor(options);
   return {
     ...inner,

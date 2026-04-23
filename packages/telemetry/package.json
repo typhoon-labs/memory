@@ -1,0 +1,34 @@
+{
+  "name": "@typhoon/telemetry",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./instrumentation": "./src/instrumentation.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@appsignal/opentelemetry-instrumentation-bullmq": "^0.8.0",
+    "@hono/otel": "^1.1.1",
+    "@mastra/observability": "^1.0.0",
+    "@mastra/otel-bridge": "^1.0.0",
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/core": "^1.30.0",
+    "@opentelemetry/exporter-metrics-otlp-proto": "^0.57.0",
+    "@opentelemetry/exporter-trace-otlp-proto": "^0.57.0",
+    "@opentelemetry/instrumentation-ioredis": "^0.46.0",
+    "@opentelemetry/instrumentation-pg": "^0.51.0",
+    "@opentelemetry/resources": "^1.30.0",
+    "@opentelemetry/sdk-metrics": "^1.30.0",
+    "@opentelemetry/sdk-node": "^0.57.0",
+    "@opentelemetry/sdk-trace-base": "^1.30.0",
+    "@opentelemetry/semantic-conventions": "^1.28.0",
+    "hono": "^4.12.0"
+  },
+  "devDependencies": {
+    "@typhoon/config": "workspace:*"
+  }
+}

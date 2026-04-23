@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { cn } from '../lib/utils.js';
+import { cn } from '../lib/utils';
 
 export interface EmptyStateProps {
   /** Optional icon to display above the title. */

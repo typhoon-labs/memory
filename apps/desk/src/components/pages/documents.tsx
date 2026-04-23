@@ -1,6 +1,7 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ColumnDef } from '@typhoon/ui';
 import {
+  apiFetch,
   cn,
   DataTable,
   EmptyState,
@@ -19,8 +20,9 @@ import {
   StatusBadge,
 } from '@typhoon/ui';
 import { DatabaseIcon, FileTextIcon } from 'lucide-react';
-import { useMemo, useState } from 'react';
-import { DocumentViewerPanel } from './document-viewer-panel.js';
+import { useCallback, useMemo, useState } from 'react';
+import { documentContentQuery, documentParsedQuery } from '../../lib/document-queries';
+import { DocumentViewerPanel } from './document-viewer-panel';
 
 interface Document {
   id: string;
@@ -78,10 +80,19 @@ export function DocumentsPage() {
   const [sourceFilter, setSourceFilter] = useState<string>('__all__');
   const [typeFilter, setTypeFilter] = useState<string>('__all__');
   const [textFilter, setTextFilter] = useState<string>('');
+  const queryClient = useQueryClient();
+
+  const prefetchDocument = useCallback(
+    (doc: Document) => {
+      queryClient.prefetchQuery(documentContentQuery(doc.id));
+      queryClient.prefetchQuery(documentParsedQuery(doc.id));
+    },
+    [queryClient],
+  );
 
   const { data: docs, isLoading: docsLoading } = useQuery<Document[]>({
     queryKey: ['documents'],
-    queryFn: () => fetch('/api/v1/documents', { credentials: 'include' }).then((r) => r.json()),
+    queryFn: () => apiFetch<Document[]>('/api/v1/documents'),
     refetchInterval: (query) => {
       const data = query.state.data;
       return data?.some((d) => d.status === 'pending' || d.status === 'processing') ? 3000 : false;
@@ -90,7 +101,7 @@ export function DocumentsPage() {
 
   const { data: syncTargets, isLoading: targetsLoading } = useQuery<SyncTargetRecord[]>({
     queryKey: ['sync-targets'],
-    queryFn: () => fetch('/api/v1/sync-targets', { credentials: 'include' }).then((r) => r.json()),
+    queryFn: () => apiFetch<SyncTargetRecord[]>('/api/v1/sync-targets'),
     staleTime: 60_000,
   });
 
@@ -207,6 +218,7 @@ export function DocumentsPage() {
               enableSorting
               getRowId={(row) => row.id}
               onRowClick={(doc) => setSelectedDocId(doc.id)}
+              onRowHover={prefetchDocument}
               showRowCount
               toolbar={
                 <div className="flex flex-wrap items-center gap-2">

@@ -1,7 +1,7 @@
 import { SectionLabel, Sheet, SheetContent, SheetHeader, SheetTitle, StatusBadge } from '@typhoon/ui';
 import { useEffect, useState } from 'react';
-import type { QueueJob } from './shared.js';
-import { formatJobDuration, formatTimestamp, isStageProgress, JOB_STATE_BADGE_MAP } from './shared.js';
+import type { QueueJob } from './shared';
+import { formatJobDuration, formatTimestamp, isStageProgress, JOB_STATE_BADGE_MAP } from './shared';
 
 function formatElapsed(ms: number): string {
   if (ms < 1000) return `${ms}ms`;

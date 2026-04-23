@@ -5,27 +5,50 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  type NavGroup,
   type NavItem,
   useAuth,
   useSignOut,
 } from '@typhoon/ui';
 import {
+  ActivityIcon,
+  ClipboardCheckIcon,
+  DatabaseIcon,
   FileTextIcon,
+  FlaskConicalIcon,
   FolderSyncIcon,
+  GaugeIcon,
   LayoutDashboardIcon,
   ListChecksIcon,
   LogOutIcon,
-  MessageSquareQuoteIcon,
 } from 'lucide-react';
-import { useQueueEvents } from '../lib/use-queue-events.js';
+import { useQueueEvents } from '../lib/use-queue-events';
 
-const NAV_GROUPS = [
+const NAV_GROUPS: NavGroup[] = [
   {
+    label: 'Overview',
+    items: [{ label: 'Dashboard', href: '/', icon: <LayoutDashboardIcon /> }],
+  },
+  {
+    label: 'Content',
     items: [
-      { label: 'Dashboard', href: '/', icon: <LayoutDashboardIcon /> },
       { label: 'Sync Sources', href: '/sources', icon: <FolderSyncIcon /> },
       { label: 'Documents', href: '/documents', icon: <FileTextIcon /> },
-      { label: 'Feedback', href: '/feedback', icon: <MessageSquareQuoteIcon /> },
+    ],
+  },
+  {
+    label: 'Quality',
+    items: [
+      { label: 'Reviews', href: '/reviews', icon: <ClipboardCheckIcon /> },
+      { label: 'Datasets', href: '/datasets', icon: <DatabaseIcon /> },
+      { label: 'Experiments', href: '/experiments', icon: <FlaskConicalIcon /> },
+      { label: 'Scorers', href: '/scorers', icon: <GaugeIcon /> },
+    ],
+  },
+  {
+    label: 'Operations',
+    items: [
+      { label: 'Traces', href: '/traces', icon: <ActivityIcon /> },
       { label: 'Queues', href: '/queues', icon: <ListChecksIcon /> },
     ],
   },

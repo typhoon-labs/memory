@@ -99,17 +99,76 @@ await vectorStore.upsert({
 
 ## Search
 
-The Knowledge Agent uses Mastra's `createVectorQueryTool` for semantic search:
+The Knowledge Agent has two search tools:
+
+### Hybrid Search (default)
+
+Combines BM25 keyword matching with vector similarity using weighted Reciprocal Rank Fusion (RRF), followed by optional deduplication, LLM reranking, and score filtering via the shared `refineResults` pipeline:
 
 ```typescript
-const searchKnowledgeBase = createVectorQueryTool({
-  vectorStoreName: 'pgVector',
+// 1. hybridQuery: BM25 + vector → weighted RRF (vector 0.7, FTS 0.3)
+const results = await vectorStore.hybridQuery({
   indexName: 'knowledge_base',
-  model: createEmbeddingModel(),
+  queryText,
+  queryVector: embedding,
+  topK: 15,           // candidates before refinement
+  vectorWeight: 0.7,  // vector similarity dominates
+  ftsWeight: 0.3,     // keyword matching boosts exact terms
+});
+
+// 2. Refine: dedup → rerank → minScore filter
+const refined = await refineResults(results, queryText, {
+  minScore: 0.25,
+  dedupKey: 'chunkId',
+  reranker: (r, q) => rerank(r, q, rerankerModel, {
+    weights: { semantic: 0.5, vector: 0.3, position: 0.2 },
+    topK: 10,
+  }),
 });
 ```
 
-This tool is automatically invoked by the agent when a user asks a question. Results include the matched text, relevance score, and source metadata.
+### Shared Retrieval Pipeline (`refineResults`)
+
+**Package:** `packages/db/src/drivers/pg/retrieval.ts`
+
+Both the agent search tools and the `/v1/search/hybrid` API endpoint use `refineResults` for post-query processing. The pipeline stages run in order, each independently optional:
+
+1. **Dedup** by metadata key (keeps highest-scoring entry per key)
+2. **Rerank** via LLM callback (caller binds model + options)
+3. **minScore filter** (applied last — RRF scores are small fractions; reranked scores are normalized 0-1)
+
+| Consumer | dedupKey | reranker | minScore |
+|----------|----------|----------|----------|
+| Agent hybrid tool | `chunkId` | yes | 0.25 |
+| Search API (precise) | `documentId` | yes | 0.25 |
+| Search API (default) | — | — | — |
+
+### Graph Search
+
+Uses `createGraphRAGTool` from `@mastra/rag` for relationship and comparison queries across documents.
+
+### Search Pipeline
+
+The `searchKnowledge` wrapper tool orchestrates the full pipeline:
+
+1. Knowledge agent searches (up to 7 steps, `toolChoice: auto`)
+2. Results are deduped by chunk ID (highest score wins)
+3. Filtered: score >= 0.25, sorted by score, capped at 10 chunks
+4. Grouped by document for hierarchical citation indices (`[Source: N.M]`)
+5. Second LLM call generates a cited response
+6. Post-processing: only cited chunks are kept, display indices renumbered sequentially
+7. Graph tool IDs (numeric node indices) resolved to real vector store chunk IDs
+
+### Citation Storage & Hydration
+
+Messages store minimal `_chunkSources` references (`{ chunkId, displayIndex }` only) to reduce DB size and LLM token overhead on conversation replay. Full metadata (title, section, documentId, etc.) is hydrated from the vector store when a thread is loaded via `hydrateChunkSources()` in the threads API route.
+
+Key files:
+- `packages/db/src/drivers/pg/strip-chunks.ts` — strips metadata before DB write
+- `apps/api/src/routes/hydrate-chunks.ts` — batch-fetches metadata on thread load
+- `packages/db/src/drivers/pg/vector.ts` (`getChunksByIds`) — vector store lookup
+
+Each chunk source is tagged with `searchTool` (hybrid or graph) for observability. Debug logging captures tool selection, raw/filtered counts, and score distributions.
 
 ## Database Tables
 

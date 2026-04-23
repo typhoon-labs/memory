@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import {
+  apiFetch,
   Button,
   LoadingSpinner,
   PageHeader,
@@ -16,10 +17,11 @@ import {
   TabsTrigger,
 } from '@typhoon/ui';
 import { ChevronRightIcon, PauseIcon, PlayIcon } from 'lucide-react';
-import { JobsTab } from './queue-detail/jobs-tab.js';
-import { OverviewTab } from './queue-detail/overview-tab.js';
-import type { JobState, QueueSummary } from './queue-detail/shared.js';
-import { JOB_STATES } from './queue-detail/shared.js';
+import { FailedJobsTab } from './queue-detail/failed-jobs-tab';
+import { JobsTab } from './queue-detail/jobs-tab';
+import { OverviewTab } from './queue-detail/overview-tab';
+import type { JobState, QueueSummary } from './queue-detail/shared';
+import { JOB_STATES } from './queue-detail/shared';
 
 export function QueueDetailPage() {
   const { queueName } = useParams({ strict: false }) as { queueName: string };
@@ -28,7 +30,7 @@ export function QueueDetailPage() {
 
   const { data: queues, isLoading } = useQuery<QueueSummary[]>({
     queryKey: ['queues'],
-    queryFn: () => fetch('/api/v1/queues', { credentials: 'include' }).then((r) => r.json()),
+    queryFn: () => apiFetch('/api/v1/queues'),
     refetchInterval: 60_000,
   });
 
@@ -44,20 +46,12 @@ export function QueueDetailPage() {
   }
 
   const pauseMutation = useMutation({
-    mutationFn: () =>
-      fetch(`/api/v1/queues/${queueName}/pause`, { method: 'POST', credentials: 'include' }).then((r) => {
-        if (!r.ok) throw new Error('Pause failed');
-        return r.json();
-      }),
+    mutationFn: () => apiFetch(`/api/v1/queues/${queueName}/pause`, { method: 'POST' }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['queues'] }),
   });
 
   const resumeMutation = useMutation({
-    mutationFn: () =>
-      fetch(`/api/v1/queues/${queueName}/resume`, { method: 'POST', credentials: 'include' }).then((r) => {
-        if (!r.ok) throw new Error('Resume failed');
-        return r.json();
-      }),
+    mutationFn: () => apiFetch(`/api/v1/queues/${queueName}/resume`, { method: 'POST' }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['queues'] }),
   });
 
@@ -126,6 +120,7 @@ export function QueueDetailPage() {
               <TabsList>
                 <TabsTrigger value="overview">Overview</TabsTrigger>
                 <TabsTrigger value="jobs">Jobs</TabsTrigger>
+                <TabsTrigger value="failed-archive">Failed Archive</TabsTrigger>
               </TabsList>
               {activeTab === 'jobs' && (
                 <Select value={jobState} onValueChange={(v) => setJobState(v as JobState)}>
@@ -147,6 +142,9 @@ export function QueueDetailPage() {
             </TabsContent>
             <TabsContent value="jobs" className="mt-4">
               <JobsTab queueName={queueName} jobState={jobState} />
+            </TabsContent>
+            <TabsContent value="failed-archive" className="mt-4">
+              <FailedJobsTab queueName={queueName} />
             </TabsContent>
           </Tabs>
         </div>

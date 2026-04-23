@@ -1,0 +1,4 @@
+# Override the default otel-lgtm dashboards with an empty provider list.
+# The default JVM, RED Metrics dashboards are not relevant to Typhoon.
+apiVersion: 1
+providers: []

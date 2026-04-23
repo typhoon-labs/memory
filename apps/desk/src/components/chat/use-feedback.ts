@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { apiFetch } from '@typhoon/ui';
 import { useCallback, useMemo } from 'react';
 
 interface FeedbackEntry {
@@ -13,11 +14,7 @@ export function useFeedback(threadId: string | undefined) {
 
   const { data: entries } = useQuery<FeedbackEntry[]>({
     queryKey: ['feedback', threadId],
-    queryFn: async () => {
-      const res = await fetch(`/api/v1/feedback?threadId=${threadId}`, { credentials: 'include' });
-      if (!res.ok) return [];
-      return res.json();
-    },
+    queryFn: () => apiFetch<FeedbackEntry[]>(`/api/v1/feedback?threadId=${threadId}`).catch(() => []),
     enabled: !!threadId,
   });
 
@@ -32,7 +29,7 @@ export function useFeedback(threadId: string | undefined) {
   }, [entries]);
 
   const mutation = useMutation({
-    mutationFn: async ({
+    mutationFn: ({
       messageId,
       rating,
       comment,
@@ -40,16 +37,12 @@ export function useFeedback(threadId: string | undefined) {
       messageId: string;
       rating: 'positive' | 'negative' | null;
       comment?: string;
-    }) => {
-      const res = await fetch('/api/v1/feedback', {
+    }) =>
+      apiFetch('/api/v1/feedback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ messageId, rating, comment }),
-      });
-      if (!res.ok) throw new Error('Failed to submit feedback');
-      return res.json();
-    },
+      }),
     onMutate: async ({ messageId, rating, comment }) => {
       // Cancel in-flight queries
       await queryClient.cancelQueries({ queryKey: ['feedback', threadId] });

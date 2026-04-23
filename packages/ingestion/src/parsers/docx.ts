@@ -1,4 +1,4 @@
-import type { ParseResult } from './registry.js';
+import type { ParseResult } from './registry';
 
 export async function parseDocx(buffer: Buffer, _filename: string): Promise<ParseResult> {
   const mammoth = await import('mammoth');

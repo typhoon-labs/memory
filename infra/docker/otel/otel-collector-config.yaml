@@ -1,0 +1,172 @@
+# =============================================================================
+# Typhoon OTel Collector (runs inside otel-lgtm)
+#
+# Consolidated collector that handles all observability signals:
+# - OTLP traces + metrics from app services (api, worker, scheduler, bifrost)
+# - PostgreSQL metrics via built-in receiver (replaces postgres-exporter)
+# - Redis metrics via built-in receiver (replaces redis-exporter)
+# - Prometheus scrape for MinIO, Bifrost, Dex (native /metrics endpoints)
+# - Docker container logs via filelog receiver (replaces promtail)
+# - LLM/queue metrics derived from spans via spanmetrics connector
+#
+# Exporters use localhost since this runs inside the otel-lgtm container
+# alongside Grafana, Prometheus, Loki, and Tempo.
+#
+# In K8s, replace with your cluster's OTel Collector / Prometheus setup.
+# =============================================================================
+
+receivers:
+  # Receive OTLP from app services (api, worker, scheduler, bifrost)
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+        cors:
+          allowed_origins:
+            - http://*
+
+  # PostgreSQL metrics (replaces postgres-exporter container)
+  postgresql:
+    endpoint: postgres:5432
+    username: typhoon
+    password: typhoon
+    databases: [typhoon]
+    collection_interval: 15s
+    tls:
+      insecure: true
+    metrics:
+      postgresql.blks_hit:
+        enabled: true
+      postgresql.blks_read:
+        enabled: true
+      postgresql.database.locks:
+        enabled: true
+      postgresql.deadlocks:
+        enabled: true
+      postgresql.sequential_scans:
+        enabled: true
+
+  # Redis metrics (replaces redis-exporter container)
+  redis:
+    endpoint: redis:6379
+    collection_interval: 15s
+    metrics:
+      redis.maxmemory:
+        enabled: true
+      redis.cmd.calls:
+        enabled: true
+      redis.cmd.usec:
+        enabled: true
+
+  # Scrape services with native Prometheus endpoints
+  prometheus:
+    config:
+      scrape_configs:
+        # Collector self-metrics (for OTel Collector dashboard)
+        - job_name: otelcol
+          scrape_interval: 10s
+          static_configs:
+            - targets: ['127.0.0.1:8888']
+
+        - job_name: minio
+          scrape_interval: 15s
+          metrics_path: /minio/v2/metrics/cluster
+          scheme: http
+          static_configs:
+            - targets: ['minio:9000']
+              labels:
+                service: minio
+
+        - job_name: bifrost
+          scrape_interval: 15s
+          metrics_path: /metrics
+          static_configs:
+            - targets: ['bifrost:8787']
+              labels:
+                service: bifrost
+
+        - job_name: dex
+          scrape_interval: 30s
+          metrics_path: /metrics
+          static_configs:
+            - targets: ['dex:5557']
+              labels:
+                service: dex
+
+  # Docker container logs (replaces promtail container)
+  filelog/docker:
+    include:
+      - /var/lib/docker/containers/*/*-json.log
+    start_at: end
+    include_file_path: true
+    operators:
+      # Parse Docker JSON log format (extracts log body, timestamp, stream)
+      - id: container-parser
+        type: container
+        format: docker
+
+connectors:
+  # Derive Prometheus metrics from span attributes automatically.
+  # Produces: calls_total, duration_milliseconds_bucket/sum/count
+  # with configurable dimensions from span attributes.
+  spanmetrics:
+    dimensions:
+      - name: gen_ai.request.model
+      - name: gen_ai.provider.name
+      - name: gen_ai.operation.name
+    histogram:
+      explicit:
+        buckets: [100, 250, 500, 1000, 2500, 5000, 10000, 30000]
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+    path: /ready
+
+processors:
+  batch:
+    send_batch_size: 1000
+    timeout: 5s
+
+exporters:
+  # All exporters target localhost — Tempo, Prometheus, and Loki run
+  # inside the same otel-lgtm container.
+  otlphttp/traces:
+    endpoint: http://127.0.0.1:4418
+    tls:
+      insecure: true
+
+  otlphttp/metrics:
+    endpoint: http://127.0.0.1:9090/api/v1/otlp
+    tls:
+      insecure: true
+
+  otlphttp/logs:
+    endpoint: http://127.0.0.1:3100/otlp
+    tls:
+      insecure: true
+
+service:
+  extensions: [health_check]
+  pipelines:
+    # App traces → Tempo + feed into spanmetrics connector
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlphttp/traces, spanmetrics]
+
+    # All metrics → Prometheus
+    # Sources: app OTLP, Prometheus scrape (minio/bifrost/dex),
+    #          spanmetrics (derived), postgresql receiver, redis receiver
+    metrics:
+      receivers: [otlp, prometheus, spanmetrics, postgresql, redis]
+      processors: [batch]
+      exporters: [otlphttp/metrics]
+
+    # Docker container logs → Loki
+    logs:
+      receivers: [filelog/docker]
+      processors: [batch]
+      exporters: [otlphttp/logs]

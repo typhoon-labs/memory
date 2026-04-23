@@ -1,4 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
+import { apiFetch } from '@typhoon/ui';
 import { useCallback, useState } from 'react';
 
 export type DragItem =
@@ -19,29 +20,19 @@ export function isDescendantOf(childPath: string, parentPath: string): boolean {
 }
 
 async function moveFile(documentId: string, newSourceKey: string): Promise<void> {
-  const res = await fetch(`/api/v1/documents/${documentId}/move`, {
+  await apiFetch(`/api/v1/documents/${documentId}/move`, {
     method: 'POST',
-    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ newSourceKey }),
   });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: 'Move failed' }));
-    throw new Error(err.error ?? 'Move failed');
-  }
 }
 
 async function moveFolder(sourceId: string, oldPath: string, newPath: string): Promise<void> {
-  const res = await fetch(`/api/v1/sync-targets/${sourceId}/folders/move`, {
+  await apiFetch(`/api/v1/sync-targets/${sourceId}/folders/move`, {
     method: 'POST',
-    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ oldPath, newPath }),
   });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: 'Move failed' }));
-    throw new Error(err.error ?? 'Move failed');
-  }
 }
 
 export function useFileMove(sourceId: string) {

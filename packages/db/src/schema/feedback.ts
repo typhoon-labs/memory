@@ -1,7 +1,7 @@
 import { index, pgEnum, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
-import { user } from './auth.js';
-import { messages } from './messages.js';
-import { threads } from './threads.js';
+import { user } from './auth';
+import { messages } from './messages';
+import { threads } from './threads';
 
 export const feedbackRatingEnum = pgEnum('feedback_rating', ['positive', 'negative']);
 

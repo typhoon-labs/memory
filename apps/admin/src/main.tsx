@@ -4,7 +4,7 @@ import { createRouter, RouterProvider } from '@tanstack/react-router';
 import { AuthProvider, ThemeProvider } from '@typhoon/ui';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { routeTree } from './routes/route-tree.js';
+import { routeTree } from './routes/route-tree';
 
 const queryClient = new QueryClient({
   defaultOptions: {

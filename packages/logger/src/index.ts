@@ -1,1 +1,1 @@
-export { createAppLogger, TyphoonLogger } from './logger.js';
+export { createAppLogger, TyphoonLogger } from './logger';

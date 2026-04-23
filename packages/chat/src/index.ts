@@ -4,34 +4,37 @@ export {
   ConversationContent,
   ConversationEmptyState,
   ConversationScrollButton,
-} from './components/ai-elements/conversation.js';
-export { Loader } from './components/ai-elements/loader.js';
+} from './components/ai-elements/conversation';
+export { Loader } from './components/ai-elements/loader';
 export {
   Message,
   MessageAction,
   MessageActions,
   MessageContent,
   MessageResponse,
-} from './components/ai-elements/message.js';
+} from './components/ai-elements/message';
 export {
   PromptInput,
   PromptInputSubmit,
   PromptInputTextarea,
-} from './components/ai-elements/prompt-input.js';
+} from './components/ai-elements/prompt-input';
 
 // Chat config
-export type { ChatConfig } from './components/chat/chat-config.js';
-export { ChatConfigProvider, useChatConfig } from './components/chat/chat-config.js';
+export type { ChatConfig } from './components/chat/chat-config';
+export { ChatConfigProvider, useChatConfig } from './components/chat/chat-config';
+
+// Citation context
+export type { CitationContextValue } from './components/chat/citation-context';
+export { CitationProvider, useCitations } from './components/chat/citation-context';
 
 // Chat components
-export type { SourceCitation } from './components/chat/source-citations.js';
-export { SourceCitations } from './components/chat/source-citations.js';
-export { StreamdownText } from './components/chat/streamdown-text.js';
-export type { ToolPart } from './components/chat/task-progress.js';
-export { TaskProgress } from './components/chat/task-progress.js';
-export { resolveToolLabel } from './components/chat/tool-labels.js';
-export { TyphoonComposer } from './components/chat/typhoon-composer.js';
-export type { ChatMessage } from './components/chat/typhoon-message.js';
-export { TyphoonMessage } from './components/chat/typhoon-message.js';
-export type { TyphoonThreadProps } from './components/chat/typhoon-thread.js';
-export { TyphoonThread } from './components/chat/typhoon-thread.js';
+export { SourceCitations } from './components/chat/source-citations';
+export { StreamdownText } from './components/chat/streamdown-text';
+export type { ToolPart } from './components/chat/task-progress';
+export { TaskProgress } from './components/chat/task-progress';
+export { resolveToolStatus } from './components/chat/tool-labels';
+export { TyphoonComposer } from './components/chat/typhoon-composer';
+export type { ChatMessage } from './components/chat/typhoon-message';
+export { TyphoonMessage } from './components/chat/typhoon-message';
+export type { TyphoonThreadProps } from './components/chat/typhoon-thread';
+export { TyphoonThread } from './components/chat/typhoon-thread';

@@ -1,18 +1,21 @@
-export type { Db } from './client.js';
-export { createDb } from './client.js';
-export { account, apikey, session, user } from './schema/auth.js';
-export { skillBlobs } from './schema/blobs.js';
-export { datasetItems, datasets, datasetVersions } from './schema/datasets.js';
-export { documents } from './schema/document.js';
-export { experimentResults, experiments } from './schema/experiments.js';
-export { feedback } from './schema/feedback.js';
-export { messages } from './schema/messages.js';
-export { aiSpans } from './schema/observability.js';
-export { resources } from './schema/resources.js';
-export { scores } from './schema/scores.js';
-export { syncJobs } from './schema/sync-job.js';
-export { syncTargets } from './schema/sync-target.js';
-export { threads } from './schema/threads.js';
+export type { Db } from './client';
+export { createDb } from './client';
+export type { DbConnection } from './connection';
+export { createConnection } from './connection';
+export { account, apikey, session, user } from './schema/auth';
+export { skillBlobs } from './schema/blobs';
+export { datasetItems, datasets, datasetVersions } from './schema/datasets';
+export { documents } from './schema/document';
+export { experimentResults, experiments } from './schema/experiments';
+export { failedJobs } from './schema/failed-job';
+export { feedback } from './schema/feedback';
+export { messages } from './schema/messages';
+export { aiSpans } from './schema/observability';
+export { resources } from './schema/resources';
+export { scores } from './schema/scores';
+export { syncJobs } from './schema/sync-job';
+export { syncTargets } from './schema/sync-target';
+export { threads } from './schema/threads';
 export {
   agents,
   agentVersions,
@@ -28,5 +31,5 @@ export {
   skillVersions,
   workspaces,
   workspaceVersions,
-} from './schema/versioned/index.js';
-export { workflowSnapshots } from './schema/workflows.js';
+} from './schema/versioned/index';
+export { workflowSnapshots } from './schema/workflows';

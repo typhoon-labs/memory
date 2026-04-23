@@ -162,3 +162,27 @@
     color: oklch(0.071 0 0);
   }
 }
+
+/* Chunk highlight — matches search page yellow highlight style */
+.chunk-highlight {
+  background-color: oklch(0.89 0.12 100 / 0.6);
+  border-radius: 2px;
+  transition: background-color 0.15s;
+}
+
+.chunk-highlight-active {
+  background-color: oklch(0.89 0.12 100 / 0.8);
+  outline: 2px solid oklch(0.8 0.15 85 / 0.7);
+  outline-offset: 1px;
+  border-radius: 2px;
+  transition: background-color 0.15s;
+}
+
+.dark .chunk-highlight {
+  background-color: oklch(0.55 0.12 85 / 0.3);
+}
+
+.dark .chunk-highlight-active {
+  background-color: oklch(0.55 0.12 85 / 0.4);
+  outline-color: oklch(0.6 0.15 85 / 0.5);
+}

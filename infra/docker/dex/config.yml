@@ -11,6 +11,9 @@ storage:
 web:
   http: 0.0.0.0:5556
 
+telemetry:
+  http: 0.0.0.0:5557
+
 oauth2:
   skipApprovalScreen: true
 
@@ -20,7 +23,6 @@ staticClients:
     secret: typhoon-secret
     redirectURIs:
       - __AUTH_URL__/v1/auth/oauth2/callback/oidc
-      - http://host.docker.internal:5172/v1/auth/oauth2/callback/oidc
 
 enablePasswordDB: true
 
@@ -29,3 +31,11 @@ staticPasswords:
     hash: '$2a$10$2b2cU8CPhOTaGrs1HRQuAueS7JTT5ZHsHSzYiFPm1leZck7Mc8T4W' # password
     username: admin
     userID: 00000000-0000-0000-0000-000000000001
+    groups:
+      - admin
+  - email: rep@typhoon.local
+    hash: '$2a$10$2b2cU8CPhOTaGrs1HRQuAueS7JTT5ZHsHSzYiFPm1leZck7Mc8T4W' # password
+    username: rep
+    userID: 00000000-0000-0000-0000-000000000002
+    groups:
+      - rep

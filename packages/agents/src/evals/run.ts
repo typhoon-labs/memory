@@ -1,7 +1,7 @@
 import type { Agent } from '@mastra/core/agent';
 import { runEvals } from '@mastra/core/evals';
 import type { MastraModelConfig } from '@mastra/core/llm';
-import { createRagScorers } from './scorers.js';
+import { createRagScorers } from './scorers';
 
 export interface EvalInput {
   /** The user question to evaluate. */

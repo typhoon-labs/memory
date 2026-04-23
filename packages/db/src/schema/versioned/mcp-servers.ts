@@ -1,5 +1,5 @@
 import { boolean, integer, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
-import { entityStatusEnum } from './agents.js';
+import { entityStatusEnum } from './agents';
 
 export const mcpServers = pgTable('mcp_servers', {
   id: uuid('id').defaultRandom().primaryKey(),

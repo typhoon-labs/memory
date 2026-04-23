@@ -1,17 +1,17 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { Button, PageHeader, StatCard } from '@typhoon/ui';
+import { apiFetch, Button, PageHeader, StatCard } from '@typhoon/ui';
 import { FileTextIcon, MessageSquareIcon, SearchIcon } from 'lucide-react';
 
 export function DashboardPage() {
   const docs = useQuery({
     queryKey: ['documents'],
-    queryFn: () => fetch('/api/v1/documents', { credentials: 'include' }).then((r) => r.json()),
+    queryFn: () => apiFetch<{ status: string }[]>('/api/v1/documents'),
   });
 
   const syncTargets = useQuery({
     queryKey: ['sync-targets'],
-    queryFn: () => fetch('/api/v1/sync-targets', { credentials: 'include' }).then((r) => r.json()),
+    queryFn: () => apiFetch<{ id: string }[]>('/api/v1/sync-targets'),
   });
 
   const readyCount = docs.data?.filter((d: { status: string }) => d.status === 'ready').length ?? 0;

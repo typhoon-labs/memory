@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { apiFetch } from '@typhoon/ui';
 
 export interface ThreadListItem {
   id: string;
@@ -23,10 +24,13 @@ interface ThreadDetailResponse extends ThreadListItem {
 export function useThreads() {
   return useQuery<ThreadListResponse>({
     queryKey: ['threads'],
-    queryFn: async () => {
-      const res = await fetch('/api/v1/threads?perPage=50', { credentials: 'include' });
-      if (!res.ok) throw new Error('Failed to fetch threads');
-      return res.json();
+    queryFn: () => apiFetch<ThreadListResponse>('/api/v1/threads?perPage=50'),
+    refetchInterval: (query) => {
+      const threads = query.state.data?.threads;
+      if (!threads) return false;
+      const twoMinutesAgo = Date.now() - 2 * 60 * 1000;
+      const hasRecentUntitled = threads.some((t) => !t.title && new Date(t.createdAt).getTime() > twoMinutesAgo);
+      return hasRecentUntitled ? 5_000 : false;
     },
   });
 }
@@ -34,11 +38,15 @@ export function useThreads() {
 export function useThread(threadId: string | undefined) {
   return useQuery<ThreadDetailResponse>({
     queryKey: ['thread', threadId],
-    queryFn: async () => {
-      const res = await fetch(`/api/v1/threads/${threadId}`, { credentials: 'include' });
-      if (!res.ok) throw new Error('Failed to fetch thread');
-      return res.json();
-    },
+    queryFn: () => apiFetch<ThreadDetailResponse>(`/api/v1/threads/${threadId}`),
     enabled: !!threadId,
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      if (!data) return false;
+      const twoMinutesAgo = Date.now() - 2 * 60 * 1000;
+      const isRecent = new Date(data.createdAt).getTime() > twoMinutesAgo;
+      const hasNoMessages = !data.messages || data.messages.length === 0;
+      return isRecent && hasNoMessages ? 5_000 : false;
+    },
   });
 }

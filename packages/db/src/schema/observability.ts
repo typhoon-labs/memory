@@ -49,5 +49,8 @@ export const aiSpans = pgTable(
     index('ai_spans_name_started_at_idx').on(table.name, table.startedAt),
     index('ai_spans_entity_type_entity_id_idx').on(table.entityType, table.entityId),
     index('ai_spans_run_id_idx').on(table.runId),
+    index('ai_spans_parent_span_id_idx').on(table.parentSpanId),
+    index('ai_spans_thread_id_idx').on(table.threadId),
+    index('ai_spans_started_at_idx').on(table.startedAt),
   ],
 );

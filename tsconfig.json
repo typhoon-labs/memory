@@ -2,8 +2,8 @@
   "compilerOptions": {
     "strict": true,
     "target": "ES2022",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
     "esModuleInterop": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
@@ -25,6 +25,8 @@
     { "path": "packages/ingestion" },
     { "path": "packages/ui" },
     { "path": "packages/chat" },
-    { "path": "apps/server" }
+    { "path": "apps/api" },
+    { "path": "apps/worker" },
+    { "path": "apps/scheduler" }
   ]
 }

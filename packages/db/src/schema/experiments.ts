@@ -2,28 +2,35 @@ import { index, integer, jsonb, pgEnum, pgTable, text, timestamp, uuid } from 'd
 
 export const experimentStatusEnum = pgEnum('experiment_status', ['pending', 'running', 'completed', 'failed']);
 
-export const experiments = pgTable('experiments', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  name: text('name'),
-  description: text('description'),
-  metadata: jsonb('metadata').$type<Record<string, unknown>>(),
-  datasetId: text('dataset_id'),
-  datasetVersion: integer('dataset_version'),
-  targetType: text('target_type').notNull(),
-  targetId: text('target_id').notNull(),
-  status: experimentStatusEnum('status').notNull(),
-  totalItems: integer('total_items').notNull().default(0),
-  succeededCount: integer('succeeded_count').notNull().default(0),
-  failedCount: integer('failed_count').notNull().default(0),
-  skippedCount: integer('skipped_count').notNull().default(0),
-  startedAt: timestamp('started_at', { withTimezone: true }),
-  completedAt: timestamp('completed_at', { withTimezone: true }),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp('updated_at', { withTimezone: true })
-    .defaultNow()
-    .notNull()
-    .$onUpdate(() => new Date()),
-});
+export const experiments = pgTable(
+  'experiments',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    name: text('name'),
+    description: text('description'),
+    metadata: jsonb('metadata').$type<Record<string, unknown>>(),
+    datasetId: text('dataset_id'),
+    datasetVersion: integer('dataset_version'),
+    targetType: text('target_type').notNull(),
+    targetId: text('target_id').notNull(),
+    status: experimentStatusEnum('status').notNull(),
+    totalItems: integer('total_items').notNull().default(0),
+    succeededCount: integer('succeeded_count').notNull().default(0),
+    failedCount: integer('failed_count').notNull().default(0),
+    skippedCount: integer('skipped_count').notNull().default(0),
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .defaultNow()
+      .notNull()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    index('experiments_created_at_idx').on(table.createdAt),
+    index('experiments_status_idx').on(table.status),
+  ],
+);
 
 export const experimentResults = pgTable(
   'experiment_results',
@@ -44,5 +51,8 @@ export const experimentResults = pgTable(
     traceId: text('trace_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
-  (table) => [index('experiment_results_experiment_id_idx').on(table.experimentId)],
+  (table) => [
+    index('experiment_results_experiment_id_idx').on(table.experimentId),
+    index('experiment_results_experiment_id_created_at_idx').on(table.experimentId, table.createdAt),
+  ],
 );

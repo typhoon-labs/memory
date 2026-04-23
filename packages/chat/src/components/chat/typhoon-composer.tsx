@@ -1,7 +1,7 @@
 import type { ChatStatus } from 'ai';
 import { SendHorizontalIcon, SquareIcon } from 'lucide-react';
 import { useCallback, useState } from 'react';
-import { PromptInput, PromptInputSubmit, PromptInputTextarea } from '../ai-elements/prompt-input.js';
+import { PromptInput, PromptInputSubmit, PromptInputTextarea } from '../ai-elements/prompt-input';
 
 export function TyphoonComposer({
   sendMessage,

@@ -42,5 +42,8 @@ export const scores = pgTable(
     index('scores_scorer_id_idx').on(table.scorerId),
     index('scores_run_id_idx').on(table.runId),
     index('scores_trace_id_span_id_idx').on(table.traceId, table.spanId),
+    index('scores_entity_id_entity_type_idx').on(table.entityId, table.entityType),
+    index('scores_thread_id_idx').on(table.threadId),
+    index('scores_created_at_idx').on(table.createdAt),
   ],
 );

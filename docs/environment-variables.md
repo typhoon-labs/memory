@@ -37,6 +37,8 @@ The app connects to an OpenAI-compatible endpoint for chat. Locally this is Bifr
 | `LLM_RERANKER_MODEL` | No | Falls back to `LLM_CHAT_MODEL` | Model for reranking retrieved chunks |
 | `LLM_EXTRACTION_MODEL` | No | Falls back to `LLM_CHAT_MODEL` | Model for metadata extraction during ingestion (title, keywords) |
 | `LLM_GUARDRAIL_MODEL` | No | Falls back to `LLM_CHAT_MODEL` | Model for guardrail processors (moderation, PII detection) |
+| `LLM_KNOWLEDGE_MODEL` | No | Falls back to `LLM_CHAT_MODEL` | Model for knowledge agent (search tool routing) |
+| `LLM_CITATION_MODEL` | No | Falls back to `LLM_CHAT_MODEL` | Model for citation generation (synthesizing search results with source references) |
 | `ANTHROPIC_API_KEY` | No | — | Anthropic API key (passed to Bifrost gateway) |
 
 ## Embeddings
@@ -65,6 +67,14 @@ The app connects to an OpenAI-compatible endpoint for embeddings.
 | `OIDC_ISSUER_URL` | No | — | OIDC issuer URL (Dex: `http://localhost:5556/dex`, Okta: your tenant URL) |
 | `OIDC_CLIENT_ID` | No | — | OIDC client ID |
 | `OIDC_CLIENT_SECRET` | No | — | OIDC client secret |
+
+## OpenTelemetry
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | No | `http://localhost:4318` | OTLP receiver URL. In Docker Compose, set to `http://otel-collector:4318`. In K8s, point to your OTel-compatible provider. |
+| `OTEL_SERVICE_NAME` | No | `typhoon` | Service identifier (e.g., `typhoon-api`, `typhoon-worker`, `typhoon-scheduler`) |
+| `OTEL_SERVICE_VERSION` | No | `0.0.0` | Service version for resource attributes |
 
 ## Logging
 

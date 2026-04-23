@@ -1,6 +1,8 @@
 import { createCodePlugin } from '@streamdown/code';
+import { InlineCitationChip } from '@typhoon/ui';
 import { type Components, Streamdown } from 'streamdown';
 import 'streamdown/styles.css';
+import { useCitations } from './citation-context';
 
 const code = createCodePlugin({
   themes: ['github-light', 'github-dark'],
@@ -122,15 +124,58 @@ const components: Components = {
   hr: ({ ...props }) => <hr className="my-6 border-t border-border" {...props} />,
 };
 
+/**
+ * Bridge component that maps streamdown's `<cite>` element props
+ * (from allowedTags) to the InlineCitationChip via CitationContext.
+ *
+ * Citation data can come from two sources:
+ * 1. CitationContext (populated from tool outputs when available)
+ * 2. The `title` attribute on the `<cite>` tag itself (always available)
+ *
+ * In a supervisor→knowledge-agent architecture, the RAG search results
+ * live in the sub-agent's context and aren't exposed at the message level.
+ * The `title` attribute is the reliable fallback in that case.
+ */
+function CiteElement({
+  index,
+  title,
+  display,
+}: {
+  index?: string;
+  title?: string;
+  display?: string;
+  children?: React.ReactNode;
+}) {
+  const { citations, onDocumentOpen } = useCitations();
+  const idx = Number(index);
+  const contextData = citations.get(idx);
+
+  // Build citation data: prefer context data, fall back to tag attributes
+  const citation = contextData ?? {
+    index: Number.isFinite(idx) ? idx : 1,
+    title: title ?? `Source ${String(index ?? '?')}`,
+    displayIndex: display ?? index ?? '1',
+  };
+
+  return <InlineCitationChip citation={citation} onDocumentOpen={onDocumentOpen} />;
+}
+
+const allComponents: Components = {
+  ...components,
+  cite: CiteElement as Components['cite'],
+};
+
 export function StreamdownText({ text, isStreaming }: { text: string; isStreaming: boolean }) {
   return (
     <Streamdown
       plugins={{ code }}
-      components={components}
+      components={allComponents}
       caret="circle"
       isAnimating={isStreaming}
       animated={{ animation: 'blurIn', duration: 200, easing: 'ease-out', sep: 'char' }}
-      remend={{}}
+      remend={{ htmlTags: true }}
+      allowedTags={{ cite: ['index', 'title', 'display'] }}
+      literalTagContent={['cite']}
       shikiTheme={['github-light', 'github-dark']}
     >
       {text}

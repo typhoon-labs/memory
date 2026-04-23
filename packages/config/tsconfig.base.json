@@ -2,8 +2,8 @@
   "compilerOptions": {
     "strict": true,
     "target": "ES2022",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
     "esModuleInterop": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
@@ -18,7 +18,9 @@
       "@typhoon/storage": ["../../packages/storage/src"],
       "@typhoon/agents": ["../../packages/agents/src"],
       "@typhoon/ingestion": ["../../packages/ingestion/src"],
-      "@typhoon/pg": ["../../packages/pg/src"],
+      "@typhoon/db/drivers/pg": ["../../packages/db/src/drivers/pg"],
+      "@typhoon/db/queries": ["../../packages/db/src/queries"],
+      "@typhoon/db/connection": ["../../packages/db/src/connection"],
       "@typhoon/ui": ["../../packages/ui/src"]
     }
   }

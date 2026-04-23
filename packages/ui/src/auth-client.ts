@@ -1,4 +1,4 @@
-import type { auth } from '@typhoon/server/auth';
+import type { auth } from '@typhoon/api/auth';
 import { adminClient, genericOAuthClient } from 'better-auth/client/plugins';
 import { createAuthClient } from 'better-auth/react';
 

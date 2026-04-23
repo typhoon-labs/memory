@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ColumnDef } from '@typhoon/ui';
 import {
   AlertDialog,
@@ -10,39 +10,34 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
+  apiFetch,
   Button,
   DataTable,
   EmptyState,
   StatusBadge,
 } from '@typhoon/ui';
-import { InboxIcon, RotateCcwIcon, Trash2Icon } from 'lucide-react';
+import { EraserIcon, InboxIcon, RotateCcwIcon, Trash2Icon } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { JobDetailSheet } from './job-detail-sheet.js';
-import type { JobState, QueueJob } from './shared.js';
-import { formatJobDuration, formatTimestamp, isStageProgress, JOB_STATE_BADGE_MAP } from './shared.js';
+import { JobDetailSheet } from './job-detail-sheet';
+import type { JobState, QueueJob } from './shared';
+import { formatJobDuration, isStageProgress, JOB_STATE_BADGE_MAP } from './shared';
 
 export function JobsTab({ queueName, jobState }: { queueName: string; jobState: JobState }) {
   const [selectedJob, setSelectedJob] = useState<QueueJob | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
-  const { data: jobs, isLoading } = useQuery<QueueJob[]>({
+  const { data: jobs, isPending } = useQuery<QueueJob[]>({
     queryKey: ['queues', queueName, 'jobs', jobState],
-    queryFn: () =>
-      fetch(`/api/v1/queues/${queueName}/jobs?state=${jobState}&pageSize=100`, { credentials: 'include' }).then((r) =>
-        r.json(),
-      ),
+    queryFn: () => apiFetch(`/api/v1/queues/${queueName}/jobs?state=${jobState}&pageSize=100`),
     refetchInterval: 60_000,
+    placeholderData: keepPreviousData,
   });
 
   const retryMutation = useMutation({
     mutationFn: (jobId: string) =>
-      fetch(`/api/v1/queues/${queueName}/jobs/${jobId}/retry`, {
+      apiFetch(`/api/v1/queues/${queueName}/jobs/${jobId}/retry`, {
         method: 'POST',
-        credentials: 'include',
-      }).then((r) => {
-        if (!r.ok) throw new Error('Retry failed');
-        return r.json();
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['queues'] });
@@ -50,15 +45,10 @@ export function JobsTab({ queueName, jobState }: { queueName: string; jobState: 
   });
 
   const removeMutation = useMutation({
-    mutationFn: async (jobId: string) => {
-      const r = await fetch(`/api/v1/queues/${queueName}/jobs/${jobId}`, {
+    mutationFn: (jobId: string) =>
+      apiFetch(`/api/v1/queues/${queueName}/jobs/${jobId}`, {
         method: 'DELETE',
-        credentials: 'include',
-      });
-      const body = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(body?.error ?? 'Failed to remove job');
-      return body;
-    },
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['queues'] });
     },
@@ -67,12 +57,45 @@ export function JobsTab({ queueName, jobState }: { queueName: string; jobState: 
     },
   });
 
+  const cleanMutation = useMutation({
+    mutationFn: (state: 'completed' | 'failed') =>
+      apiFetch(`/api/v1/queues/${queueName}/clean`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state, grace: 0, limit: 5000 }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['queues'] });
+    },
+  });
+
+  const retryAllMutation = useMutation({
+    mutationFn: async () => {
+      const failedJobs = (jobs ?? []).filter((j) => j.state === 'failed');
+      for (const job of failedJobs) {
+        await apiFetch(`/api/v1/queues/${queueName}/jobs/${job.id}/retry`, {
+          method: 'POST',
+        });
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['queues'] });
+    },
+  });
+
+  const failedCount = (jobs ?? []).filter((j) => j.state === 'failed').length;
+  const completedCount = (jobs ?? []).filter((j) => j.state === 'completed').length;
+
   const columns = useMemo<ColumnDef<QueueJob, unknown>[]>(
     () => [
       {
         accessorKey: 'id',
         header: 'ID',
-        cell: ({ row }) => <code className="text-xs">{row.original.id}</code>,
+        cell: ({ row }) => (
+          <code className="text-xs" title={row.original.id}>
+            {row.original.id.slice(0, 8)}
+          </code>
+        ),
       },
       {
         accessorKey: 'name',
@@ -107,13 +130,6 @@ export function JobsTab({ queueName, jobState }: { queueName: string; jobState: 
         accessorKey: 'attemptsMade',
         header: 'Attempts',
         cell: ({ row }) => <span className="tabular-nums">{row.original.attemptsMade}</span>,
-      },
-      {
-        accessorKey: 'timestamp',
-        header: 'Created',
-        cell: ({ row }) => (
-          <span className="text-xs text-muted-foreground">{formatTimestamp(row.original.timestamp)}</span>
-        ),
       },
       {
         id: 'duration',
@@ -184,7 +200,44 @@ export function JobsTab({ queueName, jobState }: { queueName: string; jobState: 
   return (
     <>
       <div>
-        {!isLoading && jobs && jobs.length > 0 && (
+        {!isPending && jobs && jobs.length > 0 && (
+          <div className="mb-3 flex items-center gap-2">
+            {failedCount > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => retryAllMutation.mutate()}
+                disabled={retryAllMutation.isPending}
+              >
+                <RotateCcwIcon className="mr-1.5 size-3.5" />
+                Retry All Failed ({failedCount})
+              </Button>
+            )}
+            {completedCount > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => cleanMutation.mutate('completed')}
+                disabled={cleanMutation.isPending}
+              >
+                <EraserIcon className="mr-1.5 size-3.5" />
+                Clean Completed ({completedCount})
+              </Button>
+            )}
+            {failedCount > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => cleanMutation.mutate('failed')}
+                disabled={cleanMutation.isPending}
+              >
+                <Trash2Icon className="mr-1.5 size-3.5" />
+                Clean Failed ({failedCount})
+              </Button>
+            )}
+          </div>
+        )}
+        {!isPending && jobs && jobs.length > 0 && (
           <DataTable
             data={jobs}
             columns={columns}
@@ -195,7 +248,7 @@ export function JobsTab({ queueName, jobState }: { queueName: string; jobState: 
           />
         )}
 
-        {!isLoading && jobs?.length === 0 && (
+        {!isPending && jobs?.length === 0 && (
           <EmptyState
             icon={<InboxIcon className="size-8" />}
             title={`No ${jobState} jobs`}

@@ -1,12 +1,12 @@
 import type { MastraLanguageModel } from '@mastra/core/agent';
 import { createVectorQueryTool } from '@mastra/rag';
 import { createEmbeddingModel, createRerankerModel } from '@typhoon/ai';
+import { withProgress } from './with-progress';
 
 // biome-ignore lint/suspicious/noExplicitAny: RerankConfig types MastraLanguageModel narrowly but Agent constructor accepts LanguageModelV3 at runtime
 const rerankerModel = createRerankerModel() as any as MastraLanguageModel;
 
-// biome-ignore lint/suspicious/noExplicitAny: RagTool type uses internal path not portable across packages
-export const searchKnowledgeBase: any = createVectorQueryTool({
+const inner = createVectorQueryTool({
   vectorStoreName: 'pgVector',
   indexName: 'knowledge_base',
   model: createEmbeddingModel(),
@@ -17,12 +17,21 @@ export const searchKnowledgeBase: any = createVectorQueryTool({
     model: rerankerModel,
     options: {
       weights: { semantic: 0.5, vector: 0.3, position: 0.2 },
-      topK: 5,
+      topK: 10,
     },
   },
   databaseConfig: {
     pgvector: {
-      minScore: 0.6,
+      minScore: 0.5,
     },
+  },
+});
+
+// biome-ignore lint/suspicious/noExplicitAny: RagTool type uses internal path not portable across packages
+export const searchKnowledgeBase: any = withProgress(inner, {
+  start: 'Embedding query and searching the knowledge base…',
+  done: (output) => {
+    const count = Array.isArray(output) ? output.length : 0;
+    return count > 0 ? `Returned ${count} reranked chunks.` : 'No matching chunks found.';
   },
 });

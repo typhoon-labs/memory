@@ -3,11 +3,12 @@ import { documents, syncJobs, syncTargets } from '@typhoon/db';
 import { createAppLogger } from '@typhoon/logger';
 import type { Job, Queue } from 'bullmq';
 import { eq } from 'drizzle-orm';
-import { getProvider } from '../providers/index.js';
-import { computeSyncDiff } from '../sync.js';
-import { asUnrecoverable, isUnrecoverable } from '../util/classify-error.js';
-import { withTimeout } from '../util/with-timeout.js';
-import type { DeleteFileJobData, ProcessFileJobData, ScanJobData } from './queues.js';
+import { getProvider } from '../providers/index';
+import { computeSyncDiff } from '../sync';
+import { asUnrecoverable, isUnrecoverable } from '../util/classify-error';
+import { withTimeout } from '../util/with-timeout';
+import type { DeleteFileJobData, ProcessFileJobData, ScanJobData } from './queues';
+import { makeJobId } from './queues';
 
 const log = createAppLogger('sync-scan');
 
@@ -58,6 +59,12 @@ export async function handleScanJob(job: Job<ScanJobData>, db: Db, syncQueue: Qu
 
     await setStage('enqueue');
 
+    const totalChildJobs = diff.newFiles.length + diff.updatedFiles.length + diff.deletedDocumentIds.length;
+    const childPriority = job.opts?.priority;
+    // When force-syncing, include the syncJob ID in child jobIds so they're
+    // unique per sync run. For normal syncs, deterministic IDs provide dedup.
+    const dedupSalt = force ? syncJob.id : '';
+
     // Enqueue new files
     for (const file of diff.newFiles) {
       const [doc] = await db
@@ -72,15 +79,20 @@ export async function handleScanJob(job: Job<ScanJobData>, db: Db, syncQueue: Qu
         })
         .returning();
 
-      await syncQueue.add('process-file', {
-        syncTargetId,
-        documentId: doc.id,
-        sourceKey: file.key,
-        sourceEtag: file.etag,
-        sourceType: target.sourceType,
-        sourceName: target.source ?? undefined,
-        isUpdate: false,
-      } satisfies ProcessFileJobData);
+      await syncQueue.add(
+        'process-file',
+        {
+          syncTargetId,
+          documentId: doc.id,
+          sourceKey: file.key,
+          sourceEtag: file.etag,
+          sourceType: target.sourceType,
+          sourceName: target.source ?? undefined,
+          isUpdate: false,
+          syncJobId: syncJob.id,
+        } satisfies ProcessFileJobData,
+        { jobId: makeJobId('process', syncTargetId, file.key, file.etag, dedupSalt), priority: childPriority },
+      );
     }
 
     // Enqueue updated files (includes error retries)
@@ -98,32 +110,43 @@ export async function handleScanJob(job: Job<ScanJobData>, db: Db, syncQueue: Qu
         .returning();
 
       if (doc) {
-        await syncQueue.add('process-file', {
-          syncTargetId,
-          documentId: doc.id,
-          sourceKey: file.key,
-          sourceEtag: file.etag,
-          sourceType: target.sourceType,
-          sourceName: target.source ?? undefined,
-          isUpdate: true,
-        } satisfies ProcessFileJobData);
+        await syncQueue.add(
+          'process-file',
+          {
+            syncTargetId,
+            documentId: doc.id,
+            sourceKey: file.key,
+            sourceEtag: file.etag,
+            sourceType: target.sourceType,
+            sourceName: target.source ?? undefined,
+            isUpdate: true,
+            syncJobId: syncJob.id,
+          } satisfies ProcessFileJobData,
+          { jobId: makeJobId('process', syncTargetId, file.key, file.etag, dedupSalt), priority: childPriority },
+        );
       }
     }
 
     // Enqueue deletions
     for (const docId of diff.deletedDocumentIds) {
-      await syncQueue.add('delete-file', { documentId: docId } satisfies DeleteFileJobData);
+      await syncQueue.add('delete-file', { documentId: docId, syncJobId: syncJob.id } satisfies DeleteFileJobData, {
+        jobId: makeJobId('delete', docId, dedupSalt),
+        priority: childPriority,
+      });
     }
 
+    // Record scan stats. If there are no child jobs, mark completed
+    // immediately (no-op sync). Otherwise, leave as 'running' — child jobs
+    // will call incrementSyncJobCompletion() and the last one marks it done.
     await db
       .update(syncJobs)
       .set({
-        status: 'completed',
-        filesScanned: diff.newFiles.length + diff.updatedFiles.length + diff.deletedDocumentIds.length,
+        ...(totalChildJobs === 0 ? { status: 'completed' as const, completedAt: new Date() } : {}),
+        childJobsTotal: totalChildJobs,
+        filesScanned: totalChildJobs,
         filesNew: diff.newFiles.length,
         filesUpdated: diff.updatedFiles.length,
         filesDeleted: diff.deletedDocumentIds.length,
-        completedAt: new Date(),
       })
       .where(eq(syncJobs.id, syncJob.id));
   } catch (error) {

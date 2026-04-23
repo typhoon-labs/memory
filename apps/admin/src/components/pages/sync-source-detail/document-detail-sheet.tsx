@@ -9,6 +9,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
+  apiFetch,
   Button,
   DocumentContentViewer,
   formatAbsoluteTime,
@@ -27,8 +28,8 @@ import {
 } from '@typhoon/ui';
 import { RefreshCwIcon, RotateCwIcon, Trash2Icon } from 'lucide-react';
 import { useEffect, useMemo } from 'react';
-import type { Document } from './shared.js';
-import { DOC_STATUS_MAP, formatBytes } from './shared.js';
+import type { Document } from './shared';
+import { DOC_STATUS_MAP, formatBytes } from './shared';
 
 interface DocumentContentResponse {
   document: { id: string };
@@ -81,11 +82,7 @@ function DetailsTab({ document, hasError, onClose }: { document: Document; hasEr
   const queryClient = useQueryClient();
 
   const retryMutation = useMutation({
-    mutationFn: () =>
-      fetch(`/api/v1/documents/${document.id}/retry`, { method: 'POST', credentials: 'include' }).then((r) => {
-        if (!r.ok) throw new Error('Retry failed');
-        return r.json();
-      }),
+    mutationFn: () => apiFetch(`/api/v1/documents/${document.id}/retry`, { method: 'POST' }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['documents'] });
       onClose();
@@ -93,11 +90,7 @@ function DetailsTab({ document, hasError, onClose }: { document: Document; hasEr
   });
 
   const resyncMutation = useMutation({
-    mutationFn: () =>
-      fetch(`/api/v1/documents/${document.id}/resync`, { method: 'POST', credentials: 'include' }).then((r) => {
-        if (!r.ok) throw new Error('Re-sync failed');
-        return r.json();
-      }),
+    mutationFn: () => apiFetch(`/api/v1/documents/${document.id}/resync`, { method: 'POST' }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['documents'] });
       queryClient.invalidateQueries({ queryKey: ['browse'] });
@@ -114,11 +107,7 @@ function DetailsTab({ document, hasError, onClose }: { document: Document; hasEr
   }, [resyncMutation.isSuccess, resyncMutation.reset]);
 
   const deleteMutation = useMutation({
-    mutationFn: () =>
-      fetch(`/api/v1/documents/${document.id}`, { method: 'DELETE', credentials: 'include' }).then((r) => {
-        if (!r.ok) throw new Error('Delete failed');
-        return r.json();
-      }),
+    mutationFn: () => apiFetch(`/api/v1/documents/${document.id}`, { method: 'DELETE' }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['documents'] });
       queryClient.invalidateQueries({ queryKey: ['browse'] });
@@ -250,20 +239,12 @@ function DetailsTab({ document, hasError, onClose }: { document: Document; hasEr
 function ContentTab({ documentId, mimeType }: { documentId: string; mimeType: string | null }) {
   const { data, isLoading } = useQuery<DocumentContentResponse>({
     queryKey: ['document-content', documentId],
-    queryFn: () =>
-      fetch(`/api/v1/documents/${documentId}/chunks`, { credentials: 'include' }).then((r) => {
-        if (!r.ok) throw new Error('Failed to load document content');
-        return r.json();
-      }),
+    queryFn: () => apiFetch(`/api/v1/documents/${documentId}/chunks`),
   });
 
   const { data: parsedData } = useQuery<{ text: string }>({
     queryKey: ['document-parsed', documentId],
-    queryFn: () =>
-      fetch(`/api/v1/documents/${documentId}/parsed-content`, { credentials: 'include' }).then((r) => {
-        if (!r.ok) throw new Error('Failed to load parsed content');
-        return r.json();
-      }),
+    queryFn: () => apiFetch(`/api/v1/documents/${documentId}/parsed-content`),
   });
 
   const fullText = useMemo(() => {

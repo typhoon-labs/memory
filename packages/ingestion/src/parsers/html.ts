@@ -1,4 +1,4 @@
-import type { ParseResult } from './registry.js';
+import type { ParseResult } from './registry';
 
 export async function parseHtml(content: Buffer, _filename: string): Promise<ParseResult> {
   const TurndownService = (await import('turndown')).default;

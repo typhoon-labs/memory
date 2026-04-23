@@ -88,13 +88,16 @@ function CsvSheet({ rows, searchTerms }: { rows: string[][]; searchTerms: string
   const [header, ...body] = normalized;
 
   return (
-    <div className="overflow-x-auto rounded-md border border-border">
-      <table className="w-full text-[13px]">
-        <thead className="border-b border-border bg-muted/50">
+    <div className="overflow-x-auto rounded-lg border border-border">
+      <table className="w-full border-collapse text-sm">
+        <thead className="bg-muted">
           <tr>
             {header.map((cell, i) => (
-              // biome-ignore lint/suspicious/noArrayIndexKey: static CSV columns don't reorder
-              <th key={i} className="whitespace-nowrap px-3 py-2 text-left text-xs font-medium text-muted-foreground">
+              <th
+                // biome-ignore lint/suspicious/noArrayIndexKey: static CSV columns don't reorder
+                key={i}
+                className="whitespace-nowrap border-r border-border px-4 py-2 text-left text-[0.8125rem] font-semibold last:border-r-0"
+              >
                 {highlightText(cell, searchTerms)}
               </th>
             ))}
@@ -106,7 +109,7 @@ function CsvSheet({ rows, searchTerms }: { rows: string[][]; searchTerms: string
             <tr key={ri}>
               {row.map((cell, ci) => (
                 // biome-ignore lint/suspicious/noArrayIndexKey: static CSV cells don't reorder
-                <td key={ci} className="whitespace-nowrap border-t border-border px-3 py-2">
+                <td key={ci} className="border-t border-r border-border px-4 py-2 text-sm last:border-r-0">
                   {highlightText(cell, searchTerms)}
                 </td>
               ))}

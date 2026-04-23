@@ -1,8 +1,9 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
+import { apiFetch } from '@typhoon/ui';
 import { PanelLeftIcon, XIcon } from 'lucide-react';
 import { useState } from 'react';
-import { useThreads } from './use-thread.js';
+import { useThreads } from './use-thread';
 
 function timeAgo(dateStr: string): string {
   const seconds = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
@@ -29,10 +30,7 @@ function SidebarContent({
   const { data } = useThreads();
 
   const deleteThread = useMutation({
-    mutationFn: async (id: string) => {
-      const res = await fetch(`/api/v1/threads/${id}`, { method: 'DELETE', credentials: 'include' });
-      if (!res.ok) throw new Error('Failed to delete thread');
-    },
+    mutationFn: (id: string) => apiFetch(`/api/v1/threads/${id}`, { method: 'DELETE' }),
     onSuccess: (_data, deletedId) => {
       queryClient.invalidateQueries({ queryKey: ['threads'] });
       if (deletedId === activeThreadId) {

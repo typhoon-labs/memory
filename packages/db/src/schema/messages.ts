@@ -1,6 +1,6 @@
 import { index, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 
-import { threads } from './threads.js';
+import { threads } from './threads';
 
 export const messages = pgTable(
   'messages',

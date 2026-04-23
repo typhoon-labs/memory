@@ -1,5 +1,5 @@
 import { index, integer, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
-import { syncTargets } from './sync-target.js';
+import { syncTargets } from './sync-target';
 
 export const documentStatusEnum = pgEnum('document_status', [
   'pending',

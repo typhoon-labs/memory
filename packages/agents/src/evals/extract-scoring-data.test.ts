@@ -1,0 +1,211 @@
+import { describe, expect, it } from 'vitest';
+import { extractScoringData } from './extract-scoring-data';
+
+/** Helper: build a v6 text message content. */
+function textContent(text: string) {
+  return { parts: [{ type: 'text', text }] };
+}
+
+/** Helper: build an assistant message with tool output containing chunks. */
+function assistantWithChunks(text: string, chunks: Record<string, unknown>[]) {
+  return {
+    parts: [
+      { type: 'text', text },
+      {
+        type: 'tool-invocation',
+        state: 'output-available',
+        output: { _chunkSources: chunks },
+      },
+    ],
+  };
+}
+
+describe('extractScoringData', () => {
+  it('extracts response text, user question, and chunks from v6 format', () => {
+    const assistant = assistantWithChunks('The answer is 42.', [
+      {
+        chunkId: 'c-1',
+        displayIndex: 0,
+        score: 0.95,
+        text: 'chunk text',
+        documentId: 'd-1',
+        title: 'Doc',
+        source: 's3://bucket/key',
+      },
+      { chunkId: 'c-2', displayIndex: 1, score: 0.8 },
+    ]);
+    const user = textContent('What is the answer?');
+
+    const result = extractScoringData(assistant, user);
+
+    expect(result).not.toBeNull();
+    expect(result!.responseText).toBe('The answer is 42.');
+    expect(result!.userQuestion).toBe('What is the answer?');
+    expect(result!.chunkSources).toHaveLength(2);
+    expect(result!.chunkSources[0]).toEqual({
+      chunkId: 'c-1',
+      displayIndex: 0,
+      score: 0.95,
+      text: 'chunk text',
+      documentId: 'd-1',
+      title: 'Doc',
+      source: 's3://bucket/key',
+    });
+    expect(result!.chunkSources[1]).toEqual({
+      chunkId: 'c-2',
+      displayIndex: 1,
+      score: 0.8,
+      text: undefined,
+      documentId: undefined,
+      title: undefined,
+      source: undefined,
+    });
+  });
+
+  it('returns ScoringData with empty chunkSources when no chunks present (direct answer)', () => {
+    const assistant = textContent('I can help with that.');
+    const user = textContent('Help me');
+
+    const result = extractScoringData(assistant, user);
+
+    expect(result).not.toBeNull();
+    expect(result!.responseText).toBe('I can help with that.');
+    expect(result!.userQuestion).toBe('Help me');
+    expect(result!.chunkSources).toEqual([]);
+  });
+
+  it('returns null when assistant has no text content', () => {
+    const assistant = { parts: [{ type: 'tool-invocation', state: 'output-available', output: {} }] };
+    const user = textContent('Hello');
+    expect(extractScoringData(assistant, user)).toBeNull();
+  });
+
+  it('returns null when user content has no text', () => {
+    const assistant = textContent('Answer');
+    const user = { parts: [] };
+    expect(extractScoringData(assistant, user)).toBeNull();
+  });
+
+  it('returns null when assistantContent is null/undefined', () => {
+    expect(extractScoringData(null, textContent('Hello'))).toBeNull();
+    expect(extractScoringData(undefined, textContent('Hello'))).toBeNull();
+  });
+
+  it('returns null when userContent is null/undefined', () => {
+    expect(extractScoringData(textContent('Answer'), null)).toBeNull();
+    expect(extractScoringData(textContent('Answer'), undefined)).toBeNull();
+  });
+
+  it('handles legacy content format (flat content string)', () => {
+    const assistant = { content: 'Legacy response' };
+    const user = { content: 'Legacy question' };
+
+    const result = extractScoringData(assistant, user);
+
+    expect(result).not.toBeNull();
+    expect(result!.responseText).toBe('Legacy response');
+    expect(result!.userQuestion).toBe('Legacy question');
+    expect(result!.chunkSources).toEqual([]);
+  });
+
+  it('extracts chunks from Mastra v6 toolInvocation format', () => {
+    const assistant = {
+      parts: [
+        { type: 'text', text: 'Answer with citations.' },
+        {
+          type: 'tool-invocation',
+          toolInvocation: {
+            state: 'result',
+            result: { _chunkSources: [{ chunkId: 'c-v6', displayIndex: 0, score: 0.9, documentId: 'd-v6' }] },
+          },
+        },
+      ],
+    };
+    const user = textContent('Question about pricing');
+
+    const result = extractScoringData(assistant, user);
+
+    expect(result).not.toBeNull();
+    expect(result!.chunkSources).toHaveLength(1);
+    expect(result!.chunkSources[0].chunkId).toBe('c-v6');
+    expect(result!.chunkSources[0].documentId).toBe('d-v6');
+  });
+
+  it('aggregates chunks from multiple tool-invocation parts', () => {
+    const assistant = {
+      parts: [
+        { type: 'text', text: 'The combined answer.' },
+        {
+          type: 'tool-invocation',
+          state: 'output-available',
+          output: { _chunkSources: [{ chunkId: 'c-1', displayIndex: 0 }] },
+        },
+        {
+          type: 'tool-result',
+          state: 'output-available',
+          output: { _chunkSources: [{ chunkId: 'c-2', displayIndex: 1 }] },
+        },
+      ],
+    };
+    const user = textContent('Question');
+
+    const result = extractScoringData(assistant, user);
+
+    expect(result).not.toBeNull();
+    expect(result!.chunkSources).toHaveLength(2);
+    expect(result!.chunkSources[0].chunkId).toBe('c-1');
+    expect(result!.chunkSources[1].chunkId).toBe('c-2');
+  });
+
+  it('ignores tool parts that are not in output-available state', () => {
+    const assistant = {
+      parts: [
+        { type: 'text', text: 'Answer' },
+        {
+          type: 'tool-invocation',
+          state: 'call',
+          output: { _chunkSources: [{ chunkId: 'should-be-ignored' }] },
+        },
+      ],
+    };
+    const user = textContent('Question');
+
+    const result = extractScoringData(assistant, user);
+
+    expect(result).not.toBeNull();
+    expect(result!.chunkSources).toEqual([]);
+  });
+
+  it('skips chunk entries without a chunkId', () => {
+    const assistant = assistantWithChunks('Answer', [
+      { displayIndex: 0, score: 0.5 }, // no chunkId
+      { chunkId: 'c-1', displayIndex: 1 },
+    ]);
+    const user = textContent('Question');
+
+    const result = extractScoringData(assistant, user);
+
+    expect(result!.chunkSources).toHaveLength(1);
+    expect(result!.chunkSources[0].chunkId).toBe('c-1');
+  });
+
+  it('handles malformed content objects without throwing', () => {
+    expect(extractScoringData({}, {})).toBeNull();
+    expect(extractScoringData({ parts: 'not-array' }, textContent('Q'))).toBeNull();
+    expect(extractScoringData(42, textContent('Q'))).toBeNull();
+  });
+
+  it('joins multiple text parts with newline', () => {
+    const assistant = {
+      parts: [
+        { type: 'text', text: 'First paragraph.' },
+        { type: 'text', text: 'Second paragraph.' },
+      ],
+    };
+    const user = textContent('Question');
+
+    const result = extractScoringData(assistant, user);
+
+    expect(result!.responseText).toBe('First paragraph.\nSecond paragraph.');
+  });
+});

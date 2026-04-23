@@ -8,7 +8,7 @@
 
 import type { ConfigSyncTarget, ConfigSyncTargetInput } from '@typhoon/types';
 import { configSyncTargetSchema, syncTargetConfigSchemas } from '@typhoon/types';
-import { getSource } from './source-registry.js';
+import { getSource } from './source-registry';
 
 const registry = new Map<string, ConfigSyncTarget>();
 

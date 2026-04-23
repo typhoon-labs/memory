@@ -1,11 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
 import type { ColumnDef } from '@typhoon/ui';
-import { DataTable, EmptyState, formatRelativeTime, StatusBadge } from '@typhoon/ui';
+import { apiFetch, DataTable, EmptyState, formatRelativeTime, StatusBadge } from '@typhoon/ui';
 import { ClockIcon } from 'lucide-react';
 import { useState } from 'react';
-import type { SyncJob } from './shared.js';
-import { formatDuration, JOB_STATUS_MAP } from './shared.js';
-import { SyncJobDetailSheet } from './sync-job-detail-sheet.js';
+import type { SyncJob } from './shared';
+import { formatDuration, JOB_STATUS_MAP } from './shared';
+import { SyncJobDetailSheet } from './sync-job-detail-sheet';
 
 const columns: ColumnDef<SyncJob, unknown>[] = [
   {
@@ -26,6 +26,20 @@ const columns: ColumnDef<SyncJob, unknown>[] = [
     cell: ({ row }) => (
       <span className="text-muted-foreground">{formatDuration(row.original.startedAt, row.original.completedAt)}</span>
     ),
+  },
+  {
+    id: 'progress',
+    header: 'Progress',
+    cell: ({ row }) => {
+      const { status, childJobsTotal, childJobsCompleted } = row.original;
+      if (childJobsTotal === 0) return <span className="text-muted-foreground">-</span>;
+      const pct = Math.round((childJobsCompleted / childJobsTotal) * 100);
+      return (
+        <span className={`tabular-nums ${status === 'running' ? 'text-amber-400' : ''}`}>
+          {childJobsCompleted}/{childJobsTotal} ({pct}%)
+        </span>
+      );
+    },
   },
   {
     accessorKey: 'filesScanned',
@@ -63,7 +77,7 @@ export function SyncLogTab({ sourceId }: { sourceId: string }) {
 
   const { data: jobs, isLoading } = useQuery<SyncJob[]>({
     queryKey: ['sync-targets', sourceId, 'jobs'],
-    queryFn: () => fetch(`/api/v1/sync-targets/${sourceId}/jobs`, { credentials: 'include' }).then((r) => r.json()),
+    queryFn: () => apiFetch(`/api/v1/sync-targets/${sourceId}/jobs`),
   });
 
   const sortedJobs = jobs

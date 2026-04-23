@@ -1,4 +1,5 @@
 import { LogLevel, MastraLogger } from '@mastra/core/logger';
+import { context as otelContext, trace } from '@opentelemetry/api';
 
 const LEVEL_ORDER: Record<string, number> = {
   debug: 0,
@@ -21,22 +22,43 @@ function formatDev(level: string, name: string, message: string, context?: Recor
   const tag = level.toUpperCase().padEnd(5);
   const base = `${time} ${tag} [${name}] ${message}`;
   if (context && Object.keys(context).length > 0) {
-    return `${base} ${JSON.stringify(context)}`;
+    return `${base} ${safeStringify(context)}`;
   }
   return base;
 }
 
-function formatProd(level: string, name: string, message: string, context?: Record<string, unknown>): string {
+function getTraceContext(): { trace_id?: string; span_id?: string } {
+  const span = trace.getSpan(otelContext.active());
+  if (!span) return {};
+  const spanContext = span.spanContext();
+  // Only include if trace is valid (non-zero trace ID)
+  if (spanContext.traceId === '00000000000000000000000000000000') return {};
+  return { trace_id: spanContext.traceId, span_id: spanContext.spanId };
+}
+
+function safeStringify(obj: unknown): string {
+  const seen = new WeakSet();
+  return JSON.stringify(obj, (_key, value) => {
+    if (typeof value === 'object' && value !== null) {
+      if (seen.has(value)) return '[Circular]';
+      seen.add(value);
+    }
+    return value;
+  });
+}
+
+function formatProd(level: string, name: string, message: string, ctx?: Record<string, unknown>): string {
   const entry: Record<string, unknown> = {
     ts: new Date().toISOString(),
     level,
     name,
     msg: message,
+    ...getTraceContext(),
   };
-  if (context && Object.keys(context).length > 0) {
-    Object.assign(entry, context);
+  if (ctx && Object.keys(ctx).length > 0) {
+    Object.assign(entry, ctx);
   }
-  return JSON.stringify(entry);
+  return safeStringify(entry);
 }
 
 function parseContext(args: unknown[]): Record<string, unknown> | undefined {

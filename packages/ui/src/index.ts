@@ -1,19 +1,21 @@
 // === Auth ===
 
 export type { ColumnDef, ColumnFiltersState } from '@tanstack/react-table';
-export { authClient } from './auth-client.js';
-export { AuthGate } from './auth-gate.js';
-export { AuthProvider, useAuth, useSignOut } from './auth-provider.js';
+export { authClient } from './auth-client';
+export { AuthGate } from './auth-gate';
+export { AuthProvider, useAuth, useSignOut } from './auth-provider';
+export type { AppShellProps, NavGroup, NavItem } from './components/AppShell';
+export { AppShell } from './components/AppShell';
 // === Custom Compound Components ===
-export type { AppShellProps, NavGroup, NavItem } from './components/AppShell.js';
-export { AppShell } from './components/AppShell.js';
-export { CsvTableViewer } from './components/CsvTableViewer.js';
-export type { DataTableProps } from './components/DataTable.js';
-export { DataTable } from './components/DataTable.js';
-export type { DocumentContentViewerProps } from './components/DocumentContentViewer.js';
-export { createDocumentMarkdownComponents, DocumentContentViewer } from './components/DocumentContentViewer.js';
-export type { EmptyStateProps } from './components/EmptyState.js';
-export { EmptyState } from './components/EmptyState.js';
+export { AccessDenied } from './components/access-denied';
+export { CsvTableViewer } from './components/CsvTableViewer';
+export type { DataTableProps } from './components/DataTable';
+export { DataTable } from './components/DataTable';
+export type { DocumentContentViewerProps } from './components/DocumentContentViewer';
+export { createDocumentMarkdownComponents, DocumentContentViewer } from './components/DocumentContentViewer';
+export type { EmptyStateProps } from './components/EmptyState';
+export { EmptyState } from './components/EmptyState';
+export { ExternalLinkDialog } from './components/ExternalLinkDialog';
 export {
   Controller,
   Form,
@@ -26,17 +28,26 @@ export {
   useFormContext,
   useFormField,
   zodResolver,
-} from './components/Form.js';
-export type { LoadingSpinnerProps, LoadingSpinnerSize } from './components/LoadingSpinner.js';
-export { LoadingSpinner } from './components/LoadingSpinner.js';
-export type { PageHeaderProps } from './components/PageHeader.js';
-export { PageHeader } from './components/PageHeader.js';
-export type { SectionLabelProps } from './components/SectionLabel.js';
-export { SectionLabel } from './components/SectionLabel.js';
-export type { StatCardProps } from './components/StatCard.js';
-export { StatCard } from './components/StatCard.js';
-export type { StatusBadgeProps, StatusBadgeVariant } from './components/StatusBadge.js';
-export { StatusBadge } from './components/StatusBadge.js';
+} from './components/Form';
+export type { LoadingSpinnerProps, LoadingSpinnerSize } from './components/LoadingSpinner';
+export { LoadingSpinner } from './components/LoadingSpinner';
+export type { PageHeaderProps } from './components/PageHeader';
+export { PageHeader } from './components/PageHeader';
+export type { SectionLabelProps } from './components/SectionLabel';
+export { SectionLabel } from './components/SectionLabel';
+export type { StatCardProps } from './components/StatCard';
+export { StatCard } from './components/StatCard';
+export type { StatusBadgeProps, StatusBadgeVariant } from './components/StatusBadge';
+export { StatusBadge } from './components/StatusBadge';
+// === Tool UI ===
+export type { CitationData, InlineCitationChipProps } from './components/tool-ui/citation/index';
+export { InlineCitationChip } from './components/tool-ui/citation/index';
+export type {
+  ProgressEvent,
+  ProgressStep,
+  ProgressTrackerProps,
+} from './components/tool-ui/progress-tracker/index';
+export { ProgressTracker } from './components/tool-ui/progress-tracker/index';
 // === shadcn/ui Primitives ===
 export {
   AlertDialog,
@@ -48,9 +59,9 @@ export {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from './components/ui/alert-dialog.js';
-export { Badge, badgeVariants } from './components/ui/badge.js';
-export { Button, buttonVariants } from './components/ui/button.js';
+} from './components/ui/alert-dialog';
+export { Badge, badgeVariants } from './components/ui/badge';
+export { Button, buttonVariants } from './components/ui/button';
 export {
   Card,
   CardAction,
@@ -59,13 +70,13 @@ export {
   CardFooter,
   CardHeader,
   CardTitle,
-} from './components/ui/card.js';
-export { Checkbox } from './components/ui/checkbox.js';
+} from './components/ui/card';
+export { Checkbox } from './components/ui/checkbox';
 export {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
-} from './components/ui/collapsible.js';
+} from './components/ui/collapsible';
 export {
   Command,
   CommandDialog,
@@ -76,7 +87,7 @@ export {
   CommandList,
   CommandSeparator,
   CommandShortcut,
-} from './components/ui/command.js';
+} from './components/ui/command';
 export {
   Dialog,
   DialogClose,
@@ -88,7 +99,7 @@ export {
   DialogPortal,
   DialogTitle,
   DialogTrigger,
-} from './components/ui/dialog.js';
+} from './components/ui/dialog';
 export {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -105,17 +116,17 @@ export {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
-} from './components/ui/dropdown-menu.js';
-export { Input } from './components/ui/input.js';
-export { Label } from './components/ui/label.js';
+} from './components/ui/dropdown-menu';
+export { Input } from './components/ui/input';
+export { Label } from './components/ui/label';
 export {
   Popover,
   PopoverAnchor,
   PopoverContent,
   PopoverTrigger,
-} from './components/ui/popover.js';
-export { ResizableHandle, ResizablePanel, ResizablePanelGroup } from './components/ui/resizable.js';
-export { ScrollArea, ScrollBar } from './components/ui/scroll-area.js';
+} from './components/ui/popover';
+export { ResizableHandle, ResizablePanel, ResizablePanelGroup } from './components/ui/resizable';
+export { ScrollArea, ScrollBar } from './components/ui/scroll-area';
 export {
   Select,
   SelectContent,
@@ -127,8 +138,8 @@ export {
   SelectSeparator,
   SelectTrigger,
   SelectValue,
-} from './components/ui/select.js';
-export { Separator } from './components/ui/separator.js';
+} from './components/ui/select';
+export { Separator } from './components/ui/separator';
 export {
   Sheet,
   SheetClose,
@@ -138,7 +149,7 @@ export {
   SheetHeader,
   SheetTitle,
   SheetTrigger,
-} from './components/ui/sheet.js';
+} from './components/ui/sheet';
 export {
   Sidebar,
   SidebarContent,
@@ -164,8 +175,8 @@ export {
   SidebarSeparator,
   SidebarTrigger,
   useSidebar,
-} from './components/ui/sidebar.js';
-export { Skeleton } from './components/ui/skeleton.js';
+} from './components/ui/sidebar';
+export { Skeleton } from './components/ui/skeleton';
 export {
   Table,
   TableBody,
@@ -175,23 +186,24 @@ export {
   TableHead,
   TableHeader,
   TableRow,
-} from './components/ui/table.js';
-export { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs.js';
-export { Textarea } from './components/ui/textarea.js';
+} from './components/ui/table';
+export { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs';
+export { Textarea } from './components/ui/textarea';
 export {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from './components/ui/tooltip.js';
+} from './components/ui/tooltip';
 // === Hooks ===
-export { useIsMobile } from './hooks/use-mobile.js';
-export type { FormatAbsoluteTimeOptions } from './lib/format-time.js';
-export { formatAbsoluteTime, formatRelativeTime } from './lib/format-time.js';
+export { useIsMobile } from './hooks/use-mobile';
+export { ApiError, apiFetch } from './lib/api-fetch';
+export type { FormatAbsoluteTimeOptions } from './lib/format-time';
+export { formatAbsoluteTime, formatRelativeTime } from './lib/format-time';
 // === Utilities ===
-export { cn } from './lib/utils.js';
-export { LoginPage } from './login-page.js';
+export { cn } from './lib/utils';
+export { LoginPage } from './login-page';
 // === Theme ===
-export type { Theme, ThemeContextValue, ThemeProviderProps } from './theme/ThemeProvider.js';
-export { ThemeContext, ThemeProvider } from './theme/ThemeProvider.js';
-export { useTheme } from './theme/useTheme.js';
+export type { Theme, ThemeContextValue, ThemeProviderProps } from './theme/ThemeProvider';
+export { ThemeContext, ThemeProvider } from './theme/ThemeProvider';
+export { useTheme } from './theme/useTheme';

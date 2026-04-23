@@ -12,6 +12,7 @@
   "dependencies": {
     "@ai-sdk/react": "^3.0.0",
     "@streamdown/code": "^1.0.3",
+    "@typhoon/ui": "workspace:*",
     "ai": "^6.0.0",
     "clsx": "^2.1.1",
     "lucide-react": "^0.577.0",

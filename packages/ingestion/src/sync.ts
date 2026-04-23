@@ -1,5 +1,5 @@
 import { createAppLogger } from '@typhoon/logger';
-import type { SourceObject } from './providers/types.js';
+import type { SourceObject } from './providers/types';
 
 const log = createAppLogger('sync');
 

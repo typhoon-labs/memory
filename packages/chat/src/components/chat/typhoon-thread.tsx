@@ -1,16 +1,16 @@
 import type { ChatStatus } from 'ai';
-import { cn } from '../../lib/utils.js';
+import { cn } from '../../lib/utils';
 import {
   Conversation,
   ConversationContent,
   ConversationEmptyState,
   ConversationScrollButton,
-} from '../ai-elements/conversation.js';
-import { Loader } from '../ai-elements/loader.js';
-import type { ChatConfig } from './chat-config.js';
-import { ChatConfigProvider } from './chat-config.js';
-import { TyphoonComposer } from './typhoon-composer.js';
-import { type ChatMessage, TyphoonMessage } from './typhoon-message.js';
+} from '../ai-elements/conversation';
+import { Loader } from '../ai-elements/loader';
+import type { ChatConfig } from './chat-config';
+import { ChatConfigProvider } from './chat-config';
+import { TyphoonComposer } from './typhoon-composer';
+import { type ChatMessage, TyphoonMessage } from './typhoon-message';
 
 export interface TyphoonThreadProps {
   messages: ChatMessage[];

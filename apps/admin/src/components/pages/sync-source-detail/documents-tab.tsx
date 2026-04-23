@@ -11,6 +11,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
+  apiFetch,
   Button,
   Checkbox,
   EmptyState,
@@ -29,19 +30,19 @@ import {
   UploadIcon,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CreateFolderDialog } from './create-folder-dialog.js';
+import { CreateFolderDialog } from './create-folder-dialog';
 import {
   DraggableFileRow,
   DragOverlayContent,
   DroppableBreadcrumb,
   DroppableFolderRow,
   MoveErrorBanner,
-} from './dnd-components.js';
-import { DocumentDetailSheet } from './document-detail-sheet.js';
-import type { Document, SyncTarget } from './shared.js';
-import { DOC_STATUS_MAP, formatBytes } from './shared.js';
-import { UploadDialog } from './upload-dialog.js';
-import { computeDestination, type DragItem, isDescendantOf, useFileMove } from './use-file-move.js';
+} from './dnd-components';
+import { DocumentDetailSheet } from './document-detail-sheet';
+import type { Document, SyncTarget } from './shared';
+import { DOC_STATUS_MAP, formatBytes } from './shared';
+import { UploadDialog } from './upload-dialog';
+import { computeDestination, type DragItem, isDescendantOf, useFileMove } from './use-file-move';
 
 // ── Recent activity row count for non-S3 sources ────────────────
 
@@ -139,8 +140,7 @@ function RecentActivityPanel({ sourceId }: { sourceId: string }) {
 
   const { data: docs, isLoading } = useQuery<Document[]>({
     queryKey: ['documents', { syncTargetId: sourceId }],
-    queryFn: () =>
-      fetch(`/api/v1/documents?syncTargetId=${sourceId}`, { credentials: 'include' }).then((r) => r.json()),
+    queryFn: () => apiFetch(`/api/v1/documents?syncTargetId=${sourceId}`),
   });
 
   // Always pick the 25 most-recently-synced docs first; sort below only
@@ -361,13 +361,7 @@ function S3FileBrowser({
 
   const { data, isLoading } = useQuery<BrowseResponse>({
     queryKey: ['browse', sourceId, currentPath],
-    queryFn: () =>
-      fetch(`/api/v1/sync-targets/${sourceId}/browse?path=${encodeURIComponent(currentPath)}`, {
-        credentials: 'include',
-      }).then((r) => {
-        if (!r.ok) throw new Error('Failed to browse');
-        return r.json();
-      }),
+    queryFn: () => apiFetch(`/api/v1/sync-targets/${sourceId}/browse?path=${encodeURIComponent(currentPath)}`),
   });
 
   // The parent sync-source-detail page already fetches the target with this
@@ -375,7 +369,7 @@ function S3FileBrowser({
   // network roundtrip. We only need it to label the root breadcrumb.
   const { data: target } = useQuery<SyncTarget>({
     queryKey: ['sync-targets', sourceId],
-    queryFn: () => fetch(`/api/v1/sync-targets/${sourceId}`, { credentials: 'include' }).then((r) => r.json()),
+    queryFn: () => apiFetch(`/api/v1/sync-targets/${sourceId}`),
   });
 
   const rootLabel = useMemo(() => {
@@ -429,16 +423,12 @@ function S3FileBrowser({
   }, [data, s3SortKey, s3SortDir]);
 
   const bulkDeleteMutation = useMutation({
-    mutationFn: async (ids: string[]) => {
-      const res = await fetch('/api/v1/documents/bulk-delete', {
+    mutationFn: (ids: string[]) =>
+      apiFetch('/api/v1/documents/bulk-delete', {
         method: 'POST',
-        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids }),
-      });
-      if (!res.ok) throw new Error('Delete failed');
-      return res.json();
-    },
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['browse', sourceId] });
       queryClient.invalidateQueries({ queryKey: ['documents'] });
@@ -447,16 +437,12 @@ function S3FileBrowser({
   });
 
   const deleteFolderMutation = useMutation({
-    mutationFn: async (path: string) => {
-      const res = await fetch(`/api/v1/sync-targets/${sourceId}/folders/delete`, {
+    mutationFn: (path: string) =>
+      apiFetch(`/api/v1/sync-targets/${sourceId}/folders/delete`, {
         method: 'POST',
-        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path }),
-      });
-      if (!res.ok) throw new Error('Delete folder failed');
-      return res.json();
-    },
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['browse', sourceId] });
       queryClient.invalidateQueries({ queryKey: ['documents'] });
@@ -470,19 +456,12 @@ function S3FileBrowser({
   // is unchanged."
 
   const renameFileMutation = useMutation({
-    mutationFn: async ({ documentId, newSourceKey }: { documentId: string; newSourceKey: string }) => {
-      const res = await fetch(`/api/v1/documents/${documentId}/move`, {
+    mutationFn: ({ documentId, newSourceKey }: { documentId: string; newSourceKey: string }) =>
+      apiFetch(`/api/v1/documents/${documentId}/move`, {
         method: 'POST',
-        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ newSourceKey }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error ?? 'Rename failed');
-      }
-      return res.json();
-    },
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['browse', sourceId] });
       queryClient.invalidateQueries({ queryKey: ['documents'] });
@@ -495,19 +474,12 @@ function S3FileBrowser({
   });
 
   const renameFolderMutation = useMutation({
-    mutationFn: async ({ oldPath, newPath }: { oldPath: string; newPath: string }) => {
-      const res = await fetch(`/api/v1/sync-targets/${sourceId}/folders/move`, {
+    mutationFn: ({ oldPath, newPath }: { oldPath: string; newPath: string }) =>
+      apiFetch(`/api/v1/sync-targets/${sourceId}/folders/move`, {
         method: 'POST',
-        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ oldPath, newPath }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error ?? 'Rename failed');
-      }
-      return res.json();
-    },
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['browse', sourceId] });
       queryClient.invalidateQueries({ queryKey: ['documents'] });

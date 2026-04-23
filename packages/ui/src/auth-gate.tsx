@@ -1,8 +1,14 @@
 import { Outlet, useNavigate } from '@tanstack/react-router';
 import { useEffect } from 'react';
-import { useAuth } from './auth-provider.js';
+import { useAuth } from './auth-provider';
+import { AccessDenied } from './components/access-denied';
 
-export function AuthGate() {
+interface AuthGateProps {
+  /** When set, the user must have one of these roles to proceed. Others see the Access Denied page. */
+  requiredRoles?: string[];
+}
+
+export function AuthGate({ requiredRoles }: AuthGateProps) {
   const { user, isPending, error } = useAuth();
   const navigate = useNavigate();
 
@@ -28,6 +34,14 @@ export function AuthGate() {
 
   if (!user) {
     return null;
+  }
+
+  // Role-based access check
+  if (requiredRoles?.length) {
+    const userRole = (user as unknown as { role?: string }).role;
+    if (!userRole || !requiredRoles.includes(userRole)) {
+      return <AccessDenied email={user.email} />;
+    }
   }
 
   return <Outlet />;

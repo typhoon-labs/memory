@@ -1,5 +1,5 @@
-import { S3Provider } from './s3.js';
-import type { SourceProvider } from './types.js';
+import { S3Provider } from './s3';
+import type { SourceProvider } from './types';
 
 const providers: Record<string, SourceProvider> = {
   s3: new S3Provider(),

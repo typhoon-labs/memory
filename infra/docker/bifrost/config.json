@@ -61,5 +61,17 @@
     "config": {
       "path": "/app/data/logs.db"
     }
-  }
+  },
+  "plugins": [
+    {
+      "enabled": true,
+      "name": "otel",
+      "config": {
+        "service_name": "typhoon-bifrost",
+        "collector_url": "http://otel-lgtm:4318",
+        "trace_type": "genai_extension",
+        "protocol": "http"
+      }
+    }
+  ]
 }

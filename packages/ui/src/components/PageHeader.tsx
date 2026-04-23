@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { cn } from '../lib/utils.js';
+import { cn } from '../lib/utils';
 
 export interface PageHeaderProps {
   /** Page title displayed as h1. */
@@ -22,7 +22,7 @@ export function PageHeader({ title, description, actions, className }: PageHeade
         <h1 className="text-lg font-medium text-foreground">{title}</h1>
         {description != null && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
       </div>
-      {actions != null && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+      {actions != null && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
     </div>
   );
 }

@@ -1,0 +1,86 @@
+{
+  "editable": true,
+  "graphTooltip": 1,
+  "panels": [
+    {
+      "title": "LLM Call Rate",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "rate(traces_span_metrics_calls_total{span_name=~\"chat .*\"}[5m])",
+          "legendFormat": "{{gen_ai_request_model}}"
+        }
+      ]
+    },
+    {
+      "title": "LLM Request Duration (p95)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "histogram_quantile(0.95, rate(traces_span_metrics_duration_milliseconds_bucket{span_name=~\"chat .*\"}[5m]))",
+          "legendFormat": "p95 {{gen_ai_request_model}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ms" } }
+    },
+    {
+      "title": "Agent Invocations",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "rate(traces_span_metrics_calls_total{gen_ai_operation_name=\"invoke_agent\"}[5m])",
+          "legendFormat": "{{span_name}}"
+        }
+      ]
+    },
+    {
+      "title": "Conversations Started",
+      "type": "stat",
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 8 },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum(increase(conversation_started_total[1h]))"
+        }
+      ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "title": "Tool Calls",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 8 },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "rate(traces_span_metrics_calls_total{gen_ai_operation_name=\"execute_tool\"}[5m])",
+          "legendFormat": "{{span_name}}"
+        }
+      ]
+    },
+    {
+      "title": "Recent LLM Traces",
+      "type": "table",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 16 },
+      "targets": [
+        {
+          "datasource": { "type": "tempo", "uid": "tempo" },
+          "queryType": "nativeSearch",
+          "serviceName": "typhoon",
+          "spanName": "chat",
+          "limit": 20
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["typhoon", "llm"],
+  "time": { "from": "now-1h", "to": "now" },
+  "title": "LLM Operations",
+  "uid": "typhoon-llm-operations"
+}

@@ -8,10 +8,10 @@ import {
   useReactTable,
 } from '@tanstack/react-table';
 import { useEffect, useMemo, useState } from 'react';
-import { cn } from '../lib/utils.js';
-import { Button } from './ui/button.js';
-import { Checkbox } from './ui/checkbox.js';
-import { Input } from './ui/input.js';
+import { cn } from '../lib/utils';
+import { Button } from './ui/button';
+import { Checkbox } from './ui/checkbox';
+import { Input } from './ui/input';
 
 export interface DataTableProps<TData> {
   /** The array of data rows to display. */
@@ -34,6 +34,8 @@ export interface DataTableProps<TData> {
   showRowCount?: boolean;
   /** Callback when a table row is clicked. Receives the row's original data. */
   onRowClick?: (row: TData) => void;
+  /** Callback when a table row is hovered. Useful for prefetching data. */
+  onRowHover?: (row: TData) => void;
   /** Enable row selection with checkboxes. Defaults to false. */
   enableRowSelection?: boolean;
   /** Callback when selection changes. Receives array of selected row data. */
@@ -59,6 +61,7 @@ export function DataTable<TData>({
   toolbar,
   showRowCount = false,
   onRowClick,
+  onRowHover,
   enableRowSelection = false,
   onSelectionChange,
   getRowId,
@@ -204,6 +207,7 @@ export function DataTable<TData>({
                     enableRowSelection && row.getIsSelected() && 'bg-muted/50',
                   )}
                   onClick={onRowClick ? () => onRowClick(row.original) : undefined}
+                  onMouseEnter={onRowHover ? () => onRowHover(row.original) : undefined}
                 >
                   {row.getVisibleCells().map((cell) => (
                     <td key={cell.id} className="whitespace-nowrap px-4 py-2.5 align-middle text-sm text-foreground">

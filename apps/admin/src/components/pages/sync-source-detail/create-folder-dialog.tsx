@@ -1,5 +1,15 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Button, Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, Input, Label } from '@typhoon/ui';
+import {
+  apiFetch,
+  Button,
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  Input,
+  Label,
+} from '@typhoon/ui';
 import { FolderPlusIcon } from 'lucide-react';
 import { useState } from 'react';
 
@@ -20,17 +30,11 @@ export function CreateFolderDialog({
   const createMutation = useMutation({
     mutationFn: async (name: string) => {
       const path = `${currentPath}${name}/`;
-      const res = await fetch(`/api/v1/sync-targets/${sourceId}/folders`, {
+      return apiFetch(`/api/v1/sync-targets/${sourceId}/folders`, {
         method: 'POST',
-        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path }),
       });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error ?? 'Failed to create folder');
-      }
-      return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['browse', sourceId] });

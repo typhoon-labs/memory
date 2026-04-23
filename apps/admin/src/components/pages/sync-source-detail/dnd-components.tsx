@@ -3,7 +3,7 @@ import { useDraggable, useDroppable } from '@dnd-kit/react';
 import { Checkbox } from '@typhoon/ui';
 import { FileTextIcon, FolderIcon, XIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
-import type { DragItem } from './use-file-move.js';
+import type { DragItem } from './use-file-move';
 
 // ── Draggable file row ─────────────────────────────────────────
 

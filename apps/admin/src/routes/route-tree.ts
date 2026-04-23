@@ -1,14 +1,24 @@
 import { createRootRoute, createRoute } from '@tanstack/react-router';
-import { AuthGate } from '@typhoon/ui';
-import { AdminDashboard } from '../components/pages/dashboard.js';
-import { AdminDocumentsPage } from '../components/pages/documents.js';
-import { FeedbackPage } from '../components/pages/feedback.js';
-import { AdminLoginPage } from '../components/pages/login.js';
-import { QueueDetailPage } from '../components/pages/queue-detail.js';
-import { QueuesPage } from '../components/pages/queues.js';
-import { SyncSourceDetailPage } from '../components/pages/sync-source-detail.js';
-import { SyncSourcesPage } from '../components/pages/sync-sources.js';
-import { AdminShell } from '../layouts/admin-shell.js';
+import { AdminDashboard } from '../components/pages/dashboard';
+import { DatasetDetailPage } from '../components/pages/dataset-detail';
+import { DatasetsPage } from '../components/pages/datasets';
+import { AdminDocumentsPage } from '../components/pages/documents';
+import { ExperimentComparePage } from '../components/pages/experiment-compare';
+import { ExperimentDetailPage } from '../components/pages/experiment-detail';
+import { ExperimentsPage } from '../components/pages/experiments';
+import { AdminLoginPage } from '../components/pages/login';
+import { QueueDetailPage } from '../components/pages/queue-detail';
+import { QueuesPage } from '../components/pages/queues';
+import { ReviewDetailPage } from '../components/pages/review-detail';
+import { ReviewsPage } from '../components/pages/reviews';
+import { ScorerDetailPage } from '../components/pages/scorer-detail';
+import { ScorersPage } from '../components/pages/scorers';
+import { SyncSourceDetailPage } from '../components/pages/sync-source-detail';
+import { SyncSourcesPage } from '../components/pages/sync-sources';
+import { TraceDetailPage } from '../components/pages/trace-detail';
+import { TracesPage } from '../components/pages/traces';
+import { AdminShell } from '../layouts/admin-shell';
+import { AdminAuthGate } from './admin-auth-gate';
 
 const rootRoute = createRootRoute();
 
@@ -21,7 +31,7 @@ const loginRoute = createRoute({
 const authenticatedRoute = createRoute({
   getParentRoute: () => rootRoute,
   id: 'authenticated',
-  component: AuthGate,
+  component: AdminAuthGate,
 });
 
 const layoutRoute = createRoute({
@@ -72,10 +82,101 @@ const documentsRoute = createRoute({
   }),
 });
 
-const feedbackRoute = createRoute({
+const REVIEW_SORT = ['worstScore', 'newest', 'unscored'] as const;
+const REVIEW_ANNOTATION = ['all', 'annotated', 'unannotated'] as const;
+
+const reviewsRoute = createRoute({
   getParentRoute: () => layoutRoute,
-  path: '/feedback',
-  component: FeedbackPage,
+  path: '/reviews',
+  component: ReviewsPage,
+  validateSearch: (search: Record<string, unknown>) => ({
+    sortBy:
+      typeof search.sortBy === 'string' && (REVIEW_SORT as readonly string[]).includes(search.sortBy)
+        ? (search.sortBy as (typeof REVIEW_SORT)[number])
+        : ('worstScore' as const),
+    annotationStatus:
+      typeof search.annotationStatus === 'string' &&
+      (REVIEW_ANNOTATION as readonly string[]).includes(search.annotationStatus)
+        ? (search.annotationStatus as (typeof REVIEW_ANNOTATION)[number])
+        : ('all' as const),
+  }),
+});
+
+const reviewDetailRoute = createRoute({
+  getParentRoute: () => layoutRoute,
+  path: '/reviews/$threadId',
+  component: ReviewDetailPage,
+});
+
+const datasetsRoute = createRoute({
+  getParentRoute: () => layoutRoute,
+  path: '/datasets',
+  component: DatasetsPage,
+});
+
+const datasetDetailRoute = createRoute({
+  getParentRoute: () => layoutRoute,
+  path: '/datasets/$datasetId',
+  component: DatasetDetailPage,
+});
+
+const experimentsRoute = createRoute({
+  getParentRoute: () => layoutRoute,
+  path: '/experiments',
+  component: ExperimentsPage,
+});
+
+// Compare route BEFORE detail route — TanStack Router matches in order,
+// '/experiments/compare' would otherwise match as $experimentId = 'compare'
+const experimentCompareRoute = createRoute({
+  getParentRoute: () => layoutRoute,
+  path: '/experiments/compare',
+  component: ExperimentComparePage,
+  validateSearch: (search: Record<string, unknown>) => ({
+    a: typeof search.a === 'string' ? search.a : '',
+    b: typeof search.b === 'string' ? search.b : '',
+  }),
+});
+
+const experimentDetailRoute = createRoute({
+  getParentRoute: () => layoutRoute,
+  path: '/experiments/$experimentId',
+  component: ExperimentDetailPage,
+});
+
+const scorersRoute = createRoute({
+  getParentRoute: () => layoutRoute,
+  path: '/scorers',
+  component: ScorersPage,
+});
+
+const scorerDetailRoute = createRoute({
+  getParentRoute: () => layoutRoute,
+  path: '/scorers/$scorerId',
+  component: ScorerDetailPage,
+});
+
+const TRACE_STATUS = ['all', 'success', 'error', 'partial'] as const;
+
+const tracesRoute = createRoute({
+  getParentRoute: () => layoutRoute,
+  path: '/traces',
+  component: TracesPage,
+  validateSearch: (search: Record<string, unknown>) => ({
+    status:
+      typeof search.status === 'string' && (TRACE_STATUS as readonly string[]).includes(search.status)
+        ? (search.status as (typeof TRACE_STATUS)[number])
+        : ('all' as const),
+    entityType: typeof search.entityType === 'string' ? search.entityType : undefined,
+    search: typeof search.search === 'string' ? search.search : undefined,
+    threadId: typeof search.threadId === 'string' ? search.threadId : undefined,
+  }),
+});
+
+const traceDetailRoute = createRoute({
+  getParentRoute: () => layoutRoute,
+  path: '/traces/$traceId',
+  component: TraceDetailPage,
 });
 
 const queuesRoute = createRoute({
@@ -91,7 +192,12 @@ const queueDetailRoute = createRoute({
   path: '/queues/$queueName',
   component: QueueDetailPage,
   validateSearch: (search: Record<string, unknown>) => ({
-    tab: search.tab === 'jobs' ? ('jobs' as const) : ('overview' as const),
+    tab:
+      search.tab === 'jobs'
+        ? ('jobs' as const)
+        : search.tab === 'failed-archive'
+          ? ('failed-archive' as const)
+          : ('overview' as const),
     jobState:
       typeof search.jobState === 'string' && (JOB_STATES as readonly string[]).includes(search.jobState)
         ? (search.jobState as (typeof JOB_STATES)[number])
@@ -107,7 +213,17 @@ export const routeTree = rootRoute.addChildren([
       syncSourcesRoute,
       sourceDetailRoute,
       documentsRoute,
-      feedbackRoute,
+      reviewsRoute,
+      reviewDetailRoute,
+      datasetsRoute,
+      datasetDetailRoute,
+      experimentsRoute,
+      experimentCompareRoute,
+      experimentDetailRoute,
+      scorersRoute,
+      scorerDetailRoute,
+      tracesRoute,
+      traceDetailRoute,
       queuesRoute,
       queueDetailRoute,
     ]),

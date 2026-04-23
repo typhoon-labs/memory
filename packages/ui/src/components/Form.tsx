@@ -1,8 +1,8 @@
 import { createContext, useContext, useId } from 'react';
 import type { ControllerProps, FieldPath, FieldValues } from 'react-hook-form';
 import { Controller, FormProvider, useFormContext } from 'react-hook-form';
-import { cn } from '../lib/utils.js';
-import { Label } from './ui/label.js';
+import { cn } from '../lib/utils';
+import { Label } from './ui/label';
 
 export { zodResolver } from '@hookform/resolvers/zod';
 // Re-export react-hook-form essentials for consumers

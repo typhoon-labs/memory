@@ -7,7 +7,6 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -18,8 +17,8 @@
     "@typhoon/config": "workspace:*",
     "@typhoon/db": "workspace:*",
     "@typhoon/logger": "workspace:*",
-    "@typhoon/pg": "workspace:*",
     "@typhoon/storage": "workspace:*",
+    "@typhoon/telemetry": "workspace:*",
     "@typhoon/types": "workspace:*",
     "ai": "^6.0.0",
     "bullmq": "^5.34.0",

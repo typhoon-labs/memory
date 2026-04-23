@@ -12,7 +12,9 @@ WORKDIR /app
 
 # Copy only files needed for dependency resolution (maximises layer cache)
 COPY package.json bun.lock ./
-COPY apps/server/package.json apps/server/
+COPY apps/api/package.json apps/api/
+COPY apps/worker/package.json apps/worker/
+COPY apps/scheduler/package.json apps/scheduler/
 COPY apps/desk/package.json apps/desk/
 COPY apps/admin/package.json apps/admin/
 COPY apps/widget/package.json apps/widget/
@@ -23,10 +25,11 @@ COPY packages/config/package.json packages/config/
 COPY packages/db/package.json packages/db/
 COPY packages/ingestion/package.json packages/ingestion/
 COPY packages/logger/package.json packages/logger/
-COPY packages/pg/package.json packages/pg/
 COPY packages/storage/package.json packages/storage/
+COPY packages/telemetry/package.json packages/telemetry/
 COPY packages/types/package.json packages/types/
 COPY packages/ui/package.json packages/ui/
+COPY scripts/postinstall.sh scripts/
 
 RUN --mount=type=cache,target=/root/.bun/install/cache \
     bun install --frozen-lockfile
@@ -45,15 +48,15 @@ RUN chmod +x /usr/local/bin/dev-entrypoint
 ENTRYPOINT ["dev-entrypoint"]
 
 # ---------------------------------------------------------------------------
-# server: production API server
+# api: production API server
 # ---------------------------------------------------------------------------
-FROM oven/bun:1.3.11-alpine AS server
+FROM oven/bun:1.3.11-alpine AS api
 
 WORKDIR /app
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json bun.lock turbo.json tsconfig.json ./
-COPY apps/server/ apps/server/
+COPY apps/api/ apps/api/
 COPY packages/ packages/
 
 EXPOSE 5172
@@ -61,7 +64,45 @@ EXPOSE 5172
 HEALTHCHECK --interval=10s --timeout=5s --retries=5 \
   CMD wget -qO/dev/null http://127.0.0.1:5172/api/v1/auth/ok || exit 1
 
-CMD ["bun", "run", "apps/server/src/index.ts"]
+CMD ["bun", "run", "apps/api/src/index.ts"]
+
+# ---------------------------------------------------------------------------
+# worker: BullMQ job consumer
+# ---------------------------------------------------------------------------
+FROM oven/bun:1.3.11-alpine AS worker
+
+WORKDIR /app
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY package.json bun.lock turbo.json tsconfig.json ./
+COPY apps/worker/ apps/worker/
+COPY packages/ packages/
+
+EXPOSE 5170
+
+HEALTHCHECK --interval=10s --timeout=5s --retries=3 \
+  CMD wget -qO/dev/null http://127.0.0.1:5170/healthz || exit 1
+
+CMD ["bun", "run", "apps/worker/src/index.ts"]
+
+# ---------------------------------------------------------------------------
+# scheduler: cron job producer
+# ---------------------------------------------------------------------------
+FROM oven/bun:1.3.11-alpine AS scheduler
+
+WORKDIR /app
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY package.json bun.lock turbo.json tsconfig.json ./
+COPY apps/scheduler/ apps/scheduler/
+COPY packages/ packages/
+
+EXPOSE 5171
+
+HEALTHCHECK --interval=10s --timeout=5s --retries=3 \
+  CMD wget -qO/dev/null http://127.0.0.1:5171/healthz || exit 1
+
+CMD ["bun", "run", "apps/scheduler/src/index.ts"]
 
 # ---------------------------------------------------------------------------
 # frontend-build: compile frontend app with Vite
@@ -76,7 +117,7 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json bun.lock turbo.json tsconfig.json biome.json ./
 COPY apps/${APP_NAME}/ apps/${APP_NAME}/
-COPY apps/server/ apps/server/
+COPY apps/api/ apps/api/
 COPY packages/ packages/
 
 WORKDIR /app/apps/${APP_NAME}

@@ -1,5 +1,5 @@
 import { createContext, type KeyboardEvent, type ReactNode, useCallback, useContext, useRef } from 'react';
-import { cn } from '../../lib/utils.js';
+import { cn } from '../../lib/utils';
 
 // =============================================================================
 // Context
@@ -78,7 +78,7 @@ export function PromptInputTextarea({
       autoFocus={autoFocus}
       rows={1}
       className={cn(
-        'min-h-[22px] max-h-[120px] flex-1 resize-none overflow-y-auto bg-transparent px-1 py-0.5 text-sm leading-relaxed text-foreground placeholder:text-muted-foreground/65 focus-visible:outline-none',
+        'min-h-[22px] max-h-[120px] flex-1 resize-none overflow-y-auto field-sizing-content bg-transparent px-1 py-0.5 text-sm leading-relaxed text-foreground placeholder:text-muted-foreground/65 focus-visible:outline-none',
         className,
       )}
       {...rest}

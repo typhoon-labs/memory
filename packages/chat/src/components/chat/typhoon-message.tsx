@@ -1,58 +1,23 @@
 import type { UIMessage } from '@ai-sdk/react';
 import { CopyIcon, ThumbsDownIcon, ThumbsUpIcon } from 'lucide-react';
 import type { RefObject } from 'react';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Message, MessageAction, MessageActions, MessageContent } from '../ai-elements/message.js';
-import { useChatConfig } from './chat-config.js';
-import { type SourceCitation, SourceCitations } from './source-citations.js';
-import { StreamdownText } from './streamdown-text.js';
-import { TaskProgress, type ToolPart } from './task-progress.js';
-
-// =============================================================================
-// Helpers
-// =============================================================================
-
-function getInitials(name: string): string {
-  return name.charAt(0).toUpperCase();
-}
-
-function formatTimestamp(value: Date | string): string {
-  const date = typeof value === 'string' ? new Date(value) : value;
-  const now = new Date();
-  const isToday =
-    date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate();
-
-  if (isToday) {
-    return date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-  }
-  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-}
-
-/**
- * Extract citations from any completed tool whose output is an array of
- * documents (objects with a `documentTitle` field). Duck-typed so new search
- * tools or agents are picked up automatically — no allow-list to maintain.
- */
-function extractCitations(message: UIMessage): SourceCitation[] {
-  const citations: SourceCitation[] = [];
-  for (const part of message.parts) {
-    if (!part.type.startsWith('tool-')) continue;
-    const invocation = part as unknown as { state?: string; output?: unknown };
-    if (invocation.state !== 'output-available') continue;
-    const result = invocation.output;
-    if (!Array.isArray(result)) continue;
-    for (const doc of result) {
-      if (typeof doc === 'object' && doc !== null && 'documentTitle' in doc) {
-        citations.push({
-          documentTitle: (doc as { documentTitle: string }).documentTitle,
-          section: (doc as { section?: string }).section,
-          score: (doc as { score?: number }).score,
-        });
-      }
-    }
-  }
-  return citations;
-}
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Message, MessageAction, MessageActions, MessageContent } from '../ai-elements/message';
+import { useChatConfig } from './chat-config';
+import { CitationProvider } from './citation-context';
+import {
+  collectProgressEvents,
+  extractCitations,
+  extractSubAgentTexts,
+  formatTimestamp,
+  getInitials,
+  isVisibleToolPart,
+  transformCitationPatterns,
+  transformCopyText,
+} from './message-utils';
+import { SourceCitations } from './source-citations';
+import { StreamdownText } from './streamdown-text';
+import { TaskProgress, type ToolPart } from './task-progress';
 
 // =============================================================================
 // Component
@@ -64,7 +29,71 @@ export function TyphoonMessage({ message, isStreaming }: { message: ChatMessage;
   const config = useChatConfig();
   const isAssistant = message.role === 'assistant';
   const displayName = isAssistant ? 'Typhoon' : (config.userName ?? 'You');
-  const citations = isAssistant ? extractCitations(message) : [];
+  const allCitations = isAssistant ? extractCitations(message) : [];
+
+  // Compute which citation indices are actually referenced inline in the text
+  const usedCitationIndices = useMemo(() => {
+    if (allCitations.length === 0) return new Set<number>();
+    const indices = new Set<number>();
+    const subAgentTexts = extractSubAgentTexts(message);
+    const hasSubAgentText = subAgentTexts.size > 0;
+    let seenTool = false;
+    for (const part of message.parts) {
+      if (part.type === 'text' && part.text) {
+        if (seenTool && hasSubAgentText) continue;
+        const { usedIndices } = transformCitationPatterns(part.text, allCitations);
+        for (const idx of usedIndices) indices.add(idx);
+      } else if (part.type.startsWith('tool-')) {
+        seenTool = true;
+      }
+    }
+    for (const [, agentText] of subAgentTexts) {
+      const { usedIndices } = transformCitationPatterns(agentText, allCitations);
+      for (const idx of usedIndices) indices.add(idx);
+    }
+    return indices;
+  }, [allCitations, message]);
+
+  const citations = useMemo(
+    () => allCitations.filter((c) => usedCitationIndices.has(c.index)),
+    [allCitations, usedCitationIndices],
+  );
+
+  // Build copy-friendly text: matches rendered content with [N] citations + source bibliography
+  const copyText = useMemo(() => {
+    const subAgentTexts = extractSubAgentTexts(message);
+    const hasSubAgentText = subAgentTexts.size > 0;
+    const parts: string[] = [];
+    let seenTool = false;
+    for (const part of message.parts) {
+      if (part.type === 'text' && part.text) {
+        if (seenTool && hasSubAgentText) continue;
+        parts.push(part.text);
+      } else if (part.type.startsWith('tool-')) {
+        seenTool = true;
+      }
+    }
+    for (const [, agentText] of subAgentTexts) {
+      parts.push(agentText);
+    }
+    let result = transformCopyText(parts.join('\n\n'));
+    // Append source bibliography so [N] refs are meaningful when pasted
+    if (citations.length > 0) {
+      const bib = citations.map((c) => {
+        const num = (c.displayIndex ?? String(c.index)).split('.')[0];
+        const meta = [c.syncSourceName, c.source].filter(Boolean).join(' · ');
+        return `[${num}] ${c.title}${meta ? ` (${meta})` : ''}`;
+      });
+      result += `\n\n${bib.join('\n')}`;
+    }
+    return result;
+  }, [message, citations]);
+
+  const citationsMap = useMemo(() => {
+    const map = new Map<number, (typeof allCitations)[number]>();
+    for (const c of allCitations) map.set(c.index, c);
+    return map;
+  }, [allCitations]);
 
   const hasFeedback = isAssistant && message.id ? config.feedbackState?.has(message.id) : false;
   const feedbackComment = isAssistant && message.id ? config.feedbackState?.get(message.id)?.comment : undefined;
@@ -117,48 +146,83 @@ export function TyphoonMessage({ message, isStreaming }: { message: ChatMessage;
           )}
         </div>
 
-        {/* Content: iterate parts in order */}
+        {/* Content: iterate parts in order. The ProgressTracker (TaskProgress)
+            renders once at the position of the first visible tool part and
+            absorbs every other tool part in the message — keeps narration
+            text bubbles interleaved with one consolidated activity card. */}
         <MessageContent>
-          {(() => {
-            // Collect all tool parts for the activity tracker
-            const toolParts: ToolPart[] = message.parts
-              .filter((p) => p.type.startsWith('tool-'))
-              .map((p) => {
-                const tp = p as { type: string; toolName?: string; state?: string };
-                return {
-                  type: tp.type,
-                  toolName: tp.toolName,
-                  state: tp.state,
-                };
-              });
+          <CitationProvider citations={citationsMap} onDocumentOpen={config.onDocumentOpen}>
+            {(() => {
+              const progressByCallId = collectProgressEvents(message);
+              const subAgentTexts = isAssistant ? extractSubAgentTexts(message) : new Map();
+              const hasSubAgentText = subAgentTexts.size > 0;
+              const toolParts: ToolPart[] = message.parts
+                .filter((p) => isVisibleToolPart(p as ToolPart))
+                .map((p) => {
+                  const tp = p as ToolPart;
+                  return {
+                    type: tp.type,
+                    toolName: tp.toolName,
+                    toolCallId: tp.toolCallId,
+                    state: tp.state,
+                  };
+                });
 
-            let trackerRendered = false;
+              let trackerRendered = false;
+              let seenTool = false;
 
-            return message.parts.map((part, i) => {
-              if (part.type === 'text') {
-                if (!part.text) return null;
-                return (
-                  <StreamdownText
-                    key={`${message.id}-text-${String(i)}`}
-                    text={part.text}
-                    isStreaming={isStreaming && isAssistant && i === message.parts.length - 1}
-                  />
-                );
-              }
-              if (part.type.startsWith('tool-')) {
-                // Render a single TaskProgress at the first tool part position
-                if (!trackerRendered && toolParts.length > 0) {
-                  trackerRendered = true;
-                  return <TaskProgress key={`${message.id}-activity`} toolParts={toolParts} />;
+              return message.parts.map((part, i) => {
+                if (part.type === 'text') {
+                  if (!part.text) return null;
+                  // Skip supervisor's post-tool text when sub-agent text is rendered
+                  // (prevents duplicate content — the sub-agent text has inline citations)
+                  if (seenTool && hasSubAgentText) return null;
+                  const isLastPart = isStreaming && isAssistant && i === message.parts.length - 1;
+                  let text = part.text;
+                  if (isAssistant && allCitations.length > 0) {
+                    text = transformCitationPatterns(text, allCitations).text;
+                  }
+                  return (
+                    <StreamdownText key={`${message.id}-text-${String(i)}`} text={text} isStreaming={isLastPart} />
+                  );
+                }
+                if (part.type.startsWith('tool-')) {
+                  seenTool = true;
+                  if (!isVisibleToolPart(part as ToolPart)) return null;
+                  if (!trackerRendered && toolParts.length > 0) {
+                    trackerRendered = true;
+                    // Render sub-agent texts (with inline citations) after the activity tracker
+                    const agentTextElements = [...subAgentTexts.entries()].map(([idx, agentText]) => {
+                      const transformed =
+                        allCitations.length > 0 ? transformCitationPatterns(agentText, allCitations).text : agentText;
+                      return (
+                        <StreamdownText
+                          key={`${message.id}-agent-text-${String(idx)}`}
+                          text={transformed}
+                          isStreaming={false}
+                        />
+                      );
+                    });
+                    return [
+                      <TaskProgress
+                        key={`${message.id}-activity`}
+                        toolParts={toolParts}
+                        messageId={message.id ?? `msg-${String(i)}`}
+                        progressByCallId={progressByCallId}
+                        isStreaming={isStreaming}
+                      />,
+                      ...agentTextElements,
+                    ];
+                  }
+                  return null;
                 }
                 return null;
-              }
-              return null;
-            });
-          })()}
+              });
+            })()}
+          </CitationProvider>
 
-          {/* Source citations from RAG results */}
-          {citations.length > 0 && <SourceCitations citations={citations} />}
+          {/* Source citations footer — always shown when we have citation data */}
+          {citations.length > 0 && <SourceCitations citations={citations} onDocumentOpen={config.onDocumentOpen} />}
         </MessageContent>
 
         {/* Action bar */}
@@ -171,7 +235,7 @@ export function TyphoonMessage({ message, isStreaming }: { message: ChatMessage;
               thumbsDownRef={thumbsDownRef}
             />
           )}
-          <CopyTextButton message={message} />
+          <CopyTextButton copyText={copyText} />
         </MessageActions>
 
         {/* Inline comment form */}
@@ -233,15 +297,10 @@ export function TyphoonMessage({ message, isStreaming }: { message: ChatMessage;
 // Action buttons
 // =============================================================================
 
-function CopyTextButton({ message }: { message: UIMessage }) {
-  const text = message.parts
-    .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
-    .map((p) => p.text)
-    .join('');
-
+function CopyTextButton({ copyText }: { copyText: string }) {
   const handleCopy = useCallback(() => {
-    void navigator.clipboard.writeText(text);
-  }, [text]);
+    void navigator.clipboard.writeText(copyText);
+  }, [copyText]);
 
   return (
     <MessageAction label="Copy message" onClick={handleCopy}>

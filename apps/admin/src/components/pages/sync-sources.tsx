@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import type { ColumnDef } from '@typhoon/ui';
 import {
+  apiFetch,
   Button,
   DataTable,
   Dialog,
@@ -25,8 +26,8 @@ import {
 } from '@typhoon/ui';
 import { FolderSyncIcon, PlusIcon } from 'lucide-react';
 import { useState } from 'react';
-import type { SyncTarget } from './sync-source-detail/shared.js';
-import { formatConfig } from './sync-source-detail/shared.js';
+import type { SyncTarget } from './sync-source-detail/shared';
+import { formatConfig } from './sync-source-detail/shared';
 
 const columns: ColumnDef<SyncTarget, unknown>[] = [
   {
@@ -75,7 +76,7 @@ export function SyncSourcesPage() {
 
   const { data: targets, isLoading } = useQuery<SyncTarget[]>({
     queryKey: ['sync-targets'],
-    queryFn: () => fetch('/api/v1/sync-targets', { credentials: 'include' }).then((r) => r.json()),
+    queryFn: () => apiFetch('/api/v1/sync-targets'),
   });
 
   return (
@@ -135,7 +136,7 @@ function AddSourceForm({ onDone }: { onDone: () => void }) {
   const queryClient = useQueryClient();
   const { data: sources } = useQuery<{ name: string; sourceType: string }[]>({
     queryKey: ['sources'],
-    queryFn: () => fetch('/api/v1/sources', { credentials: 'include' }).then((r) => r.json()),
+    queryFn: () => apiFetch('/api/v1/sources'),
   });
   const [form, setForm] = useState({
     name: '',
@@ -158,10 +159,9 @@ function AddSourceForm({ onDone }: { onDone: () => void }) {
 
   const create = useMutation({
     mutationFn: () =>
-      fetch('/api/v1/sync-targets', {
+      apiFetch('/api/v1/sync-targets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({
           name: form.name,
           sourceType,

@@ -7,15 +7,15 @@ import {
   listObjectsByPrefix,
   uploadObject,
 } from '@typhoon/storage';
-import { getSource } from '../source-registry.js';
-import type { BrowseResult, SourceObject, SourceProvider } from './types.js';
+import { getSource } from '../source-registry';
+import type { BrowseResult, SourceObject, SourceProvider } from './types';
 
 interface S3Config {
   bucket: string;
   prefix?: string;
 }
 
-function resolveS3Client(config: Record<string, unknown>, sourceName?: string) {
+export function resolveS3Client(config: Record<string, unknown>, sourceName?: string) {
   const s3Config = config as unknown as S3Config;
   const source = sourceName ? getSource(sourceName) : undefined;
   const client = createS3Client({

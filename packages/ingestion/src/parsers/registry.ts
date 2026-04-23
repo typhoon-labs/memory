@@ -1,7 +1,7 @@
-import { parseDocx } from './docx.js';
-import { parseHtml } from './html.js';
-import { parsePdf } from './pdf.js';
-import { parseXlsx } from './xlsx.js';
+import { parseDocx } from './docx';
+import { parseHtml } from './html';
+import { parsePdf } from './pdf';
+import { parseXlsx } from './xlsx';
 
 export interface ParseResult {
   text: string;

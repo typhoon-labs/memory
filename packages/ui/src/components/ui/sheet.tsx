@@ -2,7 +2,7 @@ import { GripVerticalIcon, XIcon } from 'lucide-react';
 import { Dialog as SheetPrimitive } from 'radix-ui';
 import * as React from 'react';
 
-import { cn } from '../../lib/utils.js';
+import { cn } from '../../lib/utils';
 
 function Sheet({ ...props }: React.ComponentProps<typeof SheetPrimitive.Root>) {
   return <SheetPrimitive.Root data-slot="sheet" {...props} />;
@@ -109,6 +109,7 @@ function SheetContent({
     <SheetPortal>
       <SheetOverlay />
       <SheetPrimitive.Content
+        aria-describedby={undefined}
         data-slot="sheet-content"
         style={resizableStyle}
         className={cn(

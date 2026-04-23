@@ -52,6 +52,7 @@ services:
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_PROMETHEUS_AUTH_TYPE: public
     ports:
       - '9000:9000'
       - '9001:9001'
@@ -105,7 +106,7 @@ services:
   # ==========================================================================
   dex:
     profiles: [all, infra]
-    image: dexidp/dex:v2.41.1
+    image: dexidp/dex:v2.45.1
     container_name: typhoon-dex
     restart: unless-stopped
     ports:
@@ -133,7 +134,7 @@ services:
     build:
       context: ../..
       dockerfile: infra/docker/Dockerfile
-      target: server
+      target: api
     container_name: typhoon-migrate
     command: ['sh', '-c', 'cd packages/db && bun run db:migrate']
     env_file:
@@ -146,13 +147,13 @@ services:
     restart: 'no'
 
   # API Server
-  server:
+  api:
     profiles: [all, app]
     build:
       context: ../..
       dockerfile: infra/docker/Dockerfile
-      target: server
-    container_name: typhoon-server
+      target: api
+    container_name: typhoon-api
     restart: unless-stopped
     env_file:
       - ../../.env
@@ -174,23 +175,36 @@ services:
       LLM_RERANKER_MODEL: ${LLM_RERANKER_MODEL:-bedrock/us.anthropic.claude-haiku-4-5}
       LLM_EXTRACTION_MODEL: ${LLM_EXTRACTION_MODEL:-bedrock/us.anthropic.claude-haiku-4-5}
       LLM_GUARDRAIL_MODEL: ${LLM_GUARDRAIL_MODEL:-bedrock/us.anthropic.claude-haiku-4-5}
+      LLM_KNOWLEDGE_MODEL: ${LLM_KNOWLEDGE_MODEL:-bedrock/us.anthropic.claude-sonnet-4-6}
+      LLM_CITATION_MODEL: ${LLM_CITATION_MODEL:-bedrock/us.anthropic.claude-sonnet-4-6}
+      LLM_SCORING_MODEL: ${LLM_SCORING_MODEL:-bedrock/us.anthropic.claude-haiku-4-5}
       # Embeddings
       EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-http://bifrost:8787/v1}
       EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-bedrock}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-bedrock/amazon.titan-embed-text-v2:0}
       EMBEDDING_DIMENSION: ${EMBEDDING_DIMENSION:-1024}
+      EMBEDDING_MAX_CHUNK_CHARS: ${EMBEDDING_MAX_CHUNK_CHARS:-24000}
       # Auth
       AUTH_SECRET: ${AUTH_SECRET:-change-me-in-production}
       AUTH_URL: ${AUTH_URL:-http://localhost:5172}
-      TRUSTED_ORIGINS: ${TRUSTED_ORIGINS:-http://localhost:5173,http://localhost:5174,http://host.docker.internal:5173,http://host.docker.internal:5174}
-      # OIDC
-      OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-http://host.docker.internal:5556/dex}
+      TRUSTED_ORIGINS: ${TRUSTED_ORIGINS:-http://localhost:5173,http://localhost:5174}
+      # OIDC — ISSUER_URL is what the browser sees (must be reachable from host);
+      # BACKCHANNEL_URL is how the server reaches the IdP from inside the compose network.
+      OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-http://localhost:5556/dex}
+      OIDC_BACKCHANNEL_URL: ${OIDC_BACKCHANNEL_URL:-http://dex:5556/dex}
       OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-typhoon}
       OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-typhoon-secret}
+      # Role mapping
+      ADMIN_ROLES: ${ADMIN_ROLES:-admin}
+      REP_ROLES: ${REP_ROLES:-rep}
       # Server
       PORT: '${SERVER_PORT:-5172}'
       HOST: 0.0.0.0
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      NODE_ENV: production
+      # OpenTelemetry
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4318
+      OTEL_SERVICE_NAME: typhoon-api
     ports:
       - '${SERVER_PORT:-5172}:${SERVER_PORT:-5172}'
     depends_on:
@@ -209,6 +223,79 @@ services:
       retries: 10
       start_period: 15s
 
+  # Worker (BullMQ job consumer)
+  worker:
+    profiles: [all, app]
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile
+      target: worker
+    container_name: typhoon-worker
+    restart: unless-stopped
+    env_file:
+      - ../../.env
+    environment:
+      DATABASE_URL: postgresql://typhoon:typhoon@postgres:5432/typhoon
+      REDIS_URL: redis://redis:6379
+      S3_ENDPOINT: http://minio:9000
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-minioadmin}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-minioadmin}
+      S3_BUCKET: ${S3_BUCKET:-typhoon-documents}
+      LLM_BASE_URL: ${LLM_BASE_URL:-http://bifrost:8787/v1}
+      LLM_API_KEY: ${LLM_API_KEY:-changeme}
+      LLM_CHAT_MODEL: ${LLM_CHAT_MODEL:-bedrock/us.anthropic.claude-sonnet-4-6}
+      LLM_EXTRACTION_MODEL: ${LLM_EXTRACTION_MODEL:-bedrock/us.anthropic.claude-haiku-4-5}
+      LLM_SCORING_MODEL: ${LLM_SCORING_MODEL:-bedrock/us.anthropic.claude-haiku-4-5}
+      LLM_KNOWLEDGE_MODEL: ${LLM_KNOWLEDGE_MODEL:-bedrock/us.anthropic.claude-sonnet-4-6}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-http://bifrost:8787/v1}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-bedrock}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-bedrock/amazon.titan-embed-text-v2:0}
+      EMBEDDING_DIMENSION: ${EMBEDDING_DIMENSION:-1024}
+      EMBEDDING_MAX_CHUNK_CHARS: ${EMBEDDING_MAX_CHUNK_CHARS:-24000}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      SYNC_WORKER_CONCURRENCY: ${SYNC_WORKER_CONCURRENCY:-5}
+      NODE_ENV: production
+      # OpenTelemetry
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4318
+      OTEL_SERVICE_NAME: typhoon-worker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  # Scheduler (cron job producer)
+  scheduler:
+    profiles: [all, app]
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile
+      target: scheduler
+    container_name: typhoon-scheduler
+    restart: unless-stopped
+    env_file:
+      - ../../.env
+    environment:
+      DATABASE_URL: postgresql://typhoon:typhoon@postgres:5432/typhoon
+      REDIS_URL: redis://redis:6379
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      NODE_ENV: production
+      # OpenTelemetry
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4318
+      OTEL_SERVICE_NAME: typhoon-scheduler
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
   # Desk (rep workspace SPA)
   desk:
     profiles: [all, app]
@@ -223,7 +310,7 @@ services:
     ports:
       - '5173:80'
     depends_on:
-      server:
+      api:
         condition: service_healthy
 
   # Admin (admin dashboard SPA)
@@ -240,7 +327,7 @@ services:
     ports:
       - '5174:80'
     depends_on:
-      server:
+      api:
         condition: service_healthy
 
   # Widget (embeddable chat widget)
@@ -257,8 +344,46 @@ services:
     ports:
       - '5175:80'
 
+  # ==========================================================================
+  # Observability (LGTM stack)
+  # ==========================================================================
+
+  # All-in-one Grafana + Loki + Tempo + Prometheus + OTel Collector.
+  # The internal collector config is overridden to include PostgreSQL/Redis
+  # receivers, Prometheus scrape, spanmetrics connector, and filelog for
+  # Docker container logs — replacing postgres-exporter, redis-exporter,
+  # otel-collector, and promtail as separate containers.
+  otel-lgtm:
+    profiles: [all, observability]
+    image: grafana/otel-lgtm:latest
+    container_name: typhoon-otel-lgtm
+    restart: unless-stopped
+    ports:
+      - '3000:3000'
+      - '4317:4317'
+      - '4318:4318'
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      # Override internal collector config with our consolidated config
+      - ./otel/otel-collector-config.yaml:/otel-lgtm/otelcol-config.yaml:ro
+      # Docker container logs for filelog receiver (replaces promtail)
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      # Provisioning: otel-lgtm reads from /otel-lgtm/grafana/conf/provisioning/ (not /etc/grafana/provisioning/)
+      - ./grafana/provisioning/dashboards/dashboards.yaml:/otel-lgtm/grafana/conf/provisioning/dashboards/dashboards.yaml:ro
+      - ./grafana/provisioning/dashboards/grafana-dashboards.yaml:/otel-lgtm/grafana/conf/provisioning/dashboards/grafana-dashboards.yaml:ro
+      - ./grafana/provisioning/datasources/datasources.yaml:/otel-lgtm/grafana/conf/provisioning/datasources/datasources.yaml:ro
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
 volumes:
   postgres_data:
   redis_data:
   minio_data:
   bifrost_data:
+  grafana_data:
