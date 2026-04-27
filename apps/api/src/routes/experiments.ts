@@ -16,7 +16,8 @@ export const experimentRoutes = [
     handler: async (c) => {
       const page = Number(c.req.query('page') ?? '0');
       const perPage = Math.min(Number(c.req.query('perPage') ?? '100'), 100);
-      const result = await experimentsStorage.listExperiments({ page, perPage });
+      const status = c.req.query('status');
+      const result = await experimentsStorage.listExperiments({ page, perPage, status });
       return c.json(result);
     },
   }),

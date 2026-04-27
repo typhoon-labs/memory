@@ -138,6 +138,8 @@ export type ServerEnv = z.infer<typeof serverSchema>;
 export const scoringSchema = z.object({
   SCORING_ENABLED: z.enum(['true', 'false', '0', '1']).optional().default('true'),
   LLM_SCORING_MODEL: optionalString('claude-haiku-4-5-20251001'),
+  /** Comma-separated list of model IDs available for scorer selection in the admin UI. */
+  LLM_SCORING_MODEL_OPTIONS: z.string().optional(),
   SCORING_SAMPLE_RATE: z.coerce.number().min(0).max(1).default(1.0),
   SCORING_CONCURRENCY: z.coerce.number().int().min(1).default(5),
   SPAN_RETENTION_DAYS: z.coerce.number().int().min(1).default(90),

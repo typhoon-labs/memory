@@ -7,27 +7,31 @@ import { requireAuth } from '../middleware/require-auth';
 
 const storage = new DrizzleScorerDefinitionsStorage(db);
 
+/** Read a field supporting both camelCase (Drizzle ORM) and snake_case (raw SQL) keys. */
+function f(r: Record<string, unknown>, camel: string, snake: string) {
+  return r[camel] ?? r[snake];
+}
+
 /** Map a raw scorer definition row + joined version to camelCase API shape. */
 function mapDefinitionRow(r: Record<string, unknown>) {
   return {
     id: r.id,
     status: r.status,
-    activeVersionId: r.active_version_id,
-    authorId: r.author_id,
+    activeVersionId: f(r, 'activeVersionId', 'active_version_id'),
+    authorId: f(r, 'authorId', 'author_id'),
     metadata: r.metadata,
-    createdAt: r.created_at,
-    updatedAt: r.updated_at,
-    // Version fields (from JOIN — may be null for definitions without active version)
+    createdAt: f(r, 'createdAt', 'created_at'),
+    updatedAt: f(r, 'updatedAt', 'updated_at'),
     name: r.name ?? null,
     description: r.description ?? null,
     type: r.type ?? null,
     model: r.model ?? null,
     instructions: r.instructions ?? null,
-    scoreRange: r.score_range ?? null,
-    presetConfig: r.preset_config ?? null,
-    defaultSampling: r.default_sampling ?? null,
-    versionNumber: r.version_number ?? null,
-    changeMessage: r.change_message ?? null,
+    scoreRange: f(r, 'scoreRange', 'score_range') ?? null,
+    presetConfig: f(r, 'presetConfig', 'preset_config') ?? null,
+    defaultSampling: f(r, 'defaultSampling', 'default_sampling') ?? null,
+    versionNumber: f(r, 'versionNumber', 'version_number') ?? null,
+    changeMessage: f(r, 'changeMessage', 'change_message') ?? null,
   };
 }
 
@@ -35,23 +39,47 @@ function mapDefinitionRow(r: Record<string, unknown>) {
 function mapVersionRow(r: Record<string, unknown>) {
   return {
     id: r.id,
-    scorerDefinitionId: r.scorer_definition_id,
-    versionNumber: r.version_number,
+    scorerDefinitionId: f(r, 'scorerDefinitionId', 'scorer_definition_id'),
+    versionNumber: f(r, 'versionNumber', 'version_number'),
     name: r.name,
     description: r.description,
     type: r.type,
     model: r.model,
     instructions: r.instructions,
-    scoreRange: r.score_range,
-    presetConfig: r.preset_config,
-    defaultSampling: r.default_sampling,
-    changedFields: r.changed_fields,
-    changeMessage: r.change_message,
-    createdAt: r.created_at,
+    scoreRange: f(r, 'scoreRange', 'score_range'),
+    presetConfig: f(r, 'presetConfig', 'preset_config'),
+    defaultSampling: f(r, 'defaultSampling', 'default_sampling'),
+    changedFields: f(r, 'changedFields', 'changed_fields'),
+    changeMessage: f(r, 'changeMessage', 'change_message'),
+    createdAt: f(r, 'createdAt', 'created_at'),
   };
 }
 
+/** Parse LLM_SCORING_MODEL_OPTIONS env into a list, falling back to the default scoring model. */
+function getScorerModels(): string[] {
+  const raw = process.env.LLM_SCORING_MODEL_OPTIONS;
+  if (raw) {
+    const models = raw
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (models.length > 0) return models;
+  }
+  return [process.env.LLM_SCORING_MODEL ?? 'claude-haiku-4-5-20251001'];
+}
+
 export const scorerRoutes = [
+  // Available models for scorer selection
+  registerApiRoute('/v1/admin/scorers/models', {
+    method: 'GET',
+    middleware: [requireAuth, requireAdmin],
+    handler: async (c) => {
+      const models = getScorerModels();
+      const defaultModel = process.env.LLM_SCORING_MODEL ?? models[0];
+      return c.json({ models, defaultModel });
+    },
+  }),
+
   // List scorer definitions with active version info
   registerApiRoute('/v1/admin/scorers', {
     method: 'GET',
@@ -69,7 +97,13 @@ export const scorerRoutes = [
                 v.score_range, v.preset_config, v.default_sampling, v.version_number,
                 v.change_message
          FROM scorer_definitions d
-         LEFT JOIN scorer_definition_versions v ON v.id = d.active_version_id
+         LEFT JOIN scorer_definition_versions v
+           ON v.id = COALESCE(
+             d.active_version_id,
+             (SELECT id FROM scorer_definition_versions
+              WHERE scorer_definition_id = d.id
+              ORDER BY version_number DESC LIMIT 1)
+           )
          WHERE 1=1 ${statusFilter}
          ORDER BY d.updated_at DESC
          LIMIT $1 OFFSET $2`,
@@ -108,25 +142,25 @@ export const scorerRoutes = [
 
       // Create the definition
       const definition = (await storage.create({
-        status: 'draft',
+        scorerDefinition: { status: 'draft' },
       } as never)) as Record<string, unknown>;
 
       const defId = definition.id as string;
 
       // Create initial version (v1)
       const version = (await storage.createVersion({
-        scorer_definition_id: defId,
-        version_number: 1,
+        scorerDefinitionId: defId,
+        versionNumber: 1,
         name,
         description: description ?? null,
         type,
         model: model ?? null,
         instructions: instructions ?? null,
-        score_range: scoreRange ?? null,
-        preset_config: presetConfig ?? null,
-        default_sampling: defaultSampling ?? null,
-        change_message: 'Initial version',
-        created_at: new Date().toISOString(),
+        scoreRange: scoreRange ?? null,
+        presetConfig: presetConfig ?? null,
+        defaultSampling: defaultSampling ?? null,
+        changeMessage: 'Initial version',
+        createdAt: new Date(),
       } as never)) as Record<string, unknown>;
 
       return c.json(
@@ -244,20 +278,27 @@ export const scorerRoutes = [
       const versionCount = await storage.countVersions(scorerDefinitionId);
       const nextVersion = versionCount + 1;
 
+      // Compute changed fields by diffing against previous version
+      const prev = (await storage.getLatestVersion(scorerDefinitionId)) as Record<string, unknown> | null;
+      const diffKeys = ['name', 'description', 'type', 'model', 'instructions', 'scoreRange'] as const;
+      const changedFields = prev
+        ? diffKeys.filter((k) => JSON.stringify(body[k] ?? null) !== JSON.stringify(prev[k] ?? null))
+        : null;
+
       const version = (await storage.createVersion({
-        scorer_definition_id: scorerDefinitionId,
-        version_number: nextVersion,
+        scorerDefinitionId,
+        versionNumber: nextVersion,
         name: body.name,
         description: body.description ?? null,
         type: body.type,
         model: body.model ?? null,
         instructions: body.instructions ?? null,
-        score_range: body.scoreRange ?? null,
-        preset_config: body.presetConfig ?? null,
-        default_sampling: body.defaultSampling ?? null,
-        changed_fields: body.changedFields ?? null,
-        change_message: body.changeMessage ?? null,
-        created_at: new Date().toISOString(),
+        scoreRange: body.scoreRange ?? null,
+        presetConfig: body.presetConfig ?? null,
+        defaultSampling: body.defaultSampling ?? null,
+        changedFields: changedFields && changedFields.length > 0 ? changedFields : null,
+        changeMessage: body.changeMessage ?? null,
+        createdAt: new Date(),
       } as never)) as Record<string, unknown>;
 
       return c.json(mapVersionRow(version), 201);
@@ -343,7 +384,17 @@ export const scorerRoutes = [
 
       const entry = constructScorer(definition, model, context ?? []);
       if (!entry) {
-        return c.json({ error: 'Cannot construct scorer (context-dependent scorer without context?)' }, 400);
+        const needsContext = ['faithfulness', 'hallucination', 'contextRelevance', 'contextPrecision'].includes(
+          definition.type,
+        );
+        return c.json(
+          {
+            error: needsContext
+              ? `This scorer type (${definition.type}) requires context chunks to evaluate.`
+              : 'Cannot construct scorer.',
+          },
+          400,
+        );
       }
 
       const startMs = Date.now();

@@ -145,12 +145,43 @@ describe('Scorer Routes', () => {
   });
 
   describe('route structure', () => {
-    it('has 9 routes, all using requireAuth and requireAdmin', () => {
-      expect(scorerRoutes).toHaveLength(9);
+    it('has 10 routes, all using requireAuth and requireAdmin', () => {
+      expect(scorerRoutes).toHaveLength(10);
       for (const route of scorerRoutes as unknown as Record<string, unknown>[]) {
         const mid = route.middleware as Array<{ name: string }>;
         expect(mid).toHaveLength(2);
       }
+    });
+  });
+
+  describe('GET /v1/admin/scorers/models', () => {
+    it('returns models from LLM_SCORING_MODEL_OPTIONS env var', async () => {
+      process.env.LLM_SCORING_MODEL_OPTIONS = 'model-a,model-b';
+      process.env.LLM_SCORING_MODEL = 'model-a';
+
+      const res = await app.request('/v1/admin/scorers/models');
+      expect(res.status).toBe(200);
+
+      const body = await res.json();
+      expect(body.models).toEqual(['model-a', 'model-b']);
+      expect(body.defaultModel).toBe('model-a');
+
+      delete process.env.LLM_SCORING_MODEL_OPTIONS;
+      delete process.env.LLM_SCORING_MODEL;
+    });
+
+    it('falls back to LLM_SCORING_MODEL when options not set', async () => {
+      delete process.env.LLM_SCORING_MODEL_OPTIONS;
+      process.env.LLM_SCORING_MODEL = 'fallback-model';
+
+      const res = await app.request('/v1/admin/scorers/models');
+      expect(res.status).toBe(200);
+
+      const body = await res.json();
+      expect(body.models).toEqual(['fallback-model']);
+      expect(body.defaultModel).toBe('fallback-model');
+
+      delete process.env.LLM_SCORING_MODEL;
     });
   });
 
@@ -193,6 +224,9 @@ describe('Scorer Routes', () => {
 
       expect(res.status).toBe(201);
       expect(mockStorage.create).toHaveBeenCalledOnce();
+      expect(mockStorage.create).toHaveBeenCalledWith(
+        expect.objectContaining({ scorerDefinition: { status: 'draft' } }),
+      );
       expect(mockStorage.createVersion).toHaveBeenCalledOnce();
 
       const body = await res.json();
@@ -446,6 +480,23 @@ describe('Scorer Routes', () => {
       expect(res.status).toBe(400);
       const body = await res.json();
       expect(body.error).toContain('required');
+    });
+
+    it('returns 400 with message when context-dependent scorer has no context', async () => {
+      mockConstructScorer.mockReturnValueOnce(null);
+      mockStorage.getLatestVersion.mockResolvedValueOnce(
+        makeVersionRow({ name: 'faithfulness', type: 'faithfulness' }),
+      );
+
+      const res = await app.request('/v1/admin/scorers/def-1/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ response: 'test', question: 'test', context: [] }),
+      });
+
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toContain('requires context');
     });
 
     it('returns 404 when no version found', async () => {

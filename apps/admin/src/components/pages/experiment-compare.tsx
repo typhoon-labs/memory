@@ -26,8 +26,8 @@ interface Experiment {
   status: 'pending' | 'running' | 'completed' | 'failed';
   datasetId: string;
   totalItems: number;
-  succeeded: number;
-  failed: number;
+  succeededCount: number;
+  failedCount: number;
   createdAt: string;
 }
 
@@ -344,18 +344,25 @@ export function ExperimentComparePage() {
                 description="Average score"
               />
 
-              {/* Delta card */}
-              <div className="flex items-center justify-center rounded-lg border border-border bg-card px-5 py-4">
-                <div className="text-center">
-                  <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Delta</p>
-                  <div className="mt-2">
-                    {overallDelta !== null ? (
-                      <DeltaIndicator delta={overallDelta} />
-                    ) : (
-                      <span className="text-muted-foreground">&mdash;</span>
-                    )}
-                  </div>
+              <div className="rounded-lg border border-border bg-card px-5 py-4">
+                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Delta</p>
+                <div className="mt-1.5">
+                  {overallDelta !== null ? (
+                    <span
+                      className={`inline-flex items-center gap-1 text-xl font-semibold leading-none tracking-tight ${overallDelta > 0 ? 'text-emerald-500' : overallDelta < 0 ? 'text-red-500' : 'text-muted-foreground'}`}
+                    >
+                      {overallDelta > 0 && <ArrowUpIcon className="size-4" />}
+                      {overallDelta < 0 && <ArrowDownIcon className="size-4" />}
+                      {overallDelta >= 0 ? '+' : ''}
+                      {overallDelta.toFixed(2)}
+                    </span>
+                  ) : (
+                    <span className="text-xl font-semibold leading-none tracking-tight text-foreground">
+                      {'\u2014'}
+                    </span>
+                  )}
                 </div>
+                <p className="mt-1 text-xs text-muted-foreground">Score change (B − A)</p>
               </div>
 
               <StatCard

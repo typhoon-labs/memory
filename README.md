@@ -78,7 +78,8 @@ typhoon/
 │   └── ui/       (L2)   Shared React component library (Radix UI)
 │
 ├── infra/docker/        Docker Compose + Bifrost/Dex configs
-├── scripts/             dev-setup.sh, reset-dev.sh, docker.sh, seed-documents.sh
+├── fixtures/            Seed data (fixtures/seed/) and sample docs (fixtures/docs/)
+├── scripts/             dev-setup.sh, reset-dev.sh, docker.sh, seed.sh
 └── docs/                Project documentation
 ```
 
@@ -102,8 +103,7 @@ typhoon/
 | `bun run format` | Auto-fix lint/format issues |
 | `bun run typecheck` | TypeScript type checking |
 | `bun run db:migrate` | Run database migrations |
-| `bun run seed:db` | Seed database with sample data |
-| `bun run seed:docs` | Upload test documents to MinIO bucket |
+| `bun run seed` | Seed database + upload sample docs to MinIO |
 | `bun run docker:up` | Start Docker services (build + detach) |
 | `bun run docker:down` | Stop Docker services |
 | `bun run docker:restart` | Restart Docker services (rebuild images) |

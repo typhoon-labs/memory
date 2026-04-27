@@ -1,5 +1,6 @@
 # Dependencies
 node_modules/
+node_modules
 
 # Build outputs
 dist/
@@ -44,7 +45,3 @@ package-lock.json
 yarn.lock
 pnpm-lock.yaml
 
-# Generated binary fixtures
-fixtures/sample-docs/*.docx
-fixtures/sample-docs/*.xlsx
-fixtures/sample-docs/*.pdf

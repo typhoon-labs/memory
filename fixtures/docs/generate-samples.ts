@@ -1,6 +1,6 @@
 /**
  * Generates binary sample documents (DOCX, XLSX, PDF) for seeding MinIO.
- * Run with: bun run fixtures/generate.ts
+ * Run with: bun run fixtures/docs/generate-samples.ts
  */
 
 import { writeFile } from 'node:fs/promises';
@@ -9,10 +9,28 @@ import { Document, HeadingLevel, Packer, Paragraph, TextRun } from 'docx';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import * as XLSX from 'xlsx';
 
-const OUTPUT_DIR = join(import.meta.dirname, 'sample-docs');
+const OUTPUT_DIR = join(import.meta.dirname, 'samples');
+
+// Fixed date for deterministic output — override Date so all libraries
+// (including docx which hardcodes new Date()) produce identical files.
+const FIXED_DATE = new Date('2026-01-01T00:00:00Z');
+const OriginalDate = globalThis.Date;
+globalThis.Date = class extends OriginalDate {
+  constructor(...args: unknown[]) {
+    if (args.length === 0) {
+      super(FIXED_DATE.getTime());
+    } else {
+      // @ts-expect-error -- forwarding arbitrary args
+      super(...args);
+    }
+  }
+} as DateConstructor;
+globalThis.Date.now = () => FIXED_DATE.getTime();
 
 async function generateDocx() {
   const doc = new Document({
+    creator: 'Typhoon',
+    lastModifiedBy: 'Typhoon',
     sections: [
       {
         children: [
@@ -226,6 +244,8 @@ async function generateXlsx() {
 
 async function generatePdf() {
   const pdfDoc = await PDFDocument.create();
+  pdfDoc.setProducer('Typhoon');
+  pdfDoc.setCreator('Typhoon');
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 

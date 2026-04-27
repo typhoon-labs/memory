@@ -41,6 +41,10 @@ vi.mock('../middleware/require-admin', () => ({
 }));
 
 vi.mock('./threads', () => ({
+  isSystemReminder: (msg: Record<string, unknown>) => {
+    const content = msg.content as { metadata?: { systemReminder?: unknown } } | undefined;
+    return content?.metadata?.systemReminder != null;
+  },
   toUIMessage: (msg: Record<string, unknown>) => ({
     id: msg.externalId,
     role: msg.role,

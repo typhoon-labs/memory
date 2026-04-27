@@ -1,7 +1,7 @@
 import type { Agent } from '@mastra/core/agent';
 import type { MastraModelConfig } from '@mastra/core/llm';
-import { createAnswerRelevancyScorer } from '@mastra/evals/scorers/prebuilt';
 import { createAppLogger } from '@typhoon/logger';
+import { constructScorer, type ScorerDefinitionVersion } from './scorer-loader';
 
 const log = createAppLogger('experiment');
 
@@ -27,8 +27,8 @@ export interface ExperimentRecord {
 export interface DatasetItem {
   id: string;
   input: Record<string, unknown>;
-  ground_truth?: Record<string, unknown> | null;
-  request_context?: Record<string, unknown> | null;
+  groundTruth?: Record<string, unknown> | null;
+  requestContext?: Record<string, unknown> | null;
 }
 
 export interface ExperimentResult {
@@ -49,6 +49,29 @@ function isoNow(): Date {
 }
 
 /**
+ * Extract RAG context chunks from agent response steps.
+ *
+ * The experiment agent uses `searchKnowledge` which returns `_chunkSources`
+ * in tool results. Each chunk source has a `text` field with the retrieved
+ * document text that context-dependent scorers need.
+ */
+function extractContextFromSteps(steps: Array<Record<string, unknown>> | undefined): string[] {
+  if (!steps) return [];
+  const context: string[] = [];
+  for (const step of steps) {
+    for (const tr of (step.toolResults as Array<Record<string, unknown>>) ?? []) {
+      const payload = tr.payload as Record<string, unknown> | undefined;
+      const result = (payload?.result ?? tr.result) as Record<string, unknown> | undefined;
+      if (!result || !Array.isArray(result._chunkSources)) continue;
+      for (const cs of result._chunkSources as Record<string, unknown>[]) {
+        if (typeof cs.text === 'string' && cs.text) context.push(cs.text);
+      }
+    }
+  }
+  return context;
+}
+
+/**
  * Core experiment execution logic, decoupled from BullMQ.
  *
  * Iterates all dataset items, calls the agent for each, scores the response,
@@ -59,6 +82,7 @@ export async function handleExperimentJob(
   agent: Agent,
   model: MastraModelConfig,
   deps: ExperimentDeps,
+  scorerDefinitions: ScorerDefinitionVersion[],
 ): Promise<ExperimentResult> {
   // 1. Load and validate experiment
   log.info('Loading experiment', { experimentId });
@@ -129,8 +153,12 @@ export async function handleExperimentJob(
       const responseText = response.text ?? '';
       log.debug('Agent responded', { experimentId, itemId: item.id, responseLength: responseText.length });
 
-      // Run scorers
-      const scores = await runScorers(question, responseText, model);
+      // Extract RAG context from agent tool results
+      // biome-ignore lint/suspicious/noExplicitAny: Mastra agent response steps are loosely typed
+      const context = extractContextFromSteps((response as any).steps);
+
+      // Run published scorers
+      const scores = await runScorers(question, responseText, model, scorerDefinitions, context);
 
       // Save result
       await deps.addExperimentResult({
@@ -138,7 +166,7 @@ export async function handleExperimentJob(
         itemId: item.id,
         input: item.input,
         output: { responseText, scores },
-        groundTruth: item.ground_truth ?? null,
+        groundTruth: item.groundTruth ?? null,
         startedAt,
         completedAt: isoNow(),
       });
@@ -155,7 +183,7 @@ export async function handleExperimentJob(
           itemId: item.id,
           input: item.input,
           output: null,
-          groundTruth: item.ground_truth ?? null,
+          groundTruth: item.groundTruth ?? null,
           error: { message: errorMsg },
           startedAt,
           completedAt: isoNow(),
@@ -230,14 +258,25 @@ export async function handleExperimentJob(
 }
 
 /**
- * Run all applicable scorers against a response.
+ * Run published scorers against a response.
  * Returns scores without persisting — caller stores in experiment_results.output.
  */
-async function runScorers(question: string, responseText: string, model: MastraModelConfig): Promise<ScorerResult[]> {
+async function runScorers(
+  question: string,
+  responseText: string,
+  model: MastraModelConfig,
+  scorerDefinitions: ScorerDefinitionVersion[],
+  context: string[],
+): Promise<ScorerResult[]> {
   // biome-ignore lint/suspicious/noExplicitAny: Scorer generics vary between prebuilt scorer types
-  const scorerEntries: Array<{ id: string; scorer: any }> = [
-    { id: 'answerRelevancy', scorer: createAnswerRelevancyScorer({ model }) },
-  ];
+  const scorerEntries: Array<{ id: string; scorer: any }> = scorerDefinitions
+    .map((def) => constructScorer(def, model, context))
+    .filter((e): e is NonNullable<typeof e> => e !== null);
+
+  if (scorerEntries.length === 0) {
+    log.debug('No applicable scorers for this item');
+    return [];
+  }
 
   const scorerInput = {
     inputMessages: [{ role: 'user' as const, content: { content: question } }],

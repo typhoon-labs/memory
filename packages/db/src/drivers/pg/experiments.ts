@@ -72,13 +72,17 @@ export class DrizzleExperimentsStorage extends ExperimentsStorage {
   async listExperiments(args: any) {
     const page = args?.page ?? 0;
     const perPage = args?.perPage ?? 100;
+    const status = args?.status as string | undefined;
+    const validStatuses = ['pending', 'running', 'completed', 'failed'];
+    const where = status && validStatuses.includes(status) ? eq(experiments.status, status as never) : undefined;
 
-    const [countRow] = await this.db.select({ count: sql<number>`count(*)::int` }).from(experiments);
+    const [countRow] = await this.db.select({ count: sql<number>`count(*)::int` }).from(experiments).where(where);
     const total = countRow?.count ?? 0;
 
     const rows = await this.db
       .select()
       .from(experiments)
+      .where(where)
       .orderBy(desc(experiments.createdAt))
       .limit(perPage)
       .offset(page * perPage);

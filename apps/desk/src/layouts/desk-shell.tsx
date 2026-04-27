@@ -1,4 +1,4 @@
-import { Outlet } from '@tanstack/react-router';
+import { Link, Outlet } from '@tanstack/react-router';
 import {
   AppShell,
   DropdownMenu,
@@ -49,11 +49,12 @@ function UserMenu() {
   );
 }
 
-function NavLink({ item, children }: { item: NavItem; children: React.ReactNode }) {
-  // We use a plain <a> here. TanStack Router's Link is used in the route-tree,
-  // but AppShell's renderLink needs a simple wrapper. The AppShell handles active
-  // state via the isActive prop on NavItem.
-  return <a href={item.href}>{children}</a>;
+function NavLink({ item, renderRow }: { item: NavItem; renderRow: (isActive: boolean) => React.ReactNode }) {
+  return (
+    <Link to={item.href} activeOptions={{ exact: item.href === '/' }}>
+      {({ isActive }) => renderRow(isActive)}
+    </Link>
+  );
 }
 
 export function DeskShell() {
@@ -62,7 +63,7 @@ export function DeskShell() {
       logo={<span className="text-base font-bold">Typhoon</span>}
       navGroups={NAV_GROUPS}
       userMenu={<UserMenu />}
-      renderLink={(item, children) => <NavLink item={item}>{children}</NavLink>}
+      renderLink={(item, renderRow) => <NavLink item={item} renderRow={renderRow} />}
     >
       <Outlet />
     </AppShell>

@@ -26,10 +26,7 @@
     "db:generate": "dotenv -- turbo run db:generate --env-mode=loose --filter=@typhoon/db",
     "db:migrate": "dotenv -- turbo run db:migrate --env-mode=loose --filter=@typhoon/db",
     "db:push": "dotenv -- turbo run db:push --env-mode=loose --filter=@typhoon/db",
-    "seed:db": "dotenv -- bun run scripts/seed-db.ts",
-    "seed:scorers": "dotenv -- bun run scripts/seed-scorers.ts",
-    "seed:docs": "./scripts/seed-documents.sh",
-    "seed:evals": "dotenv -- bun run scripts/seed-evals.ts",
+    "seed": "./scripts/seed-data.sh",
     "setup": "./scripts/dev-setup.sh",
     "reset": "./scripts/reset-dev.sh",
     "docker:up": "./scripts/docker.sh up -d --build",
@@ -40,8 +37,7 @@
     "docker:logs": "./scripts/docker.sh logs -f",
     "doctor": "./scripts/doctor.sh",
     "postinstall": "./scripts/postinstall.sh",
-    "clean": "./scripts/clean.sh",
-    "backfill:scores": "dotenv -- bun run scripts/backfill-scores.ts"
+    "clean": "./scripts/clean.sh"
   },
   "devDependencies": {
     "@appsignal/opentelemetry-instrumentation-bullmq": "^0.8.0",

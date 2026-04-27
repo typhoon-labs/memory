@@ -1,7 +1,7 @@
 import { Mastra } from '@mastra/core';
 import { Memory } from '@mastra/memory';
 import { createSupervisor } from '@typhoon/agents';
-import { createEmbeddingModel, createTitleModel } from '@typhoon/ai';
+import { createEmbeddingModel } from '@typhoon/ai';
 import { PgVector, PostgresStore } from '@typhoon/db/drivers/pg';
 import { createAppLogger } from '@typhoon/logger';
 import { createMastraObservability } from '@typhoon/telemetry';
@@ -41,9 +41,6 @@ const supervisorMemory = new Memory({
     lastMessages: 20,
     semanticRecall: false,
     workingMemory: { enabled: false },
-    generateTitle: {
-      model: createTitleModel(),
-    },
   },
 });
 

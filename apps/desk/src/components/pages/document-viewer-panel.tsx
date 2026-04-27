@@ -16,6 +16,23 @@ import { type DocumentContentResponse, documentContentQuery, documentParsedQuery
 
 type DocumentChunk = DocumentContentResponse['chunks'][number];
 
+/** Scroll an element into view within its nearest Radix ScrollArea viewport,
+ *  avoiding the native scrollIntoView which can scroll hidden ancestors. */
+function scrollInViewport(el: Element, block: 'center' | 'start' = 'center') {
+  const viewport = el.closest('[data-radix-scroll-area-viewport]') as HTMLElement | null;
+  if (viewport) {
+    const elRect = el.getBoundingClientRect();
+    const vpRect = viewport.getBoundingClientRect();
+    const offset = block === 'center' ? viewport.clientHeight / 2 - el.clientHeight / 2 : 80;
+    viewport.scrollTo({
+      top: viewport.scrollTop + (elRect.top - vpRect.top) - offset,
+      behavior: 'smooth',
+    });
+  } else {
+    el.scrollIntoView({ behavior: 'smooth', block });
+  }
+}
+
 interface NavigatorState {
   matchCount: number;
   activeIndex: number;
@@ -76,7 +93,7 @@ function useKeywordNavigator(
       const active = marks[activeIndex];
       if (active) {
         active.classList.add('ring-2', 'ring-yellow-500/70', 'bg-yellow-200/80', 'dark:bg-yellow-500/40');
-        active.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        scrollInViewport(active, 'center');
       }
     }
   }, [activeIndex, getMatches]);
@@ -236,7 +253,7 @@ function useChunkNavigator(
         blocks[i].classList.add(i === activeIndex ? 'chunk-highlight-active' : 'chunk-highlight');
       }
       if (activeIndex >= 0 && activeIndex < blocks.length) {
-        blocks[activeIndex].scrollIntoView({ behavior: 'smooth', block: 'center' });
+        scrollInViewport(blocks[activeIndex], 'center');
       }
     }
   }, [activeIndex, getChunkBlocks]);
@@ -331,7 +348,7 @@ export function DocumentViewerPanel({
   // Scroll to anchor target within the document viewer ScrollArea
   const handleAnchorClick = useCallback((id: string) => {
     const target = contentRef.current?.querySelector(`[id="${CSS.escape(id)}"]`);
-    target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (target) scrollInViewport(target, 'start');
   }, []);
 
   // Unified keyboard navigation

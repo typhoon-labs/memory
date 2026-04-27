@@ -1,26 +1,15 @@
 /**
- * Database seed script — populates the database with sample data for development.
+ * Seed threads and messages.
  *
- * Usage: bun run seed:db
- *
- * Idempotent: checks for a sentinel record before inserting. Safe to run multiple times.
- * Does NOT seed: users (OIDC), agents (defined in code), or embeddings (use seed:docs + sync).
+ * Idempotent: checks for a sentinel record before inserting.
  */
-import { createDb, documents, messages, syncTargets, threads } from '@typhoon/db';
+import { createDb, messages, threads } from '@typhoon/db';
 import { eq } from 'drizzle-orm';
 
 const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://typhoon:typhoon@localhost:5432/typhoon';
 const db = createDb(DATABASE_URL);
 
-// Fixed UUIDs for deterministic, repeatable seeding
 const IDS = {
-  syncTarget1: '00000000-5eed-0000-0000-000000000001',
-  syncTarget2: '00000000-5eed-0000-0000-000000000002',
-  doc1: '00000000-5eed-0001-0000-000000000001',
-  doc2: '00000000-5eed-0001-0000-000000000002',
-  doc3: '00000000-5eed-0001-0000-000000000003',
-  doc4: '00000000-5eed-0001-0000-000000000004',
-  doc5: '00000000-5eed-0001-0000-000000000005',
   thread1: '00000000-5eed-0002-0000-000000000001',
   thread2: '00000000-5eed-0002-0000-000000000002',
   thread3: '00000000-5eed-0002-0000-000000000003',
@@ -36,107 +25,13 @@ const IDS = {
   msg10: '00000000-5eed-0003-0000-000000000010',
 };
 
-// Check idempotency — if sentinel sync target exists, skip
-const existing = await db.select().from(syncTargets).where(eq(syncTargets.id, IDS.syncTarget1));
+const existing = await db.select().from(threads).where(eq(threads.id, IDS.thread1));
 if (existing.length > 0) {
-  console.log('Seed data already exists — skipping.');
+  console.log('Threads already seeded — skipping.');
   process.exit(0);
 }
 
-console.log('Seeding database...');
-
 const now = new Date();
-
-// 1. Sync targets
-await db.insert(syncTargets).values([
-  {
-    id: IDS.syncTarget1,
-    name: 'Support Docs',
-    sourceType: 's3',
-    config: { bucket: 'typhoon-documents', prefix: 'support/' },
-    cronSchedule: '0 */6 * * *',
-    isActive: true,
-  },
-  {
-    id: IDS.syncTarget2,
-    name: 'Product Guides',
-    sourceType: 's3',
-    config: { bucket: 'typhoon-documents', prefix: 'guides/' },
-    cronSchedule: '0 0 * * *',
-    isActive: true,
-  },
-]);
-console.log('  2 sync targets');
-
-// 2. Documents
-await db.insert(documents).values([
-  {
-    id: IDS.doc1,
-    syncTargetId: IDS.syncTarget1,
-    sourceKey: 'support/getting-started.md',
-    mimeType: 'text/markdown',
-    fileSize: 12_400,
-    title: 'Getting Started Guide',
-    status: 'ready',
-    chunkCount: 8,
-    contentHash: '5eed-hash-001',
-    lastSyncedAt: now,
-  },
-  {
-    id: IDS.doc2,
-    syncTargetId: IDS.syncTarget1,
-    sourceKey: 'support/password-reset.md',
-    mimeType: 'text/markdown',
-    fileSize: 4_200,
-    title: 'Password Reset Instructions',
-    status: 'ready',
-    chunkCount: 3,
-    contentHash: '5eed-hash-002',
-    lastSyncedAt: now,
-  },
-  {
-    id: IDS.doc3,
-    syncTargetId: IDS.syncTarget1,
-    sourceKey: 'support/billing-faq.pdf',
-    mimeType: 'application/pdf',
-    fileSize: 89_000,
-    title: 'Billing FAQ',
-    pageCount: 5,
-    status: 'ready',
-    chunkCount: 15,
-    contentHash: '5eed-hash-003',
-    lastSyncedAt: now,
-  },
-  {
-    id: IDS.doc4,
-    syncTargetId: IDS.syncTarget2,
-    sourceKey: 'guides/admin-handbook.pdf',
-    mimeType: 'application/pdf',
-    fileSize: 210_000,
-    title: 'Administrator Handbook',
-    pageCount: 24,
-    status: 'ready',
-    chunkCount: 42,
-    contentHash: '5eed-hash-004',
-    lastSyncedAt: now,
-  },
-  {
-    id: IDS.doc5,
-    syncTargetId: IDS.syncTarget2,
-    sourceKey: 'guides/api-reference.docx',
-    mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    fileSize: 54_000,
-    title: 'API Reference',
-    pageCount: 12,
-    status: 'ready',
-    chunkCount: 20,
-    contentHash: '5eed-hash-005',
-    lastSyncedAt: now,
-  },
-]);
-console.log('  5 documents');
-
-// 3. Threads
 const RESOURCE_ID = '5eed-user';
 
 await db.insert(threads).values([
@@ -162,9 +57,7 @@ await db.insert(threads).values([
     metadata: {},
   },
 ]);
-console.log('  3 threads');
 
-// 4. Messages
 await db.insert(messages).values([
   // Thread 1: Password reset
   {
@@ -280,16 +173,7 @@ await db.insert(messages).values([
     createdAt: new Date(now.getTime() - 90_000),
   },
 ]);
-console.log('  10 messages');
 
-console.log('');
-console.log('Database seeded successfully.');
-console.log('  Sync targets: 2 (Support Docs, Product Guides)');
-console.log('  Documents:    5 (markdown, PDF, DOCX)');
-console.log('  Threads:      3 (password reset, billing, API)');
-console.log('  Messages:     10 (user + assistant pairs)');
-console.log('');
-console.log('Note: Feedback requires a logged-in user. Log in via SSO first,');
-console.log('then use the UI to leave feedback on messages.');
+console.log('  3 threads, 10 messages');
 
 process.exit(0);

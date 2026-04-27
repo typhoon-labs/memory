@@ -42,26 +42,18 @@ fi
 echo "Starting Docker services..."
 ./scripts/docker.sh up -d
 
-# 4. Wait for PostgreSQL
-echo "Waiting for PostgreSQL..."
-until docker exec typhoon-postgres pg_isready -U typhoon > /dev/null 2>&1; do
+# 4. Wait for migrations to complete (handled by the typhoon-migrate container)
+echo "Waiting for migrations..."
+until [ "$(docker inspect -f '{{.State.Status}}' typhoon-migrate 2>/dev/null)" = "exited" ]; do
   sleep 1
 done
+if [ "$(docker inspect -f '{{.State.ExitCode}}' typhoon-migrate 2>/dev/null)" != "0" ]; then
+  echo "Error: migrations failed. Check logs: docker logs typhoon-migrate"
+  exit 1
+fi
 
-# 5. Ensure pgvector extension exists
-echo "Enabling pgvector extension..."
-docker exec typhoon-postgres psql -U typhoon -d typhoon -c "CREATE EXTENSION IF NOT EXISTS vector;" > /dev/null 2>&1
-
-# 6. Run migrations
-echo "Running database migrations..."
-set -a; source .env; set +a
-bun run db:migrate
-
-# 7. Seed sample data
-echo "Seeding sample data..."
-bun run seed:db
-bun run seed:scorers
-bun run seed:evals
+# 5. Seed sample data
+./scripts/seed-data.sh
 
 echo ""
 echo "=== Setup complete ==="
@@ -79,6 +71,5 @@ echo "    rep@typhoon.local   / password"
 echo ""
 echo "  Next steps:"
 echo "    bun run dev        Start all services in dev mode"
-echo "    bun run seed:docs  Upload sample documents to MinIO"
 echo "    bun run doctor     Check service health"
 echo "    bun run docker:logs  Tail Docker logs"

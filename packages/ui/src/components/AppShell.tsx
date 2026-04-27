@@ -39,7 +39,7 @@ export interface AppShellProps {
   /** Content for the right side of the header (actions, notifications). */
   topBarRight?: ReactNode;
   /** Render function for navigation links. Allows consumers to use their router's Link component. */
-  renderLink?: (item: NavItem, children: ReactNode) => ReactNode;
+  renderLink?: (item: NavItem, renderRow: (isActive: boolean) => ReactNode) => ReactNode;
   /** Navigation groups pinned to the bottom of the sidebar, above the user menu. */
   bottomNavGroups?: NavGroup[];
   /** Main page content. */
@@ -62,7 +62,7 @@ function DefaultLink({ href, children, ...props }: React.ComponentProps<'a'>): R
 
 interface NavContentProps {
   navGroups: NavGroup[];
-  renderLink?: (item: NavItem, children: ReactNode) => ReactNode;
+  renderLink?: (item: NavItem, renderRow: (isActive: boolean) => ReactNode) => ReactNode;
 }
 
 function NavContent({ navGroups, renderLink }: NavContentProps): React.JSX.Element {
@@ -76,11 +76,8 @@ function NavContent({ navGroups, renderLink }: NavContentProps): React.JSX.Eleme
             </p>
           )}
           {group.items.map((item: NavItem) => {
-            const isActive = item.isActive ?? false;
-
-            const row = (
+            const renderRow = (isActive: boolean) => (
               <div
-                key={item.href}
                 className={cn(
                   'flex min-w-0 cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-xs transition-colors duration-75',
                   isActive ? 'bg-accent text-foreground' : 'text-foreground/70 hover:bg-accent hover:text-foreground',
@@ -99,10 +96,10 @@ function NavContent({ navGroups, renderLink }: NavContentProps): React.JSX.Eleme
             );
 
             return renderLink != null ? (
-              <div key={item.href}>{renderLink(item, row)}</div>
+              <div key={item.href}>{renderLink(item, renderRow)}</div>
             ) : (
               <DefaultLink key={item.href} href={item.href}>
-                {row}
+                {renderRow(item.isActive ?? false)}
               </DefaultLink>
             );
           })}
@@ -120,7 +117,7 @@ interface SidebarBodyProps {
   navGroups: NavGroup[];
   bottomNavGroups?: NavGroup[];
   userMenu?: ReactNode;
-  renderLink?: (item: NavItem, children: ReactNode) => ReactNode;
+  renderLink?: (item: NavItem, renderRow: (isActive: boolean) => ReactNode) => ReactNode;
 }
 
 function SidebarBody({ navGroups, bottomNavGroups, userMenu, renderLink }: SidebarBodyProps): React.JSX.Element {
@@ -259,7 +256,7 @@ export function AppShell({
         </nav>
 
         {/* -- Main content -- */}
-        <main className="grid flex-1 overflow-hidden bg-background">{children}</main>
+        <main className="grid grid-rows-[minmax(0,1fr)] flex-1 overflow-hidden bg-background">{children}</main>
       </div>
     </div>
   );

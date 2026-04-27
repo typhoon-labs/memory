@@ -1,3 +1,4 @@
+import { Mastra } from '@mastra/core';
 import type { ExperimentDeps, ScorerDefinitionVersion, ScoringDeps } from '@typhoon/agents';
 import {
   createExperimentAgent,
@@ -115,27 +116,27 @@ export function startWorkers(redisUrl: string, databaseUrl: string) {
     log.debug('Job completed', { job: job.name, jobId: job.id });
   });
 
+  /** Refresh scorer definitions from the database if the cache has expired. */
+  async function refreshScorerDefinitions() {
+    const now = Date.now();
+    if (now - _lastScorerLoad < SCORER_REFRESH_MS && _cachedScorerDefs.length > 0) return;
+    try {
+      const rows = await workerSql.unsafe(PUBLISHED_SCORERS_QUERY);
+      _cachedScorerDefs = mapScorerRows(rows as Array<Record<string, unknown>>);
+      _lastScorerLoad = now;
+      log.info('Refreshed scorer definitions', { count: _cachedScorerDefs.length });
+    } catch (err) {
+      log.error('Failed to refresh scorer definitions', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+      // Keep using cached definitions on error
+    }
+  }
+
   // ── Scoring worker ──────────────────────────────────────────────────
   if (isScoringEnabled()) {
     const scoringConcurrency = Number(process.env.SCORING_CONCURRENCY ?? '5');
     const scoringModel = createScoringModel();
-
-    /** Refresh scorer definitions from the database if the cache has expired. */
-    async function refreshScorerDefinitions() {
-      const now = Date.now();
-      if (now - _lastScorerLoad < SCORER_REFRESH_MS && _cachedScorerDefs.length > 0) return;
-      try {
-        const rows = await workerSql.unsafe(PUBLISHED_SCORERS_QUERY);
-        _cachedScorerDefs = mapScorerRows(rows as Array<Record<string, unknown>>);
-        _lastScorerLoad = now;
-        log.info('Refreshed scorer definitions', { count: _cachedScorerDefs.length });
-      } catch (err) {
-        log.error('Failed to refresh scorer definitions', {
-          error: err instanceof Error ? err.message : String(err),
-        });
-        // Keep using cached definitions on error
-      }
-    }
 
     // Build dependency functions for scoreMessage()
     const scoringDeps: ScoringDeps = {
@@ -284,6 +285,16 @@ export function startWorkers(redisUrl: string, databaseUrl: string) {
   const experimentAgent = createExperimentAgent();
   const experimentModel = createScoringModel();
 
+  // Register the experiment agent with Mastra so its tools get access to
+  // the vector store (knowledge search needs context.mastra.getVector).
+  const experimentMastra = new Mastra({
+    agents: { 'typhoon-experiment': experimentAgent },
+    vectors: { pgVector: vectorStore },
+    logger: log,
+  });
+  // Retrieve the Mastra-wrapped agent so tool context is injected.
+  const registeredAgent = experimentMastra.getAgent('typhoon-experiment');
+
   const experimentDeps: ExperimentDeps = {
     getExperiment: async (id: string) => {
       const [row] = await workerSql.unsafe(`SELECT * FROM "experiments" WHERE id = $1`, [id]);
@@ -301,7 +312,7 @@ export function startWorkers(redisUrl: string, databaseUrl: string) {
     },
     getDatasetItems: async (datasetId: string, version: number) => {
       const rows = await datasetsStorage.getItemsByVersion({ datasetId, version });
-      return rows as { id: string; input: Record<string, unknown>; ground_truth?: Record<string, unknown> | null }[];
+      return rows as { id: string; input: Record<string, unknown>; groundTruth?: Record<string, unknown> | null }[];
     },
     addExperimentResult: async (input: Record<string, unknown>) => {
       await experimentsStorage.addExperimentResult(input);
@@ -318,7 +329,8 @@ export function startWorkers(redisUrl: string, databaseUrl: string) {
           await job.extendLock(job.token!, 30 * 60 * 1000);
         },
       };
-      return handleExperimentJob(experimentId, experimentAgent, experimentModel, depsWithLock);
+      await refreshScorerDefinitions();
+      return handleExperimentJob(experimentId, registeredAgent, experimentModel, depsWithLock, _cachedScorerDefs);
     },
     {
       connection,

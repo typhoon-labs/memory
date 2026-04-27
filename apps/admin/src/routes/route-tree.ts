@@ -120,10 +120,18 @@ const datasetDetailRoute = createRoute({
   component: DatasetDetailPage,
 });
 
+const EXPERIMENT_STATUS = ['all', 'pending', 'running', 'completed', 'failed'] as const;
+
 const experimentsRoute = createRoute({
   getParentRoute: () => layoutRoute,
   path: '/experiments',
   component: ExperimentsPage,
+  validateSearch: (search: Record<string, unknown>) => ({
+    status:
+      typeof search.status === 'string' && (EXPERIMENT_STATUS as readonly string[]).includes(search.status)
+        ? (search.status as (typeof EXPERIMENT_STATUS)[number])
+        : ('all' as const),
+  }),
 });
 
 // Compare route BEFORE detail route — TanStack Router matches in order,
@@ -142,18 +150,37 @@ const experimentDetailRoute = createRoute({
   getParentRoute: () => layoutRoute,
   path: '/experiments/$experimentId',
   component: ExperimentDetailPage,
+  validateSearch: (search: Record<string, unknown>) => ({
+    result: typeof search.result === 'string' ? search.result : undefined,
+  }),
 });
+
+const SCORER_STATUS_FILTERS = ['all', 'draft', 'active', 'archived'] as const;
 
 const scorersRoute = createRoute({
   getParentRoute: () => layoutRoute,
   path: '/scorers',
   component: ScorersPage,
+  validateSearch: (search: Record<string, unknown>) => ({
+    status:
+      typeof search.status === 'string' && (SCORER_STATUS_FILTERS as readonly string[]).includes(search.status)
+        ? (search.status as (typeof SCORER_STATUS_FILTERS)[number])
+        : ('all' as const),
+  }),
 });
+
+const SCORER_TABS = ['configuration', 'versions'] as const;
 
 const scorerDetailRoute = createRoute({
   getParentRoute: () => layoutRoute,
   path: '/scorers/$scorerId',
   component: ScorerDetailPage,
+  validateSearch: (search: Record<string, unknown>) => ({
+    tab:
+      typeof search.tab === 'string' && (SCORER_TABS as readonly string[]).includes(search.tab)
+        ? (search.tab as (typeof SCORER_TABS)[number])
+        : ('configuration' as const),
+  }),
 });
 
 const TRACE_STATUS = ['all', 'success', 'error', 'partial'] as const;

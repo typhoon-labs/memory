@@ -147,7 +147,7 @@ export function DataTable<TData>({
               placeholder="Filter..."
               value={globalFilter}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setGlobalFilter(e.target.value)}
-              className="max-w-sm"
+              className="h-8 w-[220px] text-sm"
             />
           )}
           {toolbar}

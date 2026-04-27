@@ -1,4 +1,4 @@
-import { Outlet } from '@tanstack/react-router';
+import { Link, Outlet } from '@tanstack/react-router';
 import {
   AppShell,
   DropdownMenu,
@@ -81,8 +81,12 @@ function UserMenu() {
   );
 }
 
-function NavLink({ item, children }: { item: NavItem; children: React.ReactNode }) {
-  return <a href={item.href}>{children}</a>;
+function NavLink({ item, renderRow }: { item: NavItem; renderRow: (isActive: boolean) => React.ReactNode }) {
+  return (
+    <Link to={item.href} activeOptions={{ exact: item.href === '/' }}>
+      {({ isActive }) => renderRow(isActive)}
+    </Link>
+  );
 }
 
 export function AdminShell() {
@@ -97,7 +101,7 @@ export function AdminShell() {
       }
       navGroups={NAV_GROUPS}
       userMenu={<UserMenu />}
-      renderLink={(item, children) => <NavLink item={item}>{children}</NavLink>}
+      renderLink={(item, renderRow) => <NavLink item={item} renderRow={renderRow} />}
     >
       <Outlet />
     </AppShell>

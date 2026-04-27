@@ -31,18 +31,28 @@ function lastMessageHasText(messages: ChatMessage[]): boolean {
 export function TyphoonThread({ messages, status, sendMessage, stop, config, className }: TyphoonThreadProps) {
   return (
     <ChatConfigProvider config={config ?? {}}>
-      <div className={cn('relative flex h-full flex-col', className)}>
+      <div className={cn('relative flex h-full min-h-0 flex-col', className)}>
         <Conversation className="flex-1">
           <ConversationContent>
             {messages.length === 0 ? (
               <ConversationEmptyState title="Ask Typhoon anything" />
             ) : (
               <div className="mx-auto max-w-[720px] px-5 py-6 pb-40">
-                {messages.map((message, idx) => {
-                  const isLastAssistant = message.role === 'assistant' && idx === messages.length - 1;
-                  const isStreaming = isLastAssistant && (status === 'streaming' || status === 'submitted');
-                  return <TyphoonMessage key={message.id} message={message} isStreaming={isStreaming} />;
-                })}
+                {messages
+                  .filter((m) => {
+                    if (m.role !== 'user' && m.role !== 'assistant') return false;
+                    // Filter out PrefillErrorHandler retry messages persisted by Mastra
+                    if (m.parts.length === 1 && m.parts[0].type === 'text') {
+                      const text = (m.parts[0] as { text: string }).text;
+                      if (text === '<system-reminder>continue</system-reminder>') return false;
+                    }
+                    return true;
+                  })
+                  .map((message, idx, filtered) => {
+                    const isLastAssistant = message.role === 'assistant' && idx === filtered.length - 1;
+                    const isStreaming = isLastAssistant && (status === 'streaming' || status === 'submitted');
+                    return <TyphoonMessage key={message.id} message={message} isStreaming={isStreaming} />;
+                  })}
                 {(status === 'submitted' || (status === 'streaming' && !lastMessageHasText(messages))) && <Loader />}
               </div>
             )}

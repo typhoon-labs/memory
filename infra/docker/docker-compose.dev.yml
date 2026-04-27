@@ -44,7 +44,7 @@ services:
   desk:
     build:
       target: dev
-    command: ['sh', '-c', 'rm -rf node_modules/.vite && bunx --bun vite --host 0.0.0.0 --port 80']
+    command: ['bunx', '--bun', 'vite', '--host', '0.0.0.0', '--port', '80']
     working_dir: /app/apps/desk
     environment:
       API_PROXY_TARGET: http://api:5172
@@ -58,7 +58,7 @@ services:
   admin:
     build:
       target: dev
-    command: ['sh', '-c', 'rm -rf node_modules/.vite && bunx --bun vite --host 0.0.0.0 --port 80']
+    command: ['bunx', '--bun', 'vite', '--host', '0.0.0.0', '--port', '80']
     working_dir: /app/apps/admin
     environment:
       API_PROXY_TARGET: http://api:5172
@@ -72,7 +72,7 @@ services:
   widget:
     build:
       target: dev
-    command: ['sh', '-c', 'rm -rf node_modules/.vite && bunx --bun vite --host 0.0.0.0 --port 80']
+    command: ['bunx', '--bun', 'vite', '--host', '0.0.0.0', '--port', '80']
     working_dir: /app/apps/widget
     environment:
       HMR_CLIENT_PORT: '5175'

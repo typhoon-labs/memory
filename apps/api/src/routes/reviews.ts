@@ -7,7 +7,7 @@ import { db, sql } from '../db';
 import { requireAdmin } from '../middleware/require-admin';
 import { requireAuth } from '../middleware/require-auth';
 import { hydrateChunkSources } from './hydrate-chunks';
-import { toThreadResponse, toUIMessage } from './threads';
+import { isSystemReminder, toThreadResponse, toUIMessage } from './threads';
 
 const vectorStore = new PgVector({ id: 'typhoon-vectors', sql });
 
@@ -142,7 +142,7 @@ export const reviewRoutes = [
         .where(eq(messages.threadId, thread.id))
         .orderBy(asc(messages.createdAt));
 
-      const uiMessages = threadMessages.map(toUIMessage);
+      const uiMessages = threadMessages.filter((msg) => !isSystemReminder(msg)).map(toUIMessage);
       await hydrateChunkSources(uiMessages, vectorStore);
 
       // Fetch all scores for this thread

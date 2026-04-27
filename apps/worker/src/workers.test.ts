@@ -95,6 +95,14 @@ vi.mock('drizzle-orm', () => ({
   desc: vi.fn(),
 }));
 
+vi.mock('@mastra/core', () => ({
+  Mastra: class MockMastra {
+    getAgent(id: string) {
+      return { id, generate: vi.fn() };
+    }
+  },
+}));
+
 vi.mock('postgres', () => ({
   default: vi.fn(() => ({
     unsafe: vi.fn().mockResolvedValue([]),

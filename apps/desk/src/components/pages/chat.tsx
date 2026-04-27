@@ -258,7 +258,7 @@ export function ChatPage() {
         }
 
         // Optimistic update: show truncated first message as title immediately.
-        // The DB title stays empty so Mastra's generateTitle still runs.
+        // The DB title stays empty so the supervisor's setThreadTitle tool still runs.
         queryClient.setQueryData<ThreadListResponse>(['threads'], (old) =>
           old ? { ...old, threads: [{ ...thread, title: msg.text.slice(0, 100) }, ...old.threads] } : old,
         );
@@ -274,66 +274,49 @@ export function ChatPage() {
   );
 
   return (
-    <div className="relative flex h-full flex-col md:flex-row">
+    <div className="relative flex h-full min-h-0 flex-col md:flex-row">
       <ThreadSidebar activeThreadId={threadId} />
-      {viewerDoc ? (
-        <ResizablePanelGroup orientation="horizontal" className="flex-1">
-          <ResizablePanel defaultSize={60} minSize={30}>
-            <TyphoonThread
-              messages={messages}
-              status={status}
-              sendMessage={handleSendMessage}
-              stop={stop}
-              config={{
-                userName: user?.name ?? user?.email ?? 'You',
-                onFeedback: handleFeedback,
-                feedbackState,
-                onDocumentOpen: (documentId, options) => {
-                  viewerTriggerRef.current += 1;
-                  setViewerDoc({
-                    documentId,
-                    startIndex: options?.startIndex,
-                    chunkText: options?.chunkText,
-                    chunks: options?.chunks,
-                  });
-                },
-              }}
-              className="h-full"
-            />
-          </ResizablePanel>
-          <ResizableHandle withHandle className="hidden lg:flex" />
-          <ResizablePanel defaultSize={40} minSize={25} className="hidden lg:block">
-            <DocumentViewerPanel
-              key={`${viewerDoc.documentId}-${String(viewerDoc.startIndex ?? '')}-${viewerTriggerRef.current}`}
-              documentId={viewerDoc.documentId}
-              searchTerms={[]}
-              startIndex={viewerDoc.startIndex}
-              chunkText={viewerDoc.chunkText}
-              citationChunks={viewerDoc.chunks}
-              onClose={() => setViewerDoc(null)}
-            />
-          </ResizablePanel>
-        </ResizablePanelGroup>
-      ) : (
-        <TyphoonThread
-          messages={messages}
-          status={status}
-          sendMessage={handleSendMessage}
-          stop={stop}
-          config={{
-            userName: user?.name ?? user?.email ?? 'You',
-            onFeedback: handleFeedback,
-            feedbackState,
-            onDocumentOpen: (documentId, options) =>
-              setViewerDoc({
-                documentId,
-                startIndex: options?.startIndex,
-                chunkText: options?.chunkText,
-              }),
-          }}
-          className="flex-1"
-        />
-      )}
+      <ResizablePanelGroup orientation="horizontal" className="flex-1">
+        <ResizablePanel defaultSize={viewerDoc ? 60 : 100} minSize={30}>
+          <TyphoonThread
+            messages={messages}
+            status={status}
+            sendMessage={handleSendMessage}
+            stop={stop}
+            config={{
+              userName: user?.name ?? user?.email ?? 'You',
+              onFeedback: handleFeedback,
+              feedbackState,
+              onDocumentOpen: (documentId, options) => {
+                viewerTriggerRef.current += 1;
+                setViewerDoc({
+                  documentId,
+                  startIndex: options?.startIndex,
+                  chunkText: options?.chunkText,
+                  chunks: options?.chunks,
+                });
+              },
+            }}
+            className="h-full"
+          />
+        </ResizablePanel>
+        {viewerDoc && (
+          <>
+            <ResizableHandle withHandle className="hidden lg:flex" />
+            <ResizablePanel defaultSize={40} minSize={25} className="hidden lg:block">
+              <DocumentViewerPanel
+                key={`${viewerDoc.documentId}-${String(viewerDoc.startIndex ?? '')}-${viewerTriggerRef.current}`}
+                documentId={viewerDoc.documentId}
+                searchTerms={[]}
+                startIndex={viewerDoc.startIndex}
+                chunkText={viewerDoc.chunkText}
+                citationChunks={viewerDoc.chunks}
+                onClose={() => setViewerDoc(null)}
+              />
+            </ResizablePanel>
+          </>
+        )}
+      </ResizablePanelGroup>
     </div>
   );
 }

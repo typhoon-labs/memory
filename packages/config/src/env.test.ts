@@ -116,6 +116,7 @@ describe('validateEnv', () => {
       ...validEnv,
       SCORING_ENABLED: 'false',
       LLM_SCORING_MODEL: 'anthropic.claude-sonnet-4-6-v1:0',
+      LLM_SCORING_MODEL_OPTIONS: 'model-a,model-b,model-c',
       SCORING_SAMPLE_RATE: '0.5',
       SCORING_CONCURRENCY: '3',
       SPAN_RETENTION_DAYS: '30',
@@ -123,10 +124,16 @@ describe('validateEnv', () => {
     });
     expect(result.SCORING_ENABLED).toBe('false');
     expect(result.LLM_SCORING_MODEL).toBe('anthropic.claude-sonnet-4-6-v1:0');
+    expect(result.LLM_SCORING_MODEL_OPTIONS).toBe('model-a,model-b,model-c');
     expect(result.SCORING_SAMPLE_RATE).toBe(0.5);
     expect(result.SCORING_CONCURRENCY).toBe(3);
     expect(result.SPAN_RETENTION_DAYS).toBe(30);
     expect(result.SCORE_RETENTION_DAYS).toBe(365);
+  });
+
+  it('LLM_SCORING_MODEL_OPTIONS defaults to undefined when not set', () => {
+    const result = validateEnv(validEnv);
+    expect(result.LLM_SCORING_MODEL_OPTIONS).toBeUndefined();
   });
 
   it('rejects SCORING_SAMPLE_RATE outside [0, 1]', () => {

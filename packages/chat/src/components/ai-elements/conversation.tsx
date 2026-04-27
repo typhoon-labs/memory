@@ -72,7 +72,7 @@ export function Conversation({ children, className }: { children: ReactNode; cla
 
   return (
     <ConversationContext.Provider value={{ scrollRef, isAtBottom, scrollToBottom, performAutoScroll }}>
-      <div className={cn('relative flex flex-col overflow-hidden', className)}>{children}</div>
+      <div className={cn('relative flex min-h-0 flex-col overflow-hidden', className)}>{children}</div>
     </ConversationContext.Provider>
   );
 }

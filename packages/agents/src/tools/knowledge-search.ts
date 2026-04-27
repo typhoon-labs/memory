@@ -22,7 +22,8 @@ Rules:
 5. Every factual statement must have a citation.
 6. If the search results don't contain relevant information, say so clearly. Never fabricate answers.
 7. If the answer spans multiple documents, synthesize the information and cite all sources.
-8. Be concise and direct — lead with the answer, then provide supporting detail.`;
+8. Be concise and direct — lead with the answer, then provide supporting detail.
+9. NEVER use emojis (no 📦 📋 💰 💡 🔧 ➕ ✅ ❌ or any other emoji). Use plain unicode text symbols only: →, —, ✓, ✗, ⚠. Headings must be plain text with no decorative symbols. Boolean values must use ✓ or ✗. For lists, use markdown syntax (- or *), not • characters.`;
 
 /**
  * Two-phase knowledge search tool:

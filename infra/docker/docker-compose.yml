@@ -178,6 +178,7 @@ services:
       LLM_KNOWLEDGE_MODEL: ${LLM_KNOWLEDGE_MODEL:-bedrock/us.anthropic.claude-sonnet-4-6}
       LLM_CITATION_MODEL: ${LLM_CITATION_MODEL:-bedrock/us.anthropic.claude-sonnet-4-6}
       LLM_SCORING_MODEL: ${LLM_SCORING_MODEL:-bedrock/us.anthropic.claude-haiku-4-5}
+      LLM_SCORING_MODEL_OPTIONS: ${LLM_SCORING_MODEL_OPTIONS:-bedrock/us.anthropic.claude-haiku-4-5,bedrock/us.anthropic.claude-sonnet-4-6}
       # Embeddings
       EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-http://bifrost:8787/v1}
       EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-bedrock}
@@ -247,6 +248,7 @@ services:
       LLM_CHAT_MODEL: ${LLM_CHAT_MODEL:-bedrock/us.anthropic.claude-sonnet-4-6}
       LLM_EXTRACTION_MODEL: ${LLM_EXTRACTION_MODEL:-bedrock/us.anthropic.claude-haiku-4-5}
       LLM_SCORING_MODEL: ${LLM_SCORING_MODEL:-bedrock/us.anthropic.claude-haiku-4-5}
+      LLM_SCORING_MODEL_OPTIONS: ${LLM_SCORING_MODEL_OPTIONS:-bedrock/us.anthropic.claude-haiku-4-5,bedrock/us.anthropic.claude-sonnet-4-6}
       LLM_KNOWLEDGE_MODEL: ${LLM_KNOWLEDGE_MODEL:-bedrock/us.anthropic.claude-sonnet-4-6}
       EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-http://bifrost:8787/v1}
       EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-bedrock}

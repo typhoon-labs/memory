@@ -72,8 +72,8 @@ function buildColumns(onDelete: (dataset: Dataset) => void): ColumnDef<Dataset, 
       cell: ({ row }) => (
         <AlertDialog>
           <AlertDialogTrigger asChild>
-            <Button variant="ghost" size="sm" onClick={(e) => e.stopPropagation()}>
-              <Trash2Icon className="size-3.5 text-muted-foreground" />
+            <Button variant="ghost" size="icon" className="-my-1 size-6 rounded" onClick={(e) => e.stopPropagation()}>
+              <Trash2Icon className="size-3 text-muted-foreground" />
             </Button>
           </AlertDialogTrigger>
           <AlertDialogContent onClick={(e) => e.stopPropagation()}>

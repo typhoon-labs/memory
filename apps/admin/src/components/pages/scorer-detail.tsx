@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useParams } from '@tanstack/react-router';
+import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import {
   apiFetch,
   Button,
@@ -8,20 +8,46 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
   formatRelativeTime,
   Input,
   Label,
   LoadingSpinner,
   PageHeader,
+  SectionLabel,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
   StatusBadge,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
   Textarea,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
 } from '@typhoon/ui';
-import { ChevronRightIcon, Loader2Icon, PlayIcon, SaveIcon, TrashIcon } from 'lucide-react';
+import {
+  ArchiveIcon,
+  ChevronRightIcon,
+  ChevronsDownUpIcon,
+  ChevronsUpDownIcon,
+  DiffIcon,
+  Loader2Icon,
+  PenLineIcon,
+  PlayIcon,
+  RotateCcwIcon,
+  SaveIcon,
+  TrashIcon,
+} from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 const SCORER_TYPES = [
@@ -32,6 +58,20 @@ const SCORER_TYPES = [
   { value: 'contextPrecision', label: 'Context Precision' },
   { value: 'custom', label: 'Custom (LLM Judge)' },
 ];
+
+/** Extract a model ID string from the stored JSONB model object. */
+function extractModelId(model: Record<string, unknown> | null): string {
+  if (!model) return '';
+  if (typeof model.id === 'string') return model.id;
+  if (typeof model.name === 'string') return model.name;
+  return '';
+}
+
+/** Get a short display label from a model ID (last segment after /). */
+function modelLabel(id: string): string {
+  const parts = id.split('/');
+  return parts[parts.length - 1];
+}
 
 const STATUS_VARIANT: Record<string, 'success' | 'pending' | 'warning'> = {
   active: 'success',
@@ -61,6 +101,10 @@ interface Version {
   name: string;
   type: string;
   description: string | null;
+  instructions: string | null;
+  model: Record<string, unknown> | null;
+  scoreRange: { min: number; max: number } | null;
+  changedFields: string[] | null;
   changeMessage: string | null;
   createdAt: string;
 }
@@ -92,11 +136,34 @@ export function ScorerDetailPage() {
   // Delete dialog
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
+  // Tab state — URL-driven
+  const { tab: activeTab } = useSearch({ strict: false }) as { tab: 'configuration' | 'versions' };
+  function setActiveTab(next: string) {
+    navigate({ to: '/scorers/$scorerId', params: { scorerId }, search: { tab: next }, replace: true });
+  }
+
+  // Version controls
+  const [allExpanded, setAllExpanded] = useState(false);
+  const [showDiff, setShowDiff] = useState(false);
+
   // Preview state
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [previewQuestion, setPreviewQuestion] = useState('');
   const [previewResponse, setPreviewResponse] = useState('');
   const [previewContext, setPreviewContext] = useState('');
   const [previewResult, setPreviewResult] = useState<PreviewResult | null>(null);
+
+  /** Load a version's config into the editor form. */
+  function loadVersion(v: Version) {
+    setFormName(v.name);
+    setFormType(v.type);
+    setFormDescription(v.description ?? '');
+    setFormInstructions(v.instructions ?? '');
+    setFormModel(extractModelId(v.model));
+    setFormScoreMin(String(v.scoreRange?.min ?? 0));
+    setFormScoreMax(String(v.scoreRange?.max ?? 1));
+    setActiveTab('configuration');
+  }
 
   // Fetch scorer data
   const { data: scorer, isLoading } = useQuery<ScorerData>({
@@ -110,6 +177,15 @@ export function ScorerDetailPage() {
     queryFn: () => apiFetch(`/api/v1/admin/scorers/${scorerId}/versions`),
   });
 
+  // Fetch available scorer models
+  const { data: modelsData } = useQuery<{ models: string[]; defaultModel: string }>({
+    queryKey: ['admin-scorer-models'],
+    queryFn: () => apiFetch('/api/v1/admin/scorers/models'),
+    staleTime: 5 * 60_000,
+  });
+  const availableModels = modelsData?.models ?? [];
+  const defaultModel = modelsData?.defaultModel ?? '';
+
   // Populate form when data loads
   useEffect(() => {
     if (scorer) {
@@ -117,7 +193,7 @@ export function ScorerDetailPage() {
       setFormType(scorer.type ?? 'faithfulness');
       setFormDescription(scorer.description ?? '');
       setFormInstructions(scorer.instructions ?? '');
-      setFormModel(scorer.model ? JSON.stringify(scorer.model) : '');
+      setFormModel(extractModelId(scorer.model));
       setFormScoreMin(String(scorer.scoreRange?.min ?? 0));
       setFormScoreMax(String(scorer.scoreRange?.max ?? 1));
     }
@@ -134,7 +210,7 @@ export function ScorerDetailPage() {
           type: formType,
           description: formDescription || null,
           instructions: formType === 'custom' ? formInstructions || null : null,
-          model: formModel ? JSON.parse(formModel) : null,
+          model: formModel ? { id: formModel } : null,
           scoreRange: formScoreMin || formScoreMax ? { min: Number(formScoreMin), max: Number(formScoreMax) } : null,
           changeMessage: changeMessage || null,
         }),
@@ -164,10 +240,11 @@ export function ScorerDetailPage() {
 
   const archive = useMutation({
     mutationFn: async () => {
+      const newStatus = scorer?.status === 'archived' ? 'draft' : 'archived';
       return apiFetch(`/api/v1/admin/scorers/${scorerId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'archived' }),
+        body: JSON.stringify({ status: newStatus }),
       });
     },
     onSuccess: () => {
@@ -224,35 +301,57 @@ export function ScorerDetailPage() {
   const versions = versionsData?.versions ?? [];
 
   return (
-    <div className="overflow-y-auto p-4 sm:p-6 md:p-8">
-      <div className="mx-auto max-w-5xl">
+    <div className="h-full overflow-y-auto p-4 sm:p-6 md:p-8">
+      <div className="mx-auto max-w-3xl">
         <PageHeader
           title={
             <span className="flex items-center gap-1.5">
-              <a href="/scorers" className="text-muted-foreground transition-colors hover:text-foreground">
+              <a
+                href="/scorers"
+                onClick={(e) => {
+                  e.preventDefault();
+                  navigate({ to: '/scorers' });
+                }}
+                className="text-muted-foreground transition-colors hover:text-foreground"
+              >
                 Scorers
               </a>
               <ChevronRightIcon className="size-3.5 text-muted-foreground/50" />
               {scorer.name ?? 'Unnamed Scorer'}
+              {scorer.versionNumber != null && (
+                <span className="rounded-full bg-muted px-1.5 py-0.5 text-2xs font-medium text-muted-foreground">
+                  v{scorer.versionNumber}
+                </span>
+              )}
+              <StatusBadge variant={STATUS_VARIANT[scorer.status] ?? 'pending'}>{scorer.status}</StatusBadge>
             </span>
           }
           description={scorer.description ?? undefined}
           actions={
             <div className="flex items-center gap-2">
-              <StatusBadge variant={STATUS_VARIANT[scorer.status] ?? 'pending'}>{scorer.status}</StatusBadge>
-              {scorer.versionNumber != null && (
-                <span className="text-sm text-muted-foreground">v{scorer.versionNumber}</span>
+              {scorer.status === 'draft' && (
+                <Button size="sm" onClick={() => publish.mutate(undefined)} disabled={publish.isPending}>
+                  <PlayIcon className="mr-1.5 size-3.5" />
+                  {publish.isPending ? 'Publishing...' : 'Publish'}
+                </Button>
               )}
-              {scorer.status !== 'archived' && (
+              {scorer.status === 'active' && (
                 <Button variant="outline" size="sm" onClick={() => archive.mutate()} disabled={archive.isPending}>
+                  <ArchiveIcon className="mr-1.5 size-3.5" />
                   Archive
                 </Button>
               )}
-              <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-                <Button variant="outline" size="sm" onClick={() => setDeleteDialogOpen(true)}>
-                  <TrashIcon className="mr-1.5 size-3.5" />
-                  Delete
+              {scorer.status === 'archived' && (
+                <Button variant="outline" size="sm" onClick={() => archive.mutate()} disabled={archive.isPending}>
+                  <RotateCcwIcon className="mr-1.5 size-3.5" />
+                  Restore
                 </Button>
+              )}
+              <Button variant="outline" size="sm" onClick={() => setDeleteDialogOpen(true)}>
+                <TrashIcon className="mr-1.5 size-3.5" />
+                Delete
+              </Button>
+              <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
                 <DialogContent>
                   <DialogHeader>
                     <DialogTitle>Delete Scorer</DialogTitle>
@@ -274,230 +373,548 @@ export function ScorerDetailPage() {
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
-              <Button size="sm" onClick={() => publish.mutate(undefined)} disabled={publish.isPending}>
-                {publish.isPending ? 'Publishing...' : 'Publish'}
-              </Button>
             </div>
           }
         />
-
-        {/* Configuration */}
-        <div className="mt-6 rounded-lg border p-6">
-          <h3 className="mb-4 text-sm font-semibold">Configuration</h3>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="edit-name">Name</Label>
-              <Input id="edit-name" value={formName} onChange={(e) => setFormName(e.target.value)} />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="edit-type">Type</Label>
-              <Select value={formType} onValueChange={setFormType}>
-                <SelectTrigger id="edit-type">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {SCORER_TYPES.map((t) => (
-                    <SelectItem key={t.value} value={t.value}>
-                      {t.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex flex-col gap-1.5 sm:col-span-2">
-              <Label htmlFor="edit-description">Description</Label>
-              <Textarea
-                id="edit-description"
-                value={formDescription}
-                onChange={(e) => setFormDescription(e.target.value)}
-                rows={2}
-              />
-            </div>
-            {formType === 'custom' && (
-              <div className="flex flex-col gap-1.5 sm:col-span-2">
-                <Label htmlFor="edit-instructions">Instructions (LLM Judge Prompt)</Label>
-                <Textarea
-                  id="edit-instructions"
-                  value={formInstructions}
-                  onChange={(e) => setFormInstructions(e.target.value)}
-                  rows={6}
-                  placeholder="Evaluation criteria for the LLM judge..."
-                />
-              </div>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-6">
+          <div className="flex items-center justify-between">
+            <TabsList>
+              <TabsTrigger value="configuration">Configuration</TabsTrigger>
+              <TabsTrigger value="versions">Versions</TabsTrigger>
+            </TabsList>
+            {activeTab === 'versions' && versions.length > 0 && (
+              <TooltipProvider delayDuration={300}>
+                <div className="flex items-center gap-0.5">
+                  {allExpanded && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant={showDiff ? 'secondary' : 'ghost'}
+                          size="icon"
+                          className="size-7"
+                          onClick={() => setShowDiff(!showDiff)}
+                        >
+                          <DiffIcon className="size-3.5" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Highlight changes</TooltipContent>
+                    </Tooltip>
+                  )}
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant={allExpanded ? 'secondary' : 'ghost'}
+                        size="icon"
+                        className="size-7"
+                        onClick={() => setAllExpanded(!allExpanded)}
+                      >
+                        {allExpanded ? (
+                          <ChevronsDownUpIcon className="size-3.5" />
+                        ) : (
+                          <ChevronsUpDownIcon className="size-3.5" />
+                        )}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>{allExpanded ? 'Collapse all' : 'Expand all'}</TooltipContent>
+                  </Tooltip>
+                </div>
+              </TooltipProvider>
             )}
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="edit-model">Model (optional, JSON)</Label>
-              <Input
-                id="edit-model"
-                value={formModel}
-                onChange={(e) => setFormModel(e.target.value)}
-                placeholder='{"provider":"openai","name":"gpt-4o-mini"}'
-              />
-            </div>
-            <div className="flex items-end gap-2">
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="edit-score-min">Score Min</Label>
-                <Input
-                  id="edit-score-min"
-                  type="number"
-                  value={formScoreMin}
-                  onChange={(e) => setFormScoreMin(e.target.value)}
-                  className="w-20"
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="edit-score-max">Score Max</Label>
-                <Input
-                  id="edit-score-max"
-                  type="number"
-                  value={formScoreMax}
-                  onChange={(e) => setFormScoreMax(e.target.value)}
-                  className="w-20"
-                />
-              </div>
-            </div>
           </div>
-          <div className="mt-4 flex justify-end">
-            <Dialog open={saveDialogOpen} onOpenChange={setSaveDialogOpen}>
-              <Button variant="outline" onClick={() => setSaveDialogOpen(true)}>
-                <SaveIcon className="mr-1.5 size-3.5" />
-                Save as New Version
-              </Button>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Save New Version</DialogTitle>
-                </DialogHeader>
-                <div className="flex flex-col gap-1.5 py-4">
-                  <Label htmlFor="change-message">Change Message (optional)</Label>
-                  <Input
-                    id="change-message"
-                    placeholder="What changed?"
-                    value={changeMessage}
-                    onChange={(e) => setChangeMessage(e.target.value)}
+
+          <TabsContent value="configuration" className="mt-4">
+            <div className="space-y-5">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="edit-name">Name</Label>
+                <Input id="edit-name" value={formName} onChange={(e) => setFormName(e.target.value)} />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="edit-type">Type</Label>
+                <Select value={formType} onValueChange={setFormType}>
+                  <SelectTrigger id="edit-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SCORER_TYPES.map((t) => (
+                      <SelectItem key={t.value} value={t.value}>
+                        {t.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="edit-description">Description</Label>
+                <Textarea
+                  id="edit-description"
+                  value={formDescription}
+                  onChange={(e) => setFormDescription(e.target.value)}
+                  rows={2}
+                />
+              </div>
+              {formType === 'custom' && (
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="edit-instructions">Instructions</Label>
+                  <Textarea
+                    id="edit-instructions"
+                    value={formInstructions}
+                    onChange={(e) => setFormInstructions(e.target.value)}
+                    rows={6}
+                    placeholder="Evaluation criteria for the LLM judge..."
                   />
                 </div>
-                <DialogFooter>
-                  <Button onClick={() => saveVersion.mutate()} disabled={saveVersion.isPending}>
-                    {saveVersion.isPending ? 'Saving...' : 'Save'}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-          </div>
-        </div>
-
-        {/* Preview */}
-        <div className="mt-6 rounded-lg border p-6">
-          <h3 className="mb-4 text-sm font-semibold">Preview</h3>
-          <p className="mb-4 text-xs text-muted-foreground">
-            Test this scorer against sample data. Results are not saved.
-          </p>
-          <div className="grid gap-4">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="preview-question">Question</Label>
-              <Textarea
-                id="preview-question"
-                value={previewQuestion}
-                onChange={(e) => setPreviewQuestion(e.target.value)}
-                rows={2}
-                placeholder="What did the user ask?"
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="preview-response">Response</Label>
-              <Textarea
-                id="preview-response"
-                value={previewResponse}
-                onChange={(e) => setPreviewResponse(e.target.value)}
-                rows={3}
-                placeholder="What did the agent respond?"
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="preview-context">Context Chunks (one per line)</Label>
-              <Textarea
-                id="preview-context"
-                value={previewContext}
-                onChange={(e) => setPreviewContext(e.target.value)}
-                rows={3}
-                placeholder="Paste retrieved context chunks, one per line..."
-              />
-            </div>
-            <div className="flex items-center gap-3">
-              <Button
-                onClick={() => runPreview.mutate()}
-                disabled={!previewQuestion.trim() || !previewResponse.trim() || runPreview.isPending}
-              >
-                {runPreview.isPending ? (
-                  <>
-                    <Loader2Icon className="mr-1.5 size-3.5 animate-spin" />
-                    Running...
-                  </>
-                ) : (
-                  <>
-                    <PlayIcon className="mr-1.5 size-3.5" />
-                    Run Preview
-                  </>
-                )}
-              </Button>
-              {runPreview.isError && <span className="text-sm text-destructive">{runPreview.error.message}</span>}
-            </div>
-            {previewResult && (
-              <div className="rounded-md border bg-muted/50 p-4">
-                <div className="flex items-baseline gap-4">
-                  <div>
-                    <span className="text-xs font-medium text-muted-foreground">Score</span>
-                    <div className="text-2xl font-bold tabular-nums">{previewResult.score.toFixed(2)}</div>
-                  </div>
-                  <div>
-                    <span className="text-xs font-medium text-muted-foreground">Duration</span>
-                    <div className="text-sm">{previewResult.durationMs}ms</div>
-                  </div>
+              )}
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="edit-model">Model</Label>
+                <Select
+                  value={formModel || '__default__'}
+                  onValueChange={(v) => setFormModel(v === '__default__' ? '' : v)}
+                >
+                  <SelectTrigger id="edit-model">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__default__">Default ({modelLabel(defaultModel)})</SelectItem>
+                    {availableModels.map((m) => (
+                      <SelectItem key={m} value={m}>
+                        {modelLabel(m)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label>Score Range</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="edit-score-min"
+                    type="number"
+                    value={formScoreMin}
+                    onChange={(e) => setFormScoreMin(e.target.value)}
+                    className="w-20"
+                    placeholder="Min"
+                  />
+                  <span className="text-sm text-muted-foreground">&ndash;</span>
+                  <Input
+                    id="edit-score-max"
+                    type="number"
+                    value={formScoreMax}
+                    onChange={(e) => setFormScoreMax(e.target.value)}
+                    className="w-20"
+                    placeholder="Max"
+                  />
                 </div>
-                {previewResult.reason && (
-                  <div className="mt-3">
-                    <span className="text-xs font-medium text-muted-foreground">Reason</span>
-                    <p className="mt-1 text-sm">{previewResult.reason}</p>
-                  </div>
-                )}
+              </div>
+              <div className="flex justify-end gap-2 border-t pt-4">
+                <Button variant="outline" size="sm" onClick={() => setPreviewOpen(true)}>
+                  <PlayIcon className="mr-1.5 size-3.5" />
+                  Preview
+                </Button>
+                <Dialog open={saveDialogOpen} onOpenChange={setSaveDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button size="sm">
+                      <SaveIcon className="mr-1.5 size-3.5" />
+                      Save Version
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Save New Version</DialogTitle>
+                    </DialogHeader>
+                    <div className="flex flex-col gap-1.5 py-4">
+                      <Label htmlFor="change-message">Change Message (optional)</Label>
+                      <Input
+                        id="change-message"
+                        placeholder="What changed?"
+                        value={changeMessage}
+                        onChange={(e) => setChangeMessage(e.target.value)}
+                      />
+                    </div>
+                    <DialogFooter>
+                      <Button onClick={() => saveVersion.mutate()} disabled={saveVersion.isPending}>
+                        {saveVersion.isPending ? 'Saving...' : 'Save'}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="versions" className="mt-4">
+            {versions.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No versions yet.</p>
+            ) : (
+              <div className="relative">
+                {versions.map((v, idx) => {
+                  const isActive = v.id === scorer.activeVersionId;
+                  const isLast = idx === versions.length - 1;
+                  const prev = versions[idx + 1] ?? null;
+                  return (
+                    <div key={v.id} className="flex gap-4 pb-6 last:pb-0">
+                      {/* Left: time label — h-8 matches Button size="sm" */}
+                      <div className="flex h-8 w-16 shrink-0 items-center justify-end text-xs text-muted-foreground">
+                        {formatRelativeTime(v.createdAt)}
+                      </div>
+
+                      {/* Center: dot + connector line */}
+                      <div className="relative flex w-3 shrink-0 justify-center">
+                        {idx > 0 && (
+                          <div className="absolute bottom-full left-1/2 h-6 w-px -translate-x-1/2 bg-border" />
+                        )}
+                        <div className="flex h-8 items-center">
+                          <div
+                            className={`z-10 size-2.5 rounded-full border-2 ${
+                              isActive ? 'border-foreground bg-foreground' : 'border-muted-foreground/40 bg-background'
+                            }`}
+                          />
+                        </div>
+                        {!isLast && (
+                          <div className="absolute top-8 bottom-0 left-1/2 w-px -translate-x-1/2 bg-border" />
+                        )}
+                      </div>
+
+                      {/* Right: content */}
+                      <VersionEntry
+                        version={v}
+                        prev={prev}
+                        isActive={isActive}
+                        globalExpanded={allExpanded}
+                        globalDiff={showDiff}
+                        onRestore={() => loadVersion(v)}
+                        onPublish={() => publish.mutate(v.id)}
+                        publishPending={publish.isPending}
+                      />
+                    </div>
+                  );
+                })}
               </div>
             )}
-          </div>
-        </div>
-
-        {/* Version History */}
-        <div className="mt-6 rounded-lg border p-6">
-          <h3 className="mb-4 text-sm font-semibold">Version History</h3>
-          {versions.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No versions yet.</p>
-          ) : (
-            <div className="space-y-2">
-              {versions.map((v) => (
-                <div key={v.id} className="flex items-center justify-between rounded-md border px-4 py-2.5">
-                  <div className="flex items-center gap-3">
-                    <span className="tabular-nums text-sm font-medium">v{v.versionNumber}</span>
-                    {v.id === scorer.activeVersionId && <StatusBadge variant="success">active</StatusBadge>}
-                    {v.changeMessage && <span className="text-sm text-muted-foreground">{v.changeMessage}</span>}
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs text-muted-foreground">{formatRelativeTime(v.createdAt)}</span>
-                    {v.id !== scorer.activeVersionId && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => publish.mutate(v.id)}
-                        disabled={publish.isPending}
-                      >
-                        Publish
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+          </TabsContent>
+        </Tabs>
       </div>
+
+      <Sheet open={previewOpen} onOpenChange={setPreviewOpen}>
+        <SheetContent resizable className="overflow-y-auto sm:max-w-lg">
+          <SheetHeader>
+            <SheetTitle>Preview</SheetTitle>
+          </SheetHeader>
+          <div className="space-y-5 px-4 pb-4">
+            <PreviewPanel
+              question={previewQuestion}
+              onQuestionChange={setPreviewQuestion}
+              response={previewResponse}
+              onResponseChange={setPreviewResponse}
+              context={previewContext}
+              onContextChange={setPreviewContext}
+              result={previewResult}
+              onRun={() => runPreview.mutate()}
+              isPending={runPreview.isPending}
+              isError={runPreview.isError}
+              errorMessage={runPreview.error?.message}
+              disabled={!previewQuestion.trim() || !previewResponse.trim()}
+            />
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
+}
+
+function PreviewPanel({
+  question,
+  onQuestionChange,
+  response,
+  onResponseChange,
+  context,
+  onContextChange,
+  result,
+  onRun,
+  isPending,
+  isError,
+  errorMessage,
+  disabled,
+}: {
+  question: string;
+  onQuestionChange: (v: string) => void;
+  response: string;
+  onResponseChange: (v: string) => void;
+  context: string;
+  onContextChange: (v: string) => void;
+  result: PreviewResult | null;
+  onRun: () => void;
+  isPending: boolean;
+  isError: boolean;
+  errorMessage?: string;
+  disabled: boolean;
+}) {
+  return (
+    <>
+      {/* Input */}
+      <div>
+        <SectionLabel>Input</SectionLabel>
+        <div className="mt-2 space-y-3">
+          <Textarea
+            id="preview-question"
+            value={question}
+            onChange={(e) => onQuestionChange(e.target.value)}
+            rows={2}
+            placeholder="What did the user ask?"
+          />
+        </div>
+      </div>
+
+      {/* Response */}
+      <div>
+        <SectionLabel>Response</SectionLabel>
+        <div className="mt-2">
+          <Textarea
+            id="preview-response"
+            value={response}
+            onChange={(e) => onResponseChange(e.target.value)}
+            rows={3}
+            placeholder="What did the agent respond?"
+          />
+        </div>
+      </div>
+
+      {/* Context */}
+      <div>
+        <SectionLabel>Context Chunks</SectionLabel>
+        <div className="mt-2">
+          <Textarea
+            id="preview-context"
+            value={context}
+            onChange={(e) => onContextChange(e.target.value)}
+            rows={3}
+            placeholder="One chunk per line..."
+          />
+        </div>
+      </div>
+
+      {/* Run */}
+      <Button onClick={onRun} disabled={disabled || isPending} className="w-full">
+        {isPending ? (
+          <>
+            <Loader2Icon className="mr-1.5 size-3.5 animate-spin" />
+            Running...
+          </>
+        ) : (
+          <>
+            <PlayIcon className="mr-1.5 size-3.5" />
+            Run Preview
+          </>
+        )}
+      </Button>
+      {isError && errorMessage && <span className="text-sm text-destructive">{errorMessage}</span>}
+
+      {/* Result */}
+      {result && (
+        <div>
+          <SectionLabel>Result</SectionLabel>
+          <dl className="mt-2 grid grid-cols-1 gap-2 text-sm">
+            <div>
+              <dt className="text-muted-foreground">Score</dt>
+              <dd className="mt-0.5 text-2xl font-bold tabular-nums">{result.score.toFixed(2)}</dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">Duration</dt>
+              <dd className="mt-0.5">{result.durationMs}ms</dd>
+            </div>
+            {result.reason && (
+              <div>
+                <dt className="text-muted-foreground">Reason</dt>
+                <dd className="mt-0.5">{result.reason}</dd>
+              </div>
+            )}
+          </dl>
+        </div>
+      )}
+    </>
+  );
+}
+
+/** Simple word-level diff producing segments for inline highlighting. */
+function wordDiff(oldStr: string, newStr: string): Array<{ text: string; type: 'same' | 'add' | 'remove' }> {
+  const oldWords = oldStr.split(/(\s+)/);
+  const newWords = newStr.split(/(\s+)/);
+  const segments: Array<{ text: string; type: 'same' | 'add' | 'remove' }> = [];
+  let oi = 0;
+  let ni = 0;
+  while (oi < oldWords.length && ni < newWords.length) {
+    if (oldWords[oi] === newWords[ni]) {
+      segments.push({ text: newWords[ni], type: 'same' });
+      oi++;
+      ni++;
+    } else {
+      const newIdx = newWords.indexOf(oldWords[oi], ni);
+      if (newIdx !== -1 && newIdx - ni < 8) {
+        for (let k = ni; k < newIdx; k++) segments.push({ text: newWords[k], type: 'add' });
+        ni = newIdx;
+      } else {
+        const oldIdx = oldWords.indexOf(newWords[ni], oi);
+        if (oldIdx !== -1 && oldIdx - oi < 8) {
+          for (let k = oi; k < oldIdx; k++) segments.push({ text: oldWords[k], type: 'remove' });
+          oi = oldIdx;
+        } else {
+          segments.push({ text: oldWords[oi], type: 'remove' });
+          segments.push({ text: newWords[ni], type: 'add' });
+          oi++;
+          ni++;
+        }
+      }
+    }
+  }
+  while (oi < oldWords.length) {
+    segments.push({ text: oldWords[oi++], type: 'remove' });
+  }
+  while (ni < newWords.length) {
+    segments.push({ text: newWords[ni++], type: 'add' });
+  }
+  return segments;
+}
+
+/** Render text with word-level diff highlights, or plain text if no previous version. */
+function DiffText({ value, prevValue }: { value: string; prevValue?: string }) {
+  if (!prevValue || prevValue === value) return <>{value}</>;
+
+  const segments = wordDiff(prevValue, value);
+  return (
+    <>
+      {segments.map((seg, i) => {
+        const key = `${seg.type}-${i}`;
+        if (seg.type === 'same') return <span key={key}>{seg.text}</span>;
+        if (seg.type === 'add') {
+          return (
+            <span key={key} className="bg-emerald-400/60">
+              {seg.text}
+            </span>
+          );
+        }
+        return (
+          <span key={key} className="bg-red-400/60 line-through">
+            {seg.text}
+          </span>
+        );
+      })}
+    </>
+  );
+}
+
+function VersionEntry({
+  version: v,
+  prev,
+  isActive,
+  globalExpanded,
+  globalDiff,
+  onRestore,
+  onPublish,
+  publishPending,
+}: {
+  version: Version;
+  prev: Version | null;
+  isActive: boolean;
+  globalExpanded: boolean;
+  globalDiff: boolean;
+  onRestore: () => void;
+  onPublish: () => void;
+  publishPending: boolean;
+}) {
+  const [localOpen, setLocalOpen] = useState<boolean | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset local override when global toggle changes
+  useEffect(() => setLocalOpen(null), [globalExpanded]);
+  const open = localOpen ?? globalExpanded;
+
+  return (
+    <div className="min-w-0 flex-1">
+      {/* Header row — clickable to expand, h-8 for consistent alignment */}
+      <div className="flex h-8 items-center justify-between gap-3">
+        <button
+          type="button"
+          onClick={() => setLocalOpen(!open)}
+          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+        >
+          <span className="shrink-0 tabular-nums text-sm font-medium">v{v.versionNumber}</span>
+          {v.changeMessage && <span className="truncate text-sm text-muted-foreground">{v.changeMessage}</span>}
+        </button>
+        {!isActive && (
+          <div className="flex shrink-0 items-center gap-1">
+            <Button variant="ghost" size="sm" onClick={onRestore}>
+              <PenLineIcon className="mr-1 size-3" />
+              Edit
+            </Button>
+            <Button variant="ghost" size="sm" onClick={onPublish} disabled={publishPending}>
+              Publish
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {/* Expandable content */}
+      {open && (
+        <div className="mt-2">
+          <VersionContent version={v} prev={globalDiff ? prev : null} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function VersionContent({ version: v, prev }: { version: Version; prev: Version | null }) {
+  return (
+    <div className="space-y-2">
+      <div>
+        <p className="text-2xs font-medium text-muted-foreground">Type</p>
+        <p className="mt-0.5 text-xs">
+          <DiffText value={v.type} prevValue={prev?.type} />
+        </p>
+      </div>
+      <div>
+        <p className="text-2xs font-medium text-muted-foreground">Score Range</p>
+        <p className="mt-0.5 text-xs">
+          <DiffText
+            value={fmtVal(v.scoreRange, 'scoreRange') || '0 \u2013 1'}
+            prevValue={prev ? fmtVal(prev.scoreRange, 'scoreRange') || '0 \u2013 1' : undefined}
+          />
+        </p>
+      </div>
+      {(v.description || prev?.description) && (
+        <div>
+          <p className="text-2xs font-medium text-muted-foreground">Description</p>
+          <p className="mt-0.5 text-xs leading-relaxed">
+            <DiffText value={v.description ?? ''} prevValue={prev?.description ?? undefined} />
+          </p>
+        </div>
+      )}
+      {(v.instructions || prev?.instructions) && (
+        <div>
+          <p className="text-2xs font-medium text-muted-foreground">Instructions</p>
+          <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+            <DiffText value={v.instructions ?? ''} prevValue={prev?.instructions ?? undefined} />
+          </p>
+        </div>
+      )}
+      {(v.model || prev?.model) && (
+        <div>
+          <p className="text-2xs font-medium text-muted-foreground">Model</p>
+          <p className="mt-0.5 text-xs">
+            <DiffText
+              value={fmtVal(v.model, 'model')}
+              prevValue={prev ? fmtVal(prev.model, 'model') || undefined : undefined}
+            />
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function fmtVal(val: unknown, key?: string): string {
+  if (val == null) return '';
+  if (typeof val === 'string') return val;
+  if (key === 'scoreRange' && typeof val === 'object') {
+    const r = val as { min?: number; max?: number };
+    return `${r.min ?? 0} \u2013 ${r.max ?? 1}`;
+  }
+  return JSON.stringify(val);
 }

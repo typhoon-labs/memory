@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
+import { useNavigate, useSearch } from '@tanstack/react-router';
 import type { ColumnDef } from '@typhoon/ui';
 import {
   AlertDialog,
@@ -46,8 +46,8 @@ interface Experiment {
   status: 'pending' | 'running' | 'completed' | 'failed';
   datasetId: string;
   totalItems: number;
-  succeeded: number;
-  failed: number;
+  succeededCount: number;
+  failedCount: number;
   createdAt: string;
   startedAt: string | null;
   completedAt: string | null;
@@ -144,10 +144,15 @@ export function ExperimentsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const { status } = useSearch({ strict: false }) as { status?: string };
+  const activeStatus = status ?? 'all';
 
   const { data, isLoading } = useQuery<ExperimentListResponse>({
-    queryKey: ['admin-experiments'],
-    queryFn: () => apiFetch('/api/v1/admin/experiments'),
+    queryKey: ['admin-experiments', activeStatus],
+    queryFn: () => {
+      const params = activeStatus !== 'all' ? `?status=${activeStatus}` : '';
+      return apiFetch(`/api/v1/admin/experiments${params}`);
+    },
   });
 
   const handleDelete = useCallback(
@@ -163,13 +168,12 @@ export function ExperimentsPage() {
       {
         accessorKey: 'name',
         header: 'Name',
-        cell: ({ row }) => (
-          <div className="max-w-[240px] truncate font-medium">
-            {row.original.name || (
-              <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{row.original.id.slice(0, 12)}</code>
-            )}
-          </div>
-        ),
+        cell: ({ row }) =>
+          row.original.name ? (
+            <span className="font-medium">{row.original.name}</span>
+          ) : (
+            <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{row.original.id.slice(0, 12)}</code>
+          ),
       },
       {
         accessorKey: 'status',
@@ -182,8 +186,8 @@ export function ExperimentsPage() {
         id: 'progress',
         header: 'Progress',
         cell: ({ row }) => {
-          const { succeeded, failed, totalItems } = row.original;
-          const processed = (succeeded ?? 0) + (failed ?? 0);
+          const { succeededCount, failedCount, totalItems } = row.original;
+          const processed = (succeededCount ?? 0) + (failedCount ?? 0);
           return (
             <span className="tabular-nums">
               {processed} / {totalItems}
@@ -202,8 +206,8 @@ export function ExperimentsPage() {
         cell: ({ row }) => (
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button variant="ghost" size="sm" onClick={(e) => e.stopPropagation()}>
-                <Trash2Icon className="size-3.5 text-muted-foreground" />
+              <Button variant="ghost" size="icon" className="-my-1 size-6 rounded" onClick={(e) => e.stopPropagation()}>
+                <Trash2Icon className="size-3 text-muted-foreground" />
               </Button>
             </AlertDialogTrigger>
             <AlertDialogContent onClick={(e) => e.stopPropagation()}>
@@ -252,20 +256,7 @@ export function ExperimentsPage() {
           </div>
         )}
 
-        {!isLoading && data?.experiments && data.experiments.length > 0 && (
-          <div className="mt-6">
-            <DataTable
-              data={data.experiments}
-              columns={columns}
-              enableSorting
-              getRowId={(row) => row.id}
-              onRowClick={(row) => navigate({ to: '/experiments/$experimentId', params: { experimentId: row.id } })}
-              showRowCount
-            />
-          </div>
-        )}
-
-        {!isLoading && data?.experiments?.length === 0 && (
+        {!isLoading && data?.experiments?.length === 0 && activeStatus === 'all' && (
           <div className="mt-6">
             <EmptyState
               icon={<FlaskConicalIcon className="size-8" />}
@@ -274,6 +265,38 @@ export function ExperimentsPage() {
             />
           </div>
         )}
+
+        {(!isLoading && (data?.experiments?.length ?? 0) > 0) || activeStatus !== 'all' ? (
+          <div className="mt-6">
+            <DataTable
+              data={data?.experiments ?? []}
+              columns={columns}
+              enableSorting
+              getRowId={(row) => row.id}
+              onRowClick={(row) => navigate({ to: '/experiments/$experimentId', params: { experimentId: row.id } })}
+              showRowCount
+              toolbar={
+                <Select
+                  value={activeStatus}
+                  onValueChange={(v) =>
+                    navigate({ to: '/experiments', search: { status: v === 'all' ? undefined : v } })
+                  }
+                >
+                  <SelectTrigger className="h-8 w-[160px] text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All statuses</SelectItem>
+                    <SelectItem value="pending">Pending</SelectItem>
+                    <SelectItem value="running">Running</SelectItem>
+                    <SelectItem value="completed">Completed</SelectItem>
+                    <SelectItem value="failed">Failed</SelectItem>
+                  </SelectContent>
+                </Select>
+              }
+            />
+          </div>
+        ) : null}
       </div>
     </div>
   );

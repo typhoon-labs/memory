@@ -85,6 +85,16 @@ export function normalizeToolPart(part: unknown): unknown {
   };
 }
 
+/**
+ * Messages injected by Mastra's PrefillErrorHandler for retry recovery.
+ * These are stored as `role: 'user'` with a `systemReminder` metadata marker
+ * and should never be shown in the UI.
+ */
+export function isSystemReminder(msg: { content: Record<string, unknown> }): boolean {
+  const content = msg.content as { metadata?: { systemReminder?: unknown } };
+  return content?.metadata?.systemReminder != null;
+}
+
 /** Convert Mastra DB message content to AI SDK UIMessage format */
 export function toUIMessage(msg: {
   externalId: string;
@@ -167,7 +177,7 @@ export const threadRoutes = [
         .where(eq(messages.threadId, thread.id))
         .orderBy(asc(messages.createdAt));
 
-      const uiMessages = threadMessages.map(toUIMessage);
+      const uiMessages = threadMessages.filter((msg) => !isSystemReminder(msg)).map(toUIMessage);
       await hydrateChunkSources(uiMessages, vectorStore);
 
       return c.json({

@@ -456,6 +456,34 @@ describe('threadRoutes', () => {
       expect(res.status).toBe(404);
     });
 
+    it('excludes PrefillErrorHandler system-reminder messages from the response', async () => {
+      const thread = makeThreadRow();
+      const userMsg = makeMessageRow({ externalId: 'msg-user', role: 'user', content: { content: 'Hello' } });
+      const reminderMsg = makeMessageRow({
+        externalId: 'msg-reminder',
+        role: 'user',
+        content: {
+          parts: [{ text: '<system-reminder>continue</system-reminder>', type: 'text' }],
+          format: 2,
+          metadata: { systemReminder: { type: 'anthropic-prefill-processor-retry' } },
+        },
+      });
+      const assistantMsg = makeMessageRow({
+        externalId: 'msg-asst',
+        role: 'assistant',
+        content: { content: 'Hi there!' },
+      });
+
+      mockSelect.mockReturnValueOnce(chainable([thread]));
+      mockSelect.mockReturnValueOnce(chainable([userMsg, reminderMsg, assistantMsg]));
+
+      const res = await app.request('/v1/threads/ext-thread-1');
+      const body = await res.json();
+
+      expect(body.messages).toHaveLength(2);
+      expect(body.messages.map((m: { role: string }) => m.role)).toEqual(['user', 'assistant']);
+    });
+
     it('returns thread with empty messages array when no messages exist', async () => {
       const thread = makeThreadRow();
       mockSelect.mockReturnValueOnce(chainable([thread]));

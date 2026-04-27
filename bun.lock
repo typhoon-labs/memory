@@ -144,6 +144,7 @@
       "name": "@typhoon/worker",
       "version": "0.0.0",
       "dependencies": {
+        "@mastra/core": "^1.27.0",
         "@typhoon/agents": "workspace:*",
         "@typhoon/ai": "workspace:*",
         "@typhoon/config": "workspace:*",
