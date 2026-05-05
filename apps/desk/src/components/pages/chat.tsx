@@ -1,7 +1,7 @@
 import { Chat, useChat } from '@ai-sdk/react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from '@tanstack/react-router';
-import { TyphoonThread } from '@typhoon/chat';
+import { DocumentViewerPanel, TyphoonThread } from '@typhoon/chat';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup, useAuth } from '@typhoon/ui';
 import type { UIMessage } from 'ai';
 import { DefaultChatTransport } from 'ai';
@@ -9,7 +9,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ThreadSidebar } from '../chat/thread-sidebar';
 import { useFeedback } from '../chat/use-feedback';
 import { type ThreadListResponse, useThread } from '../chat/use-thread';
-import { DocumentViewerPanel } from './document-viewer-panel';
 
 const TITLE_POLL_INTERVAL = 5_000;
 const TITLE_POLL_MAX_ATTEMPTS = 24;

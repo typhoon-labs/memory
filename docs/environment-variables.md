@@ -32,7 +32,7 @@ The app connects to an OpenAI-compatible endpoint for chat. Locally this is Bifr
 |----------|----------|---------|-------------|
 | `LLM_BASE_URL` | Yes | — | OpenAI-compatible chat endpoint (e.g., `http://localhost:8787/v1`) |
 | `LLM_API_KEY` | Yes | — | API key for the LLM gateway |
-| `LLM_CHAT_MODEL` | No | `anthropic.claude-sonnet-4-6-v1:0` | Chat model ID (Bedrock format) |
+| `LLM_CHAT_MODEL` | No | `anthropic.claude-sonnet-4-6` | Chat model ID (Bedrock format) |
 | `LLM_TITLE_MODEL` | No | Falls back to `LLM_CHAT_MODEL` | Lighter model for thread title generation |
 | `LLM_RERANKER_MODEL` | No | Falls back to `LLM_CHAT_MODEL` | Model for reranking retrieved chunks |
 | `LLM_EXTRACTION_MODEL` | No | Falls back to `LLM_CHAT_MODEL` | Model for metadata extraction during ingestion (title, keywords) |
@@ -51,6 +51,9 @@ The app connects to an OpenAI-compatible endpoint for embeddings.
 | `EMBEDDING_API_KEY` | No | — | API key for the embedding endpoint |
 | `EMBEDDING_MODEL` | No | `amazon.titan-embed-text-v2:0` | Embedding model ID (Bedrock format) |
 | `EMBEDDING_DIMENSION` | No | `1024` | Vector dimension |
+| `EMBEDDING_MAX_CHARS` | No | `50000` | Maximum input characters accepted by the embedding model. Also used as the chunk size ceiling |
+| `EMBEDDING_MAX_TOKENS` | No | `8192` | Maximum input tokens accepted by the embedding model. Used with adaptive ratio tracking to proactively split oversized chunks |
+| `EMBEDDING_BATCH_SIZE` | No | `1` | Texts per `embedMany` call. Set >1 for providers that support batch embedding (e.g. OpenAI). Falls back to per-chunk on failure |
 
 ## Auth
 

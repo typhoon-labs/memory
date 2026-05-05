@@ -1,7 +1,6 @@
 import { registerApiRoute } from '@mastra/core/server';
 import { documents, syncTargets } from '@typhoon/db';
 import { PgVector } from '@typhoon/db/drivers/pg';
-import type { ProcessFileJobData } from '@typhoon/ingestion';
 import {
   deleteDocumentVectors,
   getParser,
@@ -9,6 +8,7 @@ import {
   needsCustomParser,
   updateDocumentVectorSource,
 } from '@typhoon/ingestion';
+import type { ProcessFileJobData } from '@typhoon/queue';
 import { eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import { db, sql } from '../db';

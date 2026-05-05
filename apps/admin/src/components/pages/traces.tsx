@@ -139,8 +139,8 @@ export function TracesPage() {
       },
       {
         id: 'trace',
-        header: 'Trace',
-        cell: ({ row }) => <div className="max-w-[300px] truncate font-medium">{row.original.rootSpanName}</div>,
+        header: 'Trace ID',
+        cell: ({ row }) => <span className="font-medium">{row.original.traceId}</span>,
       },
       {
         id: 'type',

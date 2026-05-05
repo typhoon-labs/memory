@@ -85,6 +85,9 @@ vi.mock('@typhoon/ingestion', () => ({
   listSources: mockListSources,
   updateDocumentVectorSource: mockUpdateDocumentVectorSource,
   cancelSyncJob: vi.fn().mockResolvedValue({ removed: 0 }),
+}));
+
+vi.mock('@typhoon/queue', () => ({
   JOB_PRIORITY: { MANUAL: 1, UPLOAD: 2, CRON: 5 },
   makeJobId: vi.fn((...parts: string[]) => parts.join('-').slice(0, 36)),
 }));

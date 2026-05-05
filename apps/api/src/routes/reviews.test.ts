@@ -175,15 +175,19 @@ describe('reviewRoutes', () => {
   // ==========================================================================
 
   describe('GET /v1/admin/reviews', () => {
-    it('returns paginated thread list with score aggregates', async () => {
+    it('returns paginated thread list with score aggregates and feedback counts', async () => {
       const threads = [
         { id: 'ext-1', resource_id: 'u1', title: 'Chat 1', created_at: now, updated_at: now, message_count: 3 },
         { id: 'ext-2', resource_id: 'u2', title: 'Chat 2', created_at: now, updated_at: now, message_count: 1 },
       ];
       const aggregates = [{ thread_id: 'ext-1', avg_score: 0.8, min_score: 0.6, score_count: 5, annotation_count: 1 }];
+      const feedbackCounts = [{ thread_id: 'ext-1', feedback_count: 3, negative_feedback_count: 1 }];
 
-      // First call: thread list, second call: aggregates
-      mockSqlUnsafe.mockResolvedValueOnce(threads).mockResolvedValueOnce(aggregates);
+      // Calls: thread list, score aggregates, feedback counts
+      mockSqlUnsafe
+        .mockResolvedValueOnce(threads)
+        .mockResolvedValueOnce(aggregates)
+        .mockResolvedValueOnce(feedbackCounts);
 
       const res = await app.request('/v1/admin/reviews?page=0&perPage=20');
       expect(res.status).toBe(200);
@@ -192,7 +196,10 @@ describe('reviewRoutes', () => {
       expect(body.threads).toHaveLength(2);
       expect(body.total).toBe(2);
       expect(body.threads[0].avgScore).toBe(0.8);
+      expect(body.threads[0].feedbackCount).toBe(3);
+      expect(body.threads[0].negativeFeedbackCount).toBe(1);
       expect(body.threads[1].avgScore).toBeNull();
+      expect(body.threads[1].feedbackCount).toBe(0);
     });
 
     it('returns empty list when no threads exist', async () => {
@@ -216,7 +223,7 @@ describe('reviewRoutes', () => {
         { thread_id: 'ext-2', avg_score: 0.3, min_score: 0.1, score_count: 5, annotation_count: 0 },
       ];
 
-      mockSqlUnsafe.mockResolvedValueOnce(threads).mockResolvedValueOnce(aggregates);
+      mockSqlUnsafe.mockResolvedValueOnce(threads).mockResolvedValueOnce(aggregates).mockResolvedValueOnce([]); // feedback counts
 
       const res = await app.request('/v1/admin/reviews?sortBy=worstScore');
       const body = await res.json();
@@ -236,7 +243,7 @@ describe('reviewRoutes', () => {
         { thread_id: 'ext-2', avg_score: 0.5, min_score: 0.3, score_count: 5, annotation_count: 0 },
       ];
 
-      mockSqlUnsafe.mockResolvedValueOnce(threads).mockResolvedValueOnce(aggregates);
+      mockSqlUnsafe.mockResolvedValueOnce(threads).mockResolvedValueOnce(aggregates).mockResolvedValueOnce([]); // feedback counts
 
       const res = await app.request('/v1/admin/reviews?annotationStatus=annotated');
       const body = await res.json();
@@ -251,14 +258,24 @@ describe('reviewRoutes', () => {
   // ==========================================================================
 
   describe('GET /v1/admin/reviews/:threadId', () => {
-    it('returns thread with messages and scores grouped by message', async () => {
+    it('returns thread with messages, scores, and feedback grouped by message', async () => {
       const thread = makeThreadRow();
       const msg = makeMessageRow();
       const scores = [makeScoreRow()];
+      const feedback = [
+        {
+          rating: 'negative',
+          comment: 'Not helpful',
+          created_at: now.toISOString(),
+          user_name: 'Alice',
+          message_external_id: 'msg-ext-1',
+        },
+      ];
 
       mockSelect.mockReturnValueOnce(chainable([thread]));
       mockSelect.mockReturnValueOnce(chainable([msg]));
-      mockSqlUnsafe.mockResolvedValueOnce(scores);
+      // SQL calls: scores, feedback
+      mockSqlUnsafe.mockResolvedValueOnce(scores).mockResolvedValueOnce(feedback);
 
       const res = await app.request('/v1/admin/reviews/ext-thread-1');
       expect(res.status).toBe(200);
@@ -268,7 +285,36 @@ describe('reviewRoutes', () => {
       expect(body.messages).toHaveLength(1);
       expect(body.scoresByMessage['msg-ext-1']).toHaveLength(1);
       expect(body.scoresByMessage['msg-ext-1'][0].scorer_id).toBe('faithfulness');
+      expect(body.feedbackByMessage['msg-ext-1']).toHaveLength(1);
+      expect(body.feedbackByMessage['msg-ext-1'][0].rating).toBe('negative');
+      expect(body.feedbackByMessage['msg-ext-1'][0].userName).toBe('Alice');
       expect(mockHydrateChunkSources).toHaveBeenCalledTimes(1);
+    });
+
+    it('enriches human-review scores with annotator names', async () => {
+      const thread = makeThreadRow();
+      const msg = makeMessageRow();
+      const scores = [
+        makeScoreRow({
+          id: 'score-hr',
+          scorer_id: 'human-review',
+          score: 0,
+          metadata: { source: 'human', tags: ['wrong-answer'], annotatorId: 'admin-1' },
+        }),
+      ];
+      const users = [{ id: 'admin-1', name: 'Admin User' }];
+
+      mockSelect.mockReturnValueOnce(chainable([thread]));
+      mockSelect.mockReturnValueOnce(chainable([msg]));
+      // SQL calls: scores, annotator names lookup, feedback
+      mockSqlUnsafe.mockResolvedValueOnce(scores).mockResolvedValueOnce(users).mockResolvedValueOnce([]);
+
+      const res = await app.request('/v1/admin/reviews/ext-thread-1');
+      const body = await res.json();
+
+      const annotation = body.scoresByMessage['msg-ext-1'][0];
+      expect(annotation.scorer_id).toBe('human-review');
+      expect(annotation.metadata.annotatorName).toBe('Admin User');
     });
 
     it('returns 404 when thread not found', async () => {
@@ -278,18 +324,20 @@ describe('reviewRoutes', () => {
       expect(res.status).toBe(404);
     });
 
-    it('returns empty scoresByMessage when no scores exist', async () => {
+    it('returns empty scoresByMessage and feedbackByMessage when none exist', async () => {
       const thread = makeThreadRow();
       const msg = makeMessageRow();
 
       mockSelect.mockReturnValueOnce(chainable([thread]));
       mockSelect.mockReturnValueOnce(chainable([msg]));
-      mockSqlUnsafe.mockResolvedValueOnce([]);
+      // SQL calls: scores (empty), feedback (empty)
+      mockSqlUnsafe.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
 
       const res = await app.request('/v1/admin/reviews/ext-thread-1');
       const body = await res.json();
 
       expect(body.scoresByMessage).toEqual({});
+      expect(body.feedbackByMessage).toEqual({});
     });
   });
 

@@ -16,6 +16,12 @@ const { mockWorkerInstances, mockWorkerClose } = vi.hoisted(() => {
 });
 
 vi.mock('bullmq', () => ({
+  UnrecoverableError: class UnrecoverableError extends Error {
+    constructor(message: string) {
+      super(message);
+      this.name = 'UnrecoverableError';
+    }
+  },
   Worker: class MockWorker {
     queueName: string;
     processor: (job: unknown) => Promise<unknown>;
@@ -229,6 +235,125 @@ describe('startWorkers', () => {
     expect(events.error).toHaveLength(1);
     expect(events.failed).toHaveLength(1);
     expect(events.completed).toHaveLength(1);
+  });
+});
+
+describe('scoring worker processor', () => {
+  beforeEach(() => {
+    mockWorkerInstances.length = 0;
+    mockWorkerClose.mockResolvedValue(undefined);
+    vi.clearAllMocks();
+  });
+
+  afterEach(async () => {
+    await shutdownWorkers();
+    mockWorkerInstances.length = 0;
+  });
+
+  function getScoringWorker() {
+    startWorkers('redis://localhost:6379', 'postgresql://localhost/typhoon');
+    const worker = mockWorkerInstances.find((w) => w.queueName === 'scoring');
+    if (!worker) throw new Error('scoring worker not found');
+    return worker;
+  }
+
+  it('routes "partition-management" job to managePartitions', async () => {
+    const { managePartitions } = await import('@typhoon/ingestion');
+    const worker = getScoringWorker();
+    const fakeJob = { name: 'partition-management', data: { retentionDays: 30 } };
+    await worker.processor(fakeJob);
+    expect(managePartitions).toHaveBeenCalledWith(expect.anything(), { retentionDays: 30 });
+  });
+
+  it('routes scoring job to scoreMessage', async () => {
+    const { scoreMessage } = await import('@typhoon/agents');
+    const worker = getScoringWorker();
+    const fakeJob = {
+      name: 'score',
+      data: { messageId: 'm-1', threadId: 't-1', agentId: 'a-1', traceId: 'tr-1' },
+    };
+    await worker.processor(fakeJob);
+    expect(scoreMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ messageId: 'm-1', threadId: 't-1' }),
+      expect.any(Object),
+      expect.any(String),
+      undefined,
+    );
+  });
+
+  it('wraps unrecoverable errors in UnrecoverableError', async () => {
+    const { scoreMessage } = await import('@typhoon/agents');
+    (scoreMessage as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      Object.assign(new Error('bad input'), { unrecoverable: true }),
+    );
+    const worker = getScoringWorker();
+    const fakeJob = {
+      name: 'score',
+      data: { messageId: 'm-1', threadId: 't-1', agentId: 'a-1', traceId: 'tr-1' },
+    };
+    await expect(worker.processor(fakeJob)).rejects.toThrow('bad input');
+  });
+});
+
+describe('experiment worker processor', () => {
+  beforeEach(() => {
+    mockWorkerInstances.length = 0;
+    mockWorkerClose.mockResolvedValue(undefined);
+    vi.clearAllMocks();
+  });
+
+  afterEach(async () => {
+    await shutdownWorkers();
+    mockWorkerInstances.length = 0;
+  });
+
+  it('routes experiment job to handleExperimentJob', async () => {
+    const { handleExperimentJob } = await import('@typhoon/agents');
+    startWorkers('redis://localhost:6379', 'postgresql://localhost/typhoon');
+    const worker = mockWorkerInstances.find((w) => w.queueName === 'experiments');
+    if (!worker) throw new Error('experiments worker not found');
+    const fakeJob = { name: 'run', data: { experimentId: 'exp-1' }, token: 'tok-1', extendLock: vi.fn() };
+    await worker.processor(fakeJob);
+    expect(handleExperimentJob).toHaveBeenCalledWith(
+      'exp-1',
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+    );
+  });
+});
+
+describe('sync worker event handlers', () => {
+  beforeEach(() => {
+    mockWorkerInstances.length = 0;
+    mockWorkerClose.mockResolvedValue(undefined);
+    vi.clearAllMocks();
+  });
+
+  afterEach(async () => {
+    await shutdownWorkers();
+    mockWorkerInstances.length = 0;
+  });
+
+  it('calls incrementSyncJobCompletion on failed job with syncJobId', async () => {
+    const { incrementSyncJobCompletion } = await import('@typhoon/ingestion');
+    startWorkers('redis://localhost:6379', 'postgresql://localhost/typhoon');
+    const syncWorker = mockWorkerInstances.find((w) => w.queueName === 'sync');
+    if (!syncWorker) throw new Error('sync worker not found');
+    const failedHandler = syncWorker.events.failed[0];
+    failedHandler({ name: 'process-file', id: 'j-1', data: { syncJobId: 'sj-1' } }, new Error('fail'));
+    expect(incrementSyncJobCompletion).toHaveBeenCalledWith(expect.anything(), 'sj-1', true);
+  });
+
+  it('does not call incrementSyncJobCompletion when syncJobId is absent', async () => {
+    const { incrementSyncJobCompletion } = await import('@typhoon/ingestion');
+    startWorkers('redis://localhost:6379', 'postgresql://localhost/typhoon');
+    const syncWorker = mockWorkerInstances.find((w) => w.queueName === 'sync');
+    if (!syncWorker) throw new Error('sync worker not found');
+    const failedHandler = syncWorker.events.failed[0];
+    failedHandler({ name: 'scan', id: 'j-1', data: {} }, new Error('fail'));
+    expect(incrementSyncJobCompletion).not.toHaveBeenCalled();
   });
 });
 

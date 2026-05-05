@@ -1,17 +1,16 @@
 import { registerApiRoute } from '@mastra/core/server';
 import { documents, syncJobs, syncTargets } from '@typhoon/db';
 import { PgVector } from '@typhoon/db/drivers/pg';
-import type { ProcessFileJobData, ScanJobData } from '@typhoon/ingestion';
 import {
   cancelSyncJob,
   deleteDocumentVectors,
   getProvider,
-  JOB_PRIORITY,
   listSources,
-  makeJobId,
   updateDocumentVectorSource,
 } from '@typhoon/ingestion';
 import { createAppLogger } from '@typhoon/logger';
+import type { ProcessFileJobData, ScanJobData } from '@typhoon/queue';
+import { JOB_PRIORITY, makeJobId } from '@typhoon/queue';
 import { syncTargetConfigSchemas } from '@typhoon/types';
 import { and, eq, inArray, like, ne } from 'drizzle-orm';
 import { z } from 'zod';

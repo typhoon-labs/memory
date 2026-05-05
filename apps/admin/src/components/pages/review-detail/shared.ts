@@ -36,6 +36,8 @@ export const SCORE_THRESHOLDS: Record<string, { pass: number; label: string; inv
   contextPrecision: { pass: 0.5, label: 'Context Precision' },
 };
 
+export type { ChatMessage } from '@typhoon/chat';
+
 export interface ReviewScore {
   id: string;
   scorer_id: string;
@@ -46,19 +48,10 @@ export interface ReviewScore {
   created_at: string;
 }
 
-export interface UIMessagePart {
-  type: string;
-  text?: string;
-  toolCallId?: string;
-  state?: string;
-  input?: unknown;
-  output?: unknown;
-}
-
-export interface UIMessage {
-  id: string;
-  role: string;
-  parts: UIMessagePart[];
+export interface FeedbackEntry {
+  rating: 'positive' | 'negative';
+  comment: string | null;
+  userName: string;
   createdAt: string;
 }
 
@@ -68,6 +61,7 @@ export interface ReviewDetailResponse {
   title: string;
   createdAt: string;
   updatedAt: string;
-  messages: UIMessage[];
+  messages: Record<string, unknown>[];
   scoresByMessage: Record<string, ReviewScore[]>;
+  feedbackByMessage: Record<string, FeedbackEntry[]>;
 }

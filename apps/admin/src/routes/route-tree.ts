@@ -84,6 +84,7 @@ const documentsRoute = createRoute({
 
 const REVIEW_SORT = ['worstScore', 'newest', 'unscored'] as const;
 const REVIEW_ANNOTATION = ['all', 'annotated', 'unannotated'] as const;
+const REVIEW_FEEDBACK = ['all', 'has-feedback', 'has-negative', 'no-feedback'] as const;
 
 const reviewsRoute = createRoute({
   getParentRoute: () => layoutRoute,
@@ -99,6 +100,12 @@ const reviewsRoute = createRoute({
       (REVIEW_ANNOTATION as readonly string[]).includes(search.annotationStatus)
         ? (search.annotationStatus as (typeof REVIEW_ANNOTATION)[number])
         : ('all' as const),
+    feedbackStatus:
+      typeof search.feedbackStatus === 'string' &&
+      (REVIEW_FEEDBACK as readonly string[]).includes(search.feedbackStatus)
+        ? (search.feedbackStatus as (typeof REVIEW_FEEDBACK)[number])
+        : ('all' as const),
+    search: typeof search.search === 'string' ? search.search : undefined,
   }),
 });
 

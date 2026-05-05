@@ -79,11 +79,10 @@ You'll be redirected back to the app, logged in.
 ### 5. Seed sample data (optional)
 
 ```bash
-bun run seed:db     # Populates DB with sample sync targets, documents, threads, and messages
-bun run seed:docs   # Uploads sample documents to MinIO
+bun run seed        # Seeds DB (sync targets, scorers, datasets) + uploads sample docs to MinIO
 ```
 
-This gives you realistic data to explore the app without manual setup. `seed:db` is idempotent — safe to run multiple times.
+This gives you realistic data to explore the app without manual setup.
 
 ## Adding Your First Sync Source
 
@@ -94,7 +93,7 @@ This gives you realistic data to explore the app without manual setup. `seed:db`
    - **Bucket:** `typhoon-documents`
    - **Prefix:** (optional, e.g., `support/`)
 4. Upload documents to MinIO — either:
-   - **Quick:** Run `bun run seed:docs` to upload sample documents automatically
+   - **Quick:** Run `bun run seed` to seed the database and upload sample documents automatically
    - **Manual:** Open MinIO console at `http://localhost:9001` (login: `minioadmin` / `minioadmin`) and upload PDF, DOCX, XLSX, Markdown, HTML, or text files to the `typhoon-documents` bucket
 5. Click **Sync Now** on the sync source to trigger ingestion
 6. Documents will be parsed, chunked, embedded, and stored in pgvector

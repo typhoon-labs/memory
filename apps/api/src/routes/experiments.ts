@@ -94,9 +94,9 @@ export const experimentRoutes = [
       if (!expB) return c.json({ error: `Experiment ${idB} not found` }, 404);
 
       // biome-ignore lint/suspicious/noExplicitAny: storage returns untyped
-      const datasetA = (expA as any).dataset_id;
+      const datasetA = (expA as any).datasetId;
       // biome-ignore lint/suspicious/noExplicitAny: storage returns untyped
-      const datasetB = (expB as any).dataset_id;
+      const datasetB = (expB as any).datasetId;
       if (datasetA !== datasetB) {
         return c.json({ error: 'Experiments must share the same dataset for comparison' }, 400);
       }
@@ -112,9 +112,9 @@ export const experimentRoutes = [
       // biome-ignore lint/suspicious/noExplicitAny: storage returns untyped
       const itemsB = (resultsB as any).results as Array<Record<string, unknown>>;
 
-      // Index by item_id for comparison
-      const mapA = new Map(itemsA.map((r) => [r.item_id as string, r]));
-      const mapB = new Map(itemsB.map((r) => [r.item_id as string, r]));
+      // Index by itemId for comparison
+      const mapA = new Map(itemsA.map((r) => [r.itemId as string, r]));
+      const mapB = new Map(itemsB.map((r) => [r.itemId as string, r]));
       const allItemIds = new Set([...mapA.keys(), ...mapB.keys()]);
 
       let totalScoreA = 0;

@@ -6,6 +6,7 @@ import rehypeSlug from 'rehype-slug';
 import remarkGfm from 'remark-gfm';
 import { CsvTableViewer } from './CsvTableViewer';
 import { ExternalLinkDialog } from './ExternalLinkDialog';
+import { markdownComponents } from './markdown-components';
 
 // ── Tabular MIME detection ──────────────────────────────────────
 
@@ -54,7 +55,10 @@ function highlightChildren(children: React.ReactNode, terms: string[]): React.Re
   });
 }
 
-// ── Markdown component overrides ────────────────────────────────
+// ── Document-specific markdown overrides ────────────────────────
+//
+// Layers search-term highlighting and anchor-click handling on top
+// of the shared `markdownComponents` base.
 
 /**
  * Build the react-markdown `Components` map used by document content
@@ -68,7 +72,13 @@ export function createDocumentMarkdownComponents(
   terms: string[] = [],
   onAnchorClick?: (id: string) => void,
 ): Components {
+  // Fast path: no highlighting or anchor handling needed — use shared base directly.
+  if (!terms.length && !onAnchorClick) {
+    return markdownComponents as unknown as Components;
+  }
+
   return {
+    ...(markdownComponents as unknown as Components),
     h1: ({ children, id }) => (
       <h1 id={id} className="mt-6 mb-2 text-xl font-semibold leading-tight first:mt-0">
         {highlightChildren(children, terms)}
@@ -109,15 +119,6 @@ export function createDocumentMarkdownComponents(
         {highlightChildren(children, terms)}
       </li>
     ),
-    ul: ({ children }) => (
-      <ul className="my-2 list-inside list-disc space-y-0.5 [&_ul]:my-1 [&_ul]:list-[circle]">{children}</ul>
-    ),
-    ol: ({ children }) => <ol className="my-2 list-inside list-decimal space-y-0.5 [&_ol]:my-1">{children}</ol>,
-    blockquote: ({ children }) => (
-      <blockquote className="my-3 rounded-r border-l-[3px] border-border bg-muted px-4 py-2 text-[13px] italic text-muted-foreground">
-        {children}
-      </blockquote>
-    ),
     a: ({ href, children }) => {
       const isAnchor = href?.startsWith('#');
 
@@ -148,25 +149,6 @@ export function createDocumentMarkdownComponents(
         </ExternalLinkDialog>
       );
     },
-    code: ({ className, children }) => {
-      if (className?.includes('language-')) {
-        return <code className={className}>{children}</code>;
-      }
-      return (
-        <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[0.8em] text-foreground/80">{children}</code>
-      );
-    },
-    pre: ({ children }) => (
-      <pre className="my-3 overflow-x-auto rounded-xl border border-border bg-card p-4 font-mono text-[0.8125rem] leading-relaxed first:mt-0 [&>code]:bg-transparent [&>code]:p-0 [&>code]:rounded-none [&>code]:text-inherit">
-        {children}
-      </pre>
-    ),
-    table: ({ children }) => (
-      <div className="my-4 overflow-x-auto rounded-lg border border-border">
-        <table className="w-full border-collapse text-sm">{children}</table>
-      </div>
-    ),
-    thead: ({ children }) => <thead className="bg-muted">{children}</thead>,
     th: ({ children }) => (
       <th className="whitespace-nowrap border-r border-border px-4 py-2 text-left text-[0.8125rem] font-semibold last:border-r-0">
         {highlightChildren(children, terms)}
@@ -177,7 +159,6 @@ export function createDocumentMarkdownComponents(
         {highlightChildren(children, terms)}
       </td>
     ),
-    hr: () => <hr className="my-6 border-t border-border" />,
     strong: ({ children }) => <strong className="font-semibold">{highlightChildren(children, terms)}</strong>,
     em: ({ children }) => <em>{highlightChildren(children, terms)}</em>,
     del: ({ children }) => <del className="text-muted-foreground">{highlightChildren(children, terms)}</del>,

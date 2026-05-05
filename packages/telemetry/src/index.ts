@@ -18,13 +18,16 @@
 
 import { DefaultExporter, Observability } from '@mastra/observability';
 import { OtelBridge } from '@mastra/otel-bridge';
-import { metrics, trace } from '@opentelemetry/api';
+import { metrics, SpanStatusCode, trace } from '@opentelemetry/api';
 
 /** Re-export of `@hono/otel` middleware for HTTP request tracing and metrics. */
 export { otelMiddleware } from './hono-middleware';
 /** Custom application metrics. */
 export {
+  chunkSizeChars,
   conversationStarted,
+  embedRetryCount,
+  embedTokenUsage,
   syncJobCompleted,
   syncJobDuration,
   syncJobFailed,
@@ -32,6 +35,7 @@ export {
   syncQueueDepth,
   syncStageDuration,
 } from './metrics';
+export { SpanStatusCode };
 
 /**
  * Returns a named tracer instance for creating manual spans.

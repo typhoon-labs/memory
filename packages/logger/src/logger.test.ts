@@ -144,3 +144,78 @@ describe('createAppLogger', () => {
     expect(logger).toBeInstanceOf(TyphoonLogger);
   });
 });
+
+describe('production JSON format', () => {
+  let infoSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('OTEL_SERVICE_NAME', 'typhoon-api');
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+  });
+
+  it('includes service field from OTEL_SERVICE_NAME in JSON output', async () => {
+    // Re-import to pick up env stubs (module-level const reads at import time)
+    vi.resetModules();
+    const { TyphoonLogger: FreshLogger } = await import('./logger');
+    const logger = new FreshLogger({ name: 'test', level: LogLevel.INFO });
+    logger.info('hello');
+    const output = infoSpy.mock.calls[0][0] as string;
+    const parsed = JSON.parse(output);
+    expect(parsed.service).toBe('typhoon-api');
+    expect(parsed.name).toBe('test');
+    expect(parsed.msg).toBe('hello');
+  });
+
+  it('omits service field when OTEL_SERVICE_NAME is unset', async () => {
+    vi.unstubAllEnvs();
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.resetModules();
+    const { TyphoonLogger: FreshLogger } = await import('./logger');
+    const logger = new FreshLogger({ name: 'test', level: LogLevel.INFO });
+    logger.info('hello');
+    const output = infoSpy.mock.calls[0][0] as string;
+    const parsed = JSON.parse(output);
+    expect(parsed.service).toBeUndefined();
+    expect(parsed.msg).toBe('hello');
+  });
+
+  it('merges context fields into production JSON output', async () => {
+    vi.resetModules();
+    const { TyphoonLogger: FreshLogger } = await import('./logger');
+    const logger = new FreshLogger({ name: 'test', level: LogLevel.INFO });
+    logger.info('msg', { userId: 'u-1', action: 'login' });
+    const output = infoSpy.mock.calls[0][0] as string;
+    const parsed = JSON.parse(output);
+    expect(parsed.userId).toBe('u-1');
+    expect(parsed.action).toBe('login');
+  });
+});
+
+describe('resolveLevel via LOG_LEVEL env', () => {
+  let debugSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+  });
+
+  it('respects LOG_LEVEL=debug', async () => {
+    vi.stubEnv('LOG_LEVEL', 'debug');
+    vi.stubEnv('NODE_ENV', 'test');
+    vi.resetModules();
+    const { createAppLogger: freshCreate } = await import('./logger');
+    const logger = freshCreate('test');
+    logger.debug('test debug msg');
+    expect(debugSpy).toHaveBeenCalled();
+  });
+});

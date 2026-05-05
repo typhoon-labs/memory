@@ -82,19 +82,22 @@ describe('Dashboard Routes', () => {
   });
 
   describe('GET /v1/admin/dashboard/scores', () => {
-    it('returns score series from raw SQL', async () => {
-      mockSqlUnsafe.mockResolvedValueOnce([
-        { date: '2026-04-20', scorer_id: 'faithfulness', avg_score: 0.85, count: 10, fail_count: 1 },
-        { date: '2026-04-20', scorer_id: 'hallucination', avg_score: 0.15, count: 10, fail_count: 8 },
-      ]);
+    it('returns score series with buckets', async () => {
+      mockSqlUnsafe
+        .mockResolvedValueOnce([{ date: '2026-04-20 00:00:00+00' }]) // queryBuckets
+        .mockResolvedValueOnce([
+          { date: '2026-04-20 00:00:00+00', scorer_id: 'faithfulness', avg_score: 0.85, count: 10, fail_count: 1 },
+          { date: '2026-04-20 00:00:00+00', scorer_id: 'hallucination', avg_score: 0.15, count: 10, fail_count: 8 },
+        ]);
 
       const res = await app.request('/v1/admin/dashboard/scores?dateFrom=2026-04-01&dateTo=2026-04-22');
       expect(res.status).toBe(200);
 
       const body = await res.json();
       expect(body.series).toHaveLength(2);
+      expect(body.buckets).toEqual(['2026-04-20 00:00:00+00']);
       expect(body.series[0]).toEqual({
-        date: '2026-04-20',
+        date: '2026-04-20 00:00:00+00',
         scorerId: 'faithfulness',
         avgScore: 0.85,
         count: 10,
@@ -103,17 +106,33 @@ describe('Dashboard Routes', () => {
     });
 
     it('filters by scorerId when provided', async () => {
-      mockSqlUnsafe.mockResolvedValueOnce([]);
       await app.request('/v1/admin/dashboard/scores?scorerId=hallucination');
 
-      const query = mockSqlUnsafe.mock.calls[0][0] as string;
+      // call[0] = queryBuckets, call[1] = data query
+      const query = mockSqlUnsafe.mock.calls[1][0] as string;
       expect(query).toContain('"scorer_id" = $3');
     });
 
-    it('returns empty series when no data', async () => {
+    it('returns empty series and buckets when no data', async () => {
       const res = await app.request('/v1/admin/dashboard/scores');
       const body = await res.json();
       expect(body.series).toEqual([]);
+      expect(body.buckets).toEqual([]);
+    });
+
+    it('uses date_bin with range-based bucket interval', async () => {
+      await app.request('/v1/admin/dashboard/scores?range=1d');
+
+      // call[1] = data query
+      const query = mockSqlUnsafe.mock.calls[1][0] as string;
+      expect(query).toContain("date_bin('15 minutes'");
+    });
+
+    it('defaults to 30d bucket when range is invalid', async () => {
+      await app.request('/v1/admin/dashboard/scores?range=bogus');
+
+      const query = mockSqlUnsafe.mock.calls[1][0] as string;
+      expect(query).toContain("date_bin('8 hours'");
     });
   });
 
@@ -174,43 +193,71 @@ describe('Dashboard Routes', () => {
   });
 
   describe('GET /v1/admin/dashboard/latency', () => {
-    it('returns latency percentiles', async () => {
-      mockSqlUnsafe.mockResolvedValueOnce([{ date: '2026-04-20', p50: 1234.5, p95: 3456.7, p99: 5678.9, count: 50 }]);
+    it('returns latency percentiles with null-filled gaps', async () => {
+      mockSqlUnsafe
+        .mockResolvedValueOnce([{ date: '2026-04-19 00:00:00+00' }, { date: '2026-04-20 00:00:00+00' }]) // buckets
+        .mockResolvedValueOnce([{ date: '2026-04-20 00:00:00+00', p50: 1234.5, p95: 3456.7, p99: 5678.9, count: 50 }]);
 
       const res = await app.request('/v1/admin/dashboard/latency');
       expect(res.status).toBe(200);
 
       const body = await res.json();
-      expect(body.series).toHaveLength(1);
-      expect(body.series[0].p50).toBe(1235); // rounded
-      expect(body.series[0].p95).toBe(3457);
-      expect(body.series[0].count).toBe(50);
+      expect(body.series).toHaveLength(2);
+      // First bucket has no data — null-filled
+      expect(body.series[0]).toEqual({
+        date: '2026-04-19 00:00:00+00',
+        p50: null,
+        p95: null,
+        p99: null,
+        count: 0,
+      });
+      // Second bucket has data
+      expect(body.series[1].p50).toBe(1235); // rounded
+      expect(body.series[1].p95).toBe(3457);
+      expect(body.series[1].count).toBe(50);
     });
 
     it('queries ai_spans for agent spans', async () => {
-      mockSqlUnsafe.mockResolvedValueOnce([]);
       await app.request('/v1/admin/dashboard/latency');
 
-      const query = mockSqlUnsafe.mock.calls[0][0] as string;
+      // call[1] = data query
+      const query = mockSqlUnsafe.mock.calls[1][0] as string;
       expect(query).toContain('"ai_spans"');
-      expect(query).toContain("'agent'");
+      expect(query).toContain("'agent_run'");
+    });
+
+    it('uses date_bin with range-based bucket interval', async () => {
+      await app.request('/v1/admin/dashboard/latency?range=7d');
+
+      const query = mockSqlUnsafe.mock.calls[1][0] as string;
+      expect(query).toContain("date_bin('2 hours'");
     });
   });
 
   describe('GET /v1/admin/dashboard/cost', () => {
-    it('returns token usage data', async () => {
-      mockSqlUnsafe.mockResolvedValueOnce([
-        { date: '2026-04-20', prompt_tokens: 5000, completion_tokens: 2000, call_count: 15 },
-      ]);
+    it('returns token usage with zero-filled gaps', async () => {
+      mockSqlUnsafe
+        .mockResolvedValueOnce([{ date: '2026-04-19 00:00:00+00' }, { date: '2026-04-20 00:00:00+00' }]) // buckets
+        .mockResolvedValueOnce([
+          { date: '2026-04-20 00:00:00+00', prompt_tokens: 5000, completion_tokens: 2000, call_count: 15 },
+        ]);
 
       const res = await app.request('/v1/admin/dashboard/cost');
       expect(res.status).toBe(200);
 
       const body = await res.json();
-      expect(body.series).toHaveLength(1);
-      expect(body.series[0].promptTokens).toBe(5000);
-      expect(body.series[0].completionTokens).toBe(2000);
-      expect(body.series[0].callCount).toBe(15);
+      expect(body.series).toHaveLength(2);
+      // First bucket — zero-filled
+      expect(body.series[0]).toEqual({
+        date: '2026-04-19 00:00:00+00',
+        promptTokens: 0,
+        completionTokens: 0,
+        callCount: 0,
+      });
+      // Second bucket — real data
+      expect(body.series[1].promptTokens).toBe(5000);
+      expect(body.series[1].completionTokens).toBe(2000);
+      expect(body.series[1].callCount).toBe(15);
     });
   });
 
@@ -227,9 +274,11 @@ describe('Dashboard Routes', () => {
 
   describe('caching', () => {
     it('returns cached response on second call', async () => {
-      mockSqlUnsafe.mockResolvedValueOnce([
-        { date: '2026-04-20', scorer_id: 'faithfulness', avg_score: 0.85, count: 10, fail_count: 1 },
-      ]);
+      mockSqlUnsafe
+        .mockResolvedValueOnce([{ date: '2026-04-20 00:00:00+00' }]) // queryBuckets
+        .mockResolvedValueOnce([
+          { date: '2026-04-20 00:00:00+00', scorer_id: 'faithfulness', avg_score: 0.85, count: 10, fail_count: 1 },
+        ]);
 
       const res1 = await app.request('/v1/admin/dashboard/scores?dateFrom=2026-04-01&dateTo=2026-04-22');
       const body1 = await res1.json();
@@ -238,7 +287,7 @@ describe('Dashboard Routes', () => {
       const res2 = await app.request('/v1/admin/dashboard/scores?dateFrom=2026-04-01&dateTo=2026-04-22');
       const body2 = await res2.json();
 
-      expect(mockSqlUnsafe).toHaveBeenCalledTimes(1);
+      expect(mockSqlUnsafe).toHaveBeenCalledTimes(2); // 2 calls for the first (uncached) request
       expect(body1).toEqual(body2);
     });
   });

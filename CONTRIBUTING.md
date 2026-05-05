@@ -76,8 +76,7 @@ See [Architecture](docs/architecture.md) for the full dependency model and syste
 | `bun run docker:restart` | Restart Docker services |
 | `bun run docker:status` | Show running containers |
 | `bun run docker:logs` | Tail logs from all services |
-| `bun run seed:db` | Seed database with sample data |
-| `bun run seed:docs` | Upload sample documents to MinIO |
+| `bun run seed` | Seed database + upload sample documents to MinIO |
 | `bun run reset` | Nuclear reset — tear down and re-setup |
 
 ## Documentation

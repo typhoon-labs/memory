@@ -12,12 +12,13 @@ import {
   XIcon,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { type DocumentContentResponse, documentContentQuery, documentParsedQuery } from '../../lib/document-queries';
+import { type DocumentContentResponse, documentContentQuery, documentParsedQuery } from './document-queries';
 
 type DocumentChunk = DocumentContentResponse['chunks'][number];
 
 /** Scroll an element into view within its nearest Radix ScrollArea viewport,
- *  avoiding the native scrollIntoView which can scroll hidden ancestors. */
+ *  avoiding the native scrollIntoView which can scroll hidden ancestors.
+ *  Falls back to native scrollIntoView when no Radix viewport is found. */
 function scrollInViewport(el: Element, block: 'center' | 'start' = 'center') {
   const viewport = el.closest('[data-radix-scroll-area-viewport]') as HTMLElement | null;
   if (viewport) {
@@ -174,6 +175,9 @@ function useChunkNavigator(
   const [matchCount, setMatchCount] = useState(0);
   // Start at -1 so setActiveIndex(0) in detection effect triggers highlight effect
   const [activeIndex, setActiveIndex] = useState(-1);
+  // Incremented each time blocks are (re-)detected so Effect 2 re-applies highlights
+  // even when activeIndex hasn't changed (e.g. parsed content replaces chunk DOM).
+  const [detectGeneration, setDetectGeneration] = useState(0);
 
   // Resolve chunk lines from all targets (memoized)
   const chunkLines = useMemo(() => {
@@ -229,6 +233,7 @@ function useChunkNavigator(
       if (blocks.length > 0) {
         setMatchCount(blocks.length);
         setActiveIndex(0);
+        setDetectGeneration((g) => g + 1);
         return true;
       }
       return false;
@@ -242,7 +247,10 @@ function useChunkNavigator(
     return () => observer.disconnect();
   }, [dataReady, getChunkBlocks, contentRef, hasParsedContent]);
 
-  // Effect 2: Highlight active block and scroll (mirrors keyword highlight effect)
+  // Effect 2: Highlight active block and scroll (mirrors keyword highlight effect).
+  // detectGeneration ensures this re-runs even when activeIndex stays 0 (e.g. parsed
+  // content replaces chunk DOM and blocks are re-detected at the same index).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: detectGeneration is an intentional trigger to re-apply highlights after DOM swap
   useEffect(() => {
     const blocks = getChunkBlocks();
     for (const el of blocks) {
@@ -256,7 +264,7 @@ function useChunkNavigator(
         scrollInViewport(blocks[activeIndex], 'center');
       }
     }
-  }, [activeIndex, getChunkBlocks]);
+  }, [activeIndex, getChunkBlocks, detectGeneration]);
 
   const goNext = useCallback(() => {
     if (matchCount === 0) return;

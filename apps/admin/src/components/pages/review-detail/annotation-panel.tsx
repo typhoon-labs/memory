@@ -12,27 +12,17 @@ import {
   apiFetch,
   Button,
   Checkbox,
-  SectionLabel,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-  StatusBadge,
   Textarea,
   useAuth,
 } from '@typhoon/ui';
-import { PencilIcon, Trash2Icon } from 'lucide-react';
-import { useState } from 'react';
-import {
-  type AnnotationTag,
-  ISSUE_TAGS,
-  type ReviewScore,
-  SEVERITY_LEVELS,
-  SEVERITY_VARIANT_MAP,
-  type Severity,
-  TAG_LABELS,
-} from './shared';
+import { CheckIcon, PencilIcon, Trash2Icon, XIcon } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { type AnnotationTag, ISSUE_TAGS, type ReviewScore, SEVERITY_LEVELS, type Severity, TAG_LABELS } from './shared';
 
 interface AnnotationPanelProps {
   threadId: string;
@@ -40,26 +30,105 @@ interface AnnotationPanelProps {
   annotations: ReviewScore[];
 }
 
-function AnnotationDisplay({ annotation }: { annotation: ReviewScore }) {
-  const meta = annotation.metadata as { tags?: string[]; severity?: string; annotatorId?: string } | null;
+function AnnotationDisplay({
+  annotation,
+  onEdit,
+  onDelete,
+}: {
+  annotation: ReviewScore;
+  onEdit?: () => void;
+  onDelete?: () => void;
+}) {
+  const meta = annotation.metadata as {
+    tags?: string[];
+    severity?: string;
+    annotatorId?: string;
+    annotatorName?: string;
+  } | null;
   const tags = (meta?.tags ?? []) as AnnotationTag[];
   const severity = meta?.severity as Severity | undefined;
+  const annotatorName = meta?.annotatorName ?? '?';
+  const initial = annotatorName.charAt(0).toUpperCase();
+  const isCorrect = tags.includes('correct');
+
+  const headerColor = isCorrect
+    ? 'text-emerald-400'
+    : severity === 'critical'
+      ? 'text-red-400'
+      : severity === 'major'
+        ? 'text-orange-400'
+        : 'text-amber-400';
+
+  const headerText = isCorrect ? 'Correct' : severity ? `Has ${severity} issues` : 'Has issues';
 
   return (
-    <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        {tags.map((tag) => (
-          <StatusBadge key={tag} variant={tag === 'correct' ? 'success' : 'error'}>
-            {TAG_LABELS[tag] ?? tag}
-          </StatusBadge>
-        ))}
-        {severity && (
-          <StatusBadge variant={SEVERITY_VARIANT_MAP[severity]}>
-            {severity.charAt(0).toUpperCase() + severity.slice(1)}
-          </StatusBadge>
+    <div>
+      {/* Bubble */}
+      <div className="rounded-lg border border-border px-3 py-2.5 text-xs">
+        {/* Header: verdict + actions */}
+        <div className="flex items-center justify-between">
+          <span className={`font-semibold ${headerColor}`}>{headerText}</span>
+          {(onEdit || onDelete) && (
+            <div className="flex gap-1.5">
+              {onEdit && (
+                <button
+                  type="button"
+                  onClick={onEdit}
+                  className="text-muted-foreground/30 transition-colors hover:text-muted-foreground"
+                >
+                  <PencilIcon className="size-3" />
+                </button>
+              )}
+              {onDelete && (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <button
+                      type="button"
+                      className="text-muted-foreground/30 transition-colors hover:text-muted-foreground"
+                    >
+                      <Trash2Icon className="size-3" />
+                    </button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Delete annotation?</AlertDialogTitle>
+                      <AlertDialogDescription>This will permanently remove your annotation.</AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction onClick={onDelete}>Delete</AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              )}
+            </div>
+          )}
+        </div>
+        {/* Issue tags list */}
+        {tags.filter((t) => t !== 'correct').length > 0 && (
+          <ul className="mt-2 space-y-0.5">
+            {tags
+              .filter((t) => t !== 'correct')
+              .map((tag) => (
+                <li key={tag} className="flex items-center gap-1.5 text-foreground">
+                  <span className="size-1 shrink-0 rounded-full bg-muted-foreground/40" />
+                  {TAG_LABELS[tag] ?? tag}
+                </li>
+              ))}
+          </ul>
         )}
+        {/* Comment */}
+        {annotation.reason && <p className="mt-2 text-foreground">{annotation.reason}</p>}
       </div>
-      {annotation.reason && <p className="mt-1 text-muted-foreground">{annotation.reason}</p>}
+      {/* Arrow — rotated square overlapping bubble border, bg matches page */}
+      <div className="-mt-[5px] ml-[13px] size-2.5 rotate-45 border-b border-r border-border bg-background" />
+      {/* Avatar + name */}
+      <div className="mt-2.5 flex items-center gap-1.5 pl-2">
+        <div className="flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-[8px] font-medium text-muted-foreground ring-1 ring-border">
+          {initial}
+        </div>
+        <span className="text-2xs font-medium text-muted-foreground/70">{annotatorName}</span>
+      </div>
     </div>
   );
 }
@@ -74,29 +143,42 @@ export function AnnotationPanel({ threadId, messageId, annotations }: Annotation
     (a) => (a.metadata as Record<string, unknown> | null)?.annotatorId !== userId,
   );
 
+  const [step, setStep] = useState<'initial' | 'correct' | 'issues'>('initial');
   const [isEditing, setIsEditing] = useState(false);
-  const [selectedTags, setSelectedTags] = useState<AnnotationTag[]>(
-    () => ((myAnnotation?.metadata as Record<string, unknown> | null)?.tags as AnnotationTag[]) ?? [],
-  );
-  const [severity, setSeverity] = useState<Severity | ''>(() => {
-    const s = (myAnnotation?.metadata as Record<string, unknown> | null)?.severity as string | undefined;
-    return (s as Severity) ?? '';
-  });
-  const [comment, setComment] = useState(() => myAnnotation?.reason ?? '');
+  const [selectedTags, setSelectedTags] = useState<AnnotationTag[]>([]);
+  const [severity, setSeverity] = useState<Severity | ''>('');
+  const [comment, setComment] = useState('');
 
-  const showForm = !myAnnotation || isEditing;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally reset all form state when message changes
+  useEffect(() => {
+    setStep('initial');
+    setIsEditing(false);
+    setSelectedTags(((myAnnotation?.metadata as Record<string, unknown> | null)?.tags as AnnotationTag[]) ?? []);
+    setSeverity(((myAnnotation?.metadata as Record<string, unknown> | null)?.severity as Severity) ?? '');
+    setComment(myAnnotation?.reason ?? '');
+  }, [messageId]);
+
+  function startEdit() {
+    const meta = myAnnotation?.metadata as Record<string, unknown> | null;
+    const tags = (meta?.tags as AnnotationTag[]) ?? [];
+    setSelectedTags(tags);
+    setSeverity((meta?.severity as Severity) ?? '');
+    setComment(myAnnotation?.reason ?? '');
+    setStep(tags.includes('correct') ? 'correct' : 'issues');
+    setIsEditing(true);
+  }
 
   function toggleTag(tag: AnnotationTag) {
     setSelectedTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]));
   }
 
   const saveMutation = useMutation({
-    mutationFn: async (method: 'POST' | 'PATCH') => {
+    mutationFn: async ({ method, tags }: { method: 'POST' | 'PATCH'; tags: AnnotationTag[] }) => {
       return apiFetch(`/api/v1/admin/reviews/${threadId}/messages/${messageId}/annotate`, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          tags: selectedTags,
+          tags,
           ...(severity ? { severity } : {}),
           ...(comment.trim() ? { comment: comment.trim() } : {}),
         }),
@@ -105,6 +187,7 @@ export function AnnotationPanel({ threadId, messageId, annotations }: Annotation
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-reviews', threadId] });
       setIsEditing(false);
+      setStep('initial');
     },
   });
 
@@ -119,11 +202,22 @@ export function AnnotationPanel({ threadId, messageId, annotations }: Annotation
       setSeverity('');
       setComment('');
       setIsEditing(false);
+      setStep('initial');
     },
   });
 
+  function handleCorrect() {
+    saveMutation.mutate({ method: myAnnotation ? 'PATCH' : 'POST', tags: ['correct'] });
+  }
+
+  function handleSubmitIssues() {
+    saveMutation.mutate({ method: myAnnotation ? 'PATCH' : 'POST', tags: selectedTags });
+  }
+
+  const showForm = !myAnnotation || isEditing;
+
   return (
-    <div className="mt-2 space-y-2">
+    <div className="space-y-3">
       {/* Other annotators' reviews */}
       {otherAnnotations.map((a) => (
         <AnnotationDisplay key={a.id} annotation={a} />
@@ -131,109 +225,153 @@ export function AnnotationPanel({ threadId, messageId, annotations }: Annotation
 
       {/* Current user's annotation (read-only) */}
       {myAnnotation && !isEditing && (
-        <div className="space-y-1">
-          <AnnotationDisplay annotation={myAnnotation} />
-          <div className="flex gap-1">
-            <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => setIsEditing(true)}>
-              <PencilIcon className="mr-1 size-3" />
-              Edit
-            </Button>
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-6 text-xs text-destructive">
-                  <Trash2Icon className="mr-1 size-3" />
-                  Delete
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Delete annotation?</AlertDialogTitle>
-                  <AlertDialogDescription>This will permanently remove your annotation.</AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={() => deleteMutation.mutate()}>Delete</AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          </div>
-        </div>
+        <AnnotationDisplay annotation={myAnnotation} onEdit={startEdit} onDelete={() => deleteMutation.mutate()} />
       )}
 
-      {/* Annotation form */}
+      {/* Annotation form — Yes/No always visible, details expand below */}
       {showForm && (
-        <div className="space-y-3 rounded-lg border border-border bg-card/50 p-4">
-          <SectionLabel>{myAnnotation ? 'Edit annotation' : 'Add annotation'}</SectionLabel>
-
-          {/* Issue tags */}
-          <div className="space-y-1.5">
-            <p className="text-2xs font-medium text-muted-foreground">Issues</p>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
-              {ISSUE_TAGS.map((tag) => {
-                const id = `annotation-tag-${tag}`;
-                return (
-                  <label key={tag} htmlFor={id} className="flex cursor-pointer items-center gap-1.5 text-xs">
-                    <Checkbox id={id} checked={selectedTags.includes(tag)} onCheckedChange={() => toggleTag(tag)} />
-                    {TAG_LABELS[tag]}
-                  </label>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Quality tag */}
-          <div className="space-y-1.5">
-            <p className="text-2xs font-medium text-muted-foreground">Quality</p>
-            <label htmlFor="annotation-tag-correct" className="flex cursor-pointer items-center gap-1.5 text-xs">
-              <Checkbox
-                id="annotation-tag-correct"
-                checked={selectedTags.includes('correct')}
-                onCheckedChange={() => toggleTag('correct')}
-              />
-              {TAG_LABELS.correct}
-            </label>
-          </div>
-
-          {/* Severity */}
-          <Select value={severity} onValueChange={(v) => setSeverity(v as Severity | '')}>
-            <SelectTrigger className="h-7 w-[140px] text-xs">
-              <SelectValue placeholder="Severity" />
-            </SelectTrigger>
-            <SelectContent>
-              {SEVERITY_LEVELS.map((s) => (
-                <SelectItem key={s} value={s}>
-                  {s.charAt(0).toUpperCase() + s.slice(1)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          {/* Comment */}
-          <Textarea
-            rows={2}
-            placeholder="Optional comment..."
-            value={comment}
-            onChange={(e) => setComment(e.target.value)}
-            className="text-xs"
-          />
-
-          {/* Actions */}
+        <div className="space-y-3 text-xs">
+          <p className="text-foreground/70">Is this response correct?</p>
           <div className="flex gap-1.5">
             <Button
+              variant={step === 'correct' ? 'default' : 'outline'}
               size="sm"
-              className="h-7 text-xs"
-              disabled={selectedTags.length === 0 || saveMutation.isPending}
-              onClick={() => saveMutation.mutate(myAnnotation ? 'PATCH' : 'POST')}
+              className="h-7 gap-1 text-xs"
+              onClick={() => {
+                if (step === 'correct') {
+                  setStep('initial');
+                } else {
+                  setStep('correct');
+                  setSelectedTags([]);
+                  setSeverity('');
+                  setComment('');
+                }
+              }}
             >
-              {saveMutation.isPending ? 'Saving...' : myAnnotation ? 'Update' : 'Submit'}
+              <CheckIcon className="size-3" />
+              Yes
             </Button>
-            {isEditing && (
-              <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setIsEditing(false)}>
-                Cancel
-              </Button>
-            )}
-            {saveMutation.isError && <span className="text-xs text-destructive">{saveMutation.error.message}</span>}
+            <Button
+              variant={step === 'issues' ? 'default' : 'outline'}
+              size="sm"
+              className="h-7 gap-1 text-xs"
+              onClick={() => {
+                if (step === 'issues') {
+                  setStep('initial');
+                } else {
+                  setStep('issues');
+                  setSelectedTags([]);
+                  setSeverity('');
+                  setComment('');
+                }
+              }}
+            >
+              <XIcon className="size-3" />
+              No
+            </Button>
           </div>
+
+          {/* Correct: comment + submit */}
+          {step === 'correct' && (
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <p className="text-foreground/70">Any additional notes?</p>
+                <Textarea
+                  rows={2}
+                  placeholder="Optional..."
+                  value={comment}
+                  onChange={(e) => setComment(e.target.value)}
+                  className="text-xs md:text-xs"
+                />
+              </div>
+              <div className="flex justify-end gap-1.5">
+                {isEditing && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => {
+                      setIsEditing(false);
+                      setStep('initial');
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                )}
+                <Button size="sm" className="h-7 text-xs" disabled={saveMutation.isPending} onClick={handleCorrect}>
+                  {saveMutation.isPending ? 'Saving...' : isEditing ? 'Update' : 'Submit'}
+                </Button>
+              </div>
+              {saveMutation.isError && <p className="text-destructive">{saveMutation.error.message}</p>}
+            </div>
+          )}
+
+          {/* Issues: tags + severity + comment + submit */}
+          {step === 'issues' && (
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <p className="text-foreground/70">What issues are present?</p>
+                {ISSUE_TAGS.map((tag) => {
+                  const id = `annotation-tag-${tag}`;
+                  return (
+                    <label key={tag} htmlFor={id} className="flex cursor-pointer items-center gap-1.5">
+                      <Checkbox id={id} checked={selectedTags.includes(tag)} onCheckedChange={() => toggleTag(tag)} />
+                      {TAG_LABELS[tag]}
+                    </label>
+                  );
+                })}
+              </div>
+              <div className="space-y-1.5">
+                <p className="text-foreground/70">How severe is this?</p>
+                <Select value={severity} onValueChange={(v) => setSeverity(v as Severity)}>
+                  <SelectTrigger size="sm" className="text-xs!">
+                    <SelectValue placeholder="Select severity..." />
+                  </SelectTrigger>
+                  <SelectContent className="text-xs">
+                    {SEVERITY_LEVELS.map((s) => (
+                      <SelectItem key={s} value={s} className="text-xs">
+                        {s.charAt(0).toUpperCase() + s.slice(1)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <p className="text-foreground/70">Any additional notes?</p>
+                <Textarea
+                  rows={2}
+                  placeholder="Optional..."
+                  value={comment}
+                  onChange={(e) => setComment(e.target.value)}
+                  className="text-xs md:text-xs"
+                />
+              </div>
+              <div className="flex justify-end gap-1.5">
+                {isEditing && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => {
+                      setIsEditing(false);
+                      setStep('initial');
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  className="h-7 text-xs"
+                  disabled={selectedTags.length === 0 || saveMutation.isPending}
+                  onClick={handleSubmitIssues}
+                >
+                  {saveMutation.isPending ? 'Saving...' : isEditing ? 'Update' : 'Submit'}
+                </Button>
+              </div>
+              {saveMutation.isError && <p className="text-destructive">{saveMutation.error.message}</p>}
+            </div>
+          )}
         </div>
       )}
     </div>

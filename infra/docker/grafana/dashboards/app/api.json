@@ -71,7 +71,7 @@
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "loki" },
-          "expr": "{service_name=\"unknown_service\"} | json | name=~\"api|http|auth|init\"",
+          "expr": "{service_name=\"typhoon-api\"} | json",
           "legendFormat": ""
         }
       ]

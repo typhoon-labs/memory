@@ -30,7 +30,7 @@ describe('model factories', () => {
     delete process.env.LLM_CHAT_MODEL;
     const { createChatModel } = await import('./index.js');
     createChatModel();
-    expect(mockModelFn).toHaveBeenCalledWith('anthropic.claude-sonnet-4-6-v1:0');
+    expect(mockModelFn).toHaveBeenCalledWith('anthropic.claude-sonnet-4-6');
   });
 
   it('createChatModel uses env model when set', async () => {
@@ -87,7 +87,7 @@ describe('model factories', () => {
     delete process.env.LLM_CHAT_MODEL;
     const { createKnowledgeModel } = await import('./index.js');
     createKnowledgeModel();
-    expect(mockModelFn).toHaveBeenCalledWith('anthropic.claude-sonnet-4-6-v1:0');
+    expect(mockModelFn).toHaveBeenCalledWith('anthropic.claude-sonnet-4-6');
   });
 
   it('createCitationModel reads LLM_CITATION_MODEL', async () => {
@@ -102,7 +102,7 @@ describe('model factories', () => {
     delete process.env.LLM_CHAT_MODEL;
     const { createCitationModel } = await import('./index.js');
     createCitationModel();
-    expect(mockModelFn).toHaveBeenCalledWith('anthropic.claude-sonnet-4-6-v1:0');
+    expect(mockModelFn).toHaveBeenCalledWith('anthropic.claude-sonnet-4-6');
   });
 
   it('createEmbeddingModel uses default model when env not set', async () => {
@@ -131,7 +131,7 @@ describe('model factories', () => {
     const { createTitleModel } = await import('./index.js');
     createTitleModel();
     // undefined env → falls through to default
-    expect(mockModelFn).toHaveBeenCalledWith('anthropic.claude-sonnet-4-6-v1:0');
+    expect(mockModelFn).toHaveBeenCalledWith('anthropic.claude-sonnet-4-6');
   });
 
   it('createRerankerModel falls back to default chat model when LLM_RERANKER_MODEL not set', async () => {
@@ -139,7 +139,7 @@ describe('model factories', () => {
     delete process.env.LLM_CHAT_MODEL;
     const { createRerankerModel } = await import('./index.js');
     createRerankerModel();
-    expect(mockModelFn).toHaveBeenCalledWith('anthropic.claude-sonnet-4-6-v1:0');
+    expect(mockModelFn).toHaveBeenCalledWith('anthropic.claude-sonnet-4-6');
   });
 
   it('createEmbeddingModel uses explicit modelId over env', async () => {
@@ -149,17 +149,10 @@ describe('model factories', () => {
     expect(mockEmbeddingModelFn).toHaveBeenCalledWith('explicit-embedding');
   });
 
-  it('exports Titan V2 constraint constants', async () => {
-    const { EMBEDDING_MAX_TOKENS, EMBEDDING_MAX_CHARS, EMBEDDING_SUPPORTED_DIMENSIONS } = await import('./index.js');
+  it('exports embedding constraint constants with defaults', async () => {
+    const { EMBEDDING_MAX_TOKENS, EMBEDDING_MAX_CHARS } = await import('./index.js');
     expect(EMBEDDING_MAX_TOKENS).toBe(8_192);
     expect(EMBEDDING_MAX_CHARS).toBe(50_000);
-    expect(EMBEDDING_SUPPORTED_DIMENSIONS).toEqual([256, 512, 1024]);
-  });
-
-  it('EMBEDDING_MAX_CHUNK_CHARS defaults to 24000', async () => {
-    delete process.env.EMBEDDING_MAX_CHUNK_CHARS;
-    const { EMBEDDING_MAX_CHUNK_CHARS } = await import('./index.js');
-    expect(EMBEDDING_MAX_CHUNK_CHARS).toBe(24_000);
   });
 
   it('createScoringModel reads LLM_SCORING_MODEL', async () => {
@@ -174,7 +167,7 @@ describe('model factories', () => {
     delete process.env.LLM_CHAT_MODEL;
     const { createScoringModel } = await import('./index.js');
     createScoringModel();
-    expect(mockModelFn).toHaveBeenCalledWith('anthropic.claude-sonnet-4-6-v1:0');
+    expect(mockModelFn).toHaveBeenCalledWith('anthropic.claude-sonnet-4-6');
   });
 
   it('createScoringModel uses explicit modelId over env', async () => {

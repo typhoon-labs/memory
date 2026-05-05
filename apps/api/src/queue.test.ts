@@ -11,8 +11,29 @@ const { mockCreateSyncQueue, mockQueueEventsInstances } = vi.hoisted(() => {
   return { mockCreateSyncQueue, mockQueueEventsInstances };
 });
 
-vi.mock('@typhoon/ingestion', () => ({
-  createSyncQueue: mockCreateSyncQueue,
+vi.mock('@typhoon/queue', () => ({
+  createQueueRegistry: () => {
+    const queues = new Map<string, unknown>();
+    return {
+      init(name: string, redisUrl: string) {
+        const existing = queues.get(name);
+        if (existing) return existing;
+        if (name !== 'sync') throw new Error(`Unknown queue: ${name}`);
+        const queue = mockCreateSyncQueue({ url: redisUrl });
+        queues.set(name, queue);
+        return queue;
+      },
+      get(name: string) {
+        const queue = queues.get(name);
+        if (!queue) throw new Error(`Queue "${name}" not initialized — call init() first`);
+        return queue;
+      },
+      getAll: () => queues,
+      shutdown: async () => {
+        await Promise.all([...queues.values()].map((q) => (q as { close: () => Promise<void> }).close()));
+      },
+    };
+  },
 }));
 
 vi.mock('bullmq', () => ({

@@ -51,3 +51,22 @@ export const syncStageDuration = meter.createHistogram('sync.stage.duration', {
   description: 'Per-stage processing duration in milliseconds',
   unit: 'ms',
 });
+
+// ── Embedding Metrics ────────────────────────────────────────────────
+
+/** Histogram: chunk character count distribution before embedding. */
+export const chunkSizeChars = meter.createHistogram('embed.chunk.size_chars', {
+  description: 'Character count per chunk sent for embedding',
+  unit: 'chars',
+});
+
+/** Counter: embedding retries triggered by token/size limit errors. */
+export const embedRetryCount = meter.createCounter('embed.retry', {
+  description: 'Embedding retries triggered by token/size limit errors',
+});
+
+/** Histogram: tokens consumed per embedding call (when provider returns usage). */
+export const embedTokenUsage = meter.createHistogram('embed.token_usage', {
+  description: 'Tokens consumed per embedding call',
+  unit: 'tokens',
+});

@@ -201,6 +201,7 @@ export function DatasetsPage() {
               data={datasets}
               columns={columns}
               enableSorting
+              enableFiltering
               getRowId={(row) => row.id}
               onRowClick={(row) => navigate({ to: '/datasets/$datasetId', params: { datasetId: row.id } })}
               showRowCount

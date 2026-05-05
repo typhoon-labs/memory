@@ -1,10 +1,10 @@
 import { EventEmitter } from 'node:events';
-import { createExperimentQueue, createReportsQueue, createScoringQueue, createSyncQueue } from '@typhoon/ingestion';
+import { createQueueRegistry } from '@typhoon/queue';
 import { syncJobCompleted, syncJobDuration, syncJobFailed, syncJobStalled, syncQueueDepth } from '@typhoon/telemetry';
 import type { Queue } from 'bullmq';
 import { QueueEvents } from 'bullmq';
 
-const _queues = new Map<string, Queue>();
+const registry = createQueueRegistry();
 const _events = new Map<string, QueueEvents>();
 
 /** Shared event bus for BullMQ queue events. SSE route subscribes here. */
@@ -18,28 +18,9 @@ const SUBSCRIBED_EVENTS = ['waiting', 'active', 'completed', 'failed', 'removed'
  * and OTel metrics. Idempotent — returns existing queue on repeated calls.
  */
 export function initQueue(name: string, redisUrl: string): Queue {
-  const existing = _queues.get(name);
-  if (existing) return existing;
+  if (_events.has(name)) return registry.get(name);
 
-  let queue: Queue;
-  switch (name) {
-    case 'sync':
-      queue = createSyncQueue({ url: redisUrl });
-      break;
-    case 'reports':
-      queue = createReportsQueue({ url: redisUrl });
-      break;
-    case 'scoring':
-      queue = createScoringQueue({ url: redisUrl });
-      break;
-    case 'experiments':
-      queue = createExperimentQueue({ url: redisUrl });
-      break;
-    default:
-      throw new Error(`Unknown queue: ${name}`);
-  }
-
-  _queues.set(name, queue);
+  const queue = registry.init(name, redisUrl);
 
   const events = new QueueEvents(name, { connection: { url: redisUrl } });
   for (const evt of SUBSCRIBED_EVENTS) {
@@ -77,14 +58,12 @@ export function initQueue(name: string, redisUrl: string): Queue {
 
 /** Get an initialized queue by name. Throws if not yet initialized. */
 export function getQueue(name: string): Queue {
-  const queue = _queues.get(name);
-  if (!queue) throw new Error(`Queue "${name}" not initialized — call initQueue() first`);
-  return queue;
+  return registry.get(name);
 }
 
 /** Return all initialized queues as a read-only map. */
 export function getAllQueues(): ReadonlyMap<string, Queue> {
-  return _queues;
+  return registry.getAll();
 }
 
 /** Register an external QueueEvents instance for cleanup during shutdown. */
@@ -95,7 +74,7 @@ export function trackQueueEvents(key: string, events: QueueEvents) {
 /** Close all QueueEvents listeners and queues. Called on SIGTERM. */
 export async function shutdownQueues() {
   await Promise.all([..._events.values()].map((e) => e.close()));
-  await Promise.all([..._queues.values()].map((q) => q.close()));
+  await registry.shutdown();
 }
 
 /** Shorthand for `initQueue('sync', redisUrl)`. */

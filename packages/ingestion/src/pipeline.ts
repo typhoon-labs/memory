@@ -1,22 +1,22 @@
 import { createHash } from 'node:crypto';
 import { MDocument } from '@mastra/rag';
-import { createEmbeddingModel, createExtractionModel, EMBEDDING_MAX_CHUNK_CHARS } from '@typhoon/ai';
+import { createEmbeddingModel, createExtractionModel, EMBEDDING_MAX_CHARS, EMBEDDING_MAX_TOKENS } from '@typhoon/ai';
 import type { PgVector } from '@typhoon/db/drivers/pg';
 import { createAppLogger } from '@typhoon/logger';
+import { chunkSizeChars, embedRetryCount, embedTokenUsage, getTracer, SpanStatusCode } from '@typhoon/telemetry';
 import type { LanguageModel } from 'ai';
-import { embedMany, generateText } from 'ai';
+import { embed, embedMany, generateText } from 'ai';
 import { getMDocFormat, getParser, needsCustomParser } from './parsers/registry';
 import { createRateLimiter } from './util/rate-limiter';
 import { recordStageDuration } from './util/stage-metrics';
 import { withTimeout } from './util/with-timeout';
 
+const tracer = getTracer('ingestion');
+
 const log = createAppLogger('pipeline');
 
-/**
- * Re-export from @typhoon/ai for test access. The value comes from
- * EMBEDDING_MAX_CHUNK_CHARS env var (default 24,000).
- */
-export { EMBEDDING_MAX_CHUNK_CHARS };
+/** Re-export from @typhoon/ai for test access. */
+export { EMBEDDING_MAX_CHARS };
 
 // Module-scope rate limiter shared across all concurrent workers in this
 // process. Limits concurrent embedding API calls and enforces a minimum
@@ -42,6 +42,9 @@ const STAGE_TIMEOUTS = {
   embed: 300_000,
   upsert: 30_000,
 } as const;
+
+/** Max texts per embedMany call. Set to 1 to skip batching and embed individually. */
+const EMBED_BATCH_SIZE = Number(process.env.EMBEDDING_BATCH_SIZE ?? '1');
 
 export interface ProcessFileInput {
   content: Buffer;
@@ -73,6 +76,7 @@ export interface ProcessFileResult {
 
 export async function processFile(input: ProcessFileInput, vectorStore: PgVector): Promise<ProcessFileResult> {
   const { content, filename, documentId, syncTargetId, sourceKey, title, onStage, isCancelled } = input;
+  const tStart = Date.now();
   const announce = async (stage: string) => {
     if (onStage) await onStage(stage);
   };
@@ -84,150 +88,348 @@ export async function processFile(input: ProcessFileInput, vectorStore: PgVector
     return false;
   };
 
-  // 1. Parse if needed, or use raw text
-  let text: string;
-  let format: 'text' | 'html' | 'markdown' | 'json';
+  return tracer.startActiveSpan(
+    'processFile',
+    { attributes: { 'document.id': documentId, 'document.filename': filename } },
+    async (rootSpan) => {
+      try {
+        // 1. Parse if needed, or use raw text
+        let text = '';
+        let format: 'text' | 'html' | 'markdown' | 'json' = 'text';
+        let parseMs = 0;
 
-  if (needsCustomParser(filename)) {
-    const parser = getParser(filename);
-    if (!parser) throw new Error(`No parser for ${filename}`);
-    await announce('parse');
-    const t0 = Date.now();
-    const result = await withTimeout(parser(content, filename), STAGE_TIMEOUTS.parse, 'parse');
-    text = result.text;
-    format = result.format;
-    const parseMs = Date.now() - t0;
-    recordStageDuration('parse', parseMs);
-    log.info('Parsed document', { filename, ms: parseMs, chars: text.length });
-  } else {
-    text = content.toString('utf-8');
-    format = getMDocFormat(filename);
-  }
+        if (needsCustomParser(filename)) {
+          const parser = getParser(filename);
+          if (!parser) throw new Error(`No parser for ${filename}`);
+          await announce('parse');
+          await tracer.startActiveSpan('parse', async (parseSpan) => {
+            const t0 = Date.now();
+            const result = await withTimeout(parser(content, filename), STAGE_TIMEOUTS.parse, 'parse');
+            text = result.text;
+            format = result.format;
+            parseMs = Date.now() - t0;
+            recordStageDuration('parse', parseMs);
+            parseSpan.setAttributes({ 'parse.chars': text.length, 'parse.format': format, 'parse.ms': parseMs });
+            parseSpan.end();
+            log.info('Parsed document', { filename, ms: parseMs, chars: text.length });
+          });
+        } else {
+          text = content.toString('utf-8');
+          format = getMDocFormat(filename);
+        }
 
-  if (!text.trim()) {
-    log.info('Empty content, skipping', { filename });
-    return { chunkCount: 0, title: null, description: null };
-  }
+        rootSpan.setAttribute('document.format', format);
+        rootSpan.setAttribute('document.chars', text.length);
 
-  // 2. Create MDocument based on format
-  let mDoc: MDocument;
-  switch (format) {
-    case 'html':
-      mDoc = MDocument.fromHTML(text);
-      break;
-    case 'markdown':
-      mDoc = MDocument.fromMarkdown(text);
-      break;
-    case 'json':
-      mDoc = MDocument.fromJSON(text);
-      break;
-    default:
-      mDoc = MDocument.fromText(text);
-  }
+        if (!text.trim()) {
+          log.info('Empty content, skipping', { filename });
+          rootSpan.setStatus({ code: SpanStatusCode.OK });
+          return { chunkCount: 0, title: null, description: null };
+        }
 
-  // 3. Chunk using Mastra's built-in strategy with metadata extraction
-  // biome-ignore lint/suspicious/noExplicitAny: Mastra extract types expect MastraLanguageModel but AI SDK LanguageModelV3 works at runtime
-  const extractionLlm = createExtractionModel() as any;
-  const extract = {
-    keywords: { llm: extractionLlm, keywords: 5 },
-  };
+        // 2. Create MDocument based on format
+        let mDoc: MDocument;
+        switch (format) {
+          case 'html':
+            mDoc = MDocument.fromHTML(text);
+            break;
+          case 'markdown':
+            mDoc = MDocument.fromMarkdown(text);
+            break;
+          case 'json':
+            mDoc = MDocument.fromJSON(text);
+            break;
+          default:
+            mDoc = MDocument.fromText(text);
+        }
 
-  const chunkOptions = buildChunkOptions(format, extract);
+        // 3. Chunk using Mastra's built-in strategy with metadata extraction
+        // biome-ignore lint/suspicious/noExplicitAny: Mastra extract types expect MastraLanguageModel but AI SDK LanguageModelV3 works at runtime
+        const extractionLlm = createExtractionModel() as any;
+        const extract = {
+          keywords: { llm: extractionLlm, keywords: 5 },
+        };
 
-  if (await checkCancelled()) return { chunkCount: 0, title: null, description: null };
+        const chunkOptions = buildChunkOptions(format, extract);
 
-  await announce('chunk');
-  const tChunk = Date.now();
-  const rawChunks = await withTimeout(mDoc.chunk(chunkOptions), STAGE_TIMEOUTS.chunk, 'chunk');
-  const chunks = enforceChunkSizeLimit(rawChunks, EMBEDDING_MAX_CHUNK_CHARS);
-  const chunkMs = Date.now() - tChunk;
-  recordStageDuration('chunk', chunkMs);
-  log.info('Chunked document', { filename, chunks: chunks.length, format, ms: chunkMs });
+        if (await checkCancelled()) return { chunkCount: 0, title: null, description: null };
 
-  if (chunks.length === 0) {
-    return { chunkCount: 0, title: null, description: null };
-  }
+        await announce('chunk');
+        let chunkMs = 0;
+        let minChunkChars = 0;
+        let maxChunkChars = 0;
+        let avgChunkChars = 0;
+        const chunks = await tracer.startActiveSpan('chunk', async (chunkSpan) => {
+          const tChunk = Date.now();
+          const rawChunks = await withTimeout(mDoc.chunk(chunkOptions), STAGE_TIMEOUTS.chunk, 'chunk');
+          const result = enforceChunkSizeLimit(rawChunks, EMBEDDING_MAX_CHARS).filter((c) => c.text.trim());
+          chunkMs = Date.now() - tChunk;
+          recordStageDuration('chunk', chunkMs);
 
-  // 4. Generate document-level title and description
-  await announce('metadata');
-  const tMeta = Date.now();
-  const docMeta = await withTimeout(generateDocumentMetadata(text, extractionLlm), STAGE_TIMEOUTS.metadata, 'metadata');
-  const metaMs = Date.now() - tMeta;
-  recordStageDuration('metadata', metaMs);
-  log.info('Generated document metadata', { filename, title: docMeta.title, ms: metaMs });
+          const chunkChars = result.map((c) => c.text.length);
+          minChunkChars = chunkChars.length ? Math.min(...chunkChars) : 0;
+          maxChunkChars = chunkChars.length ? Math.max(...chunkChars) : 0;
+          avgChunkChars = chunkChars.length ? Math.round(chunkChars.reduce((a, b) => a + b, 0) / chunkChars.length) : 0;
+          for (const size of chunkChars) chunkSizeChars.record(size);
 
-  if (await checkCancelled()) return { chunkCount: 0, title: null, description: null };
+          chunkSpan.setAttributes({
+            'chunk.count': result.length,
+            'chunk.format': format,
+            'chunk.min_chars': minChunkChars,
+            'chunk.max_chars': maxChunkChars,
+            'chunk.avg_chars': avgChunkChars,
+          });
+          chunkSpan.end();
 
-  // 5. Embed using AI SDK (rate-limited)
-  await announce('embed');
-  const tEmbed = Date.now();
-  await embeddingLimiter.acquire();
-  let embeddings: number[][];
-  try {
-    const result = await withTimeout(
-      embedMany({
-        model: createEmbeddingModel(),
-        values: chunks.map((c) => c.text),
-      }),
-      STAGE_TIMEOUTS.embed,
-      'embed',
-    );
-    embeddings = result.embeddings;
-  } finally {
-    embeddingLimiter.release();
-  }
-  const embedMs = Date.now() - tEmbed;
-  recordStageDuration('embed', embedMs);
-  log.info('Embedded chunks', { filename, embeddings: embeddings.length, ms: embedMs });
+          log.info('Chunked document', { filename, chunks: result.length, format, ms: chunkMs });
+          for (let ci = 0; ci < result.length; ci++) {
+            log.debug('Chunk detail', {
+              index: ci,
+              chars: result[ci].text.length,
+              preview: result[ci].text.slice(0, 80),
+            });
+          }
+          return result;
+        });
 
-  // 5. Compute startIndex for chunks that don't have one (e.g. semantic-markdown strategy)
-  const startIndices: (number | null)[] = [];
-  let searchFrom = 0;
-  for (const chunk of chunks) {
-    const existing = (chunk.metadata as Record<string, unknown>)?.startIndex;
-    if (typeof existing === 'number') {
-      startIndices.push(existing);
-      searchFrom = existing + chunk.text.length;
-    } else {
-      const idx = text.indexOf(chunk.text.slice(0, 80), searchFrom);
-      startIndices.push(idx >= 0 ? idx : null);
-      if (idx >= 0) searchFrom = idx + chunk.text.length;
-    }
-  }
+        if (chunks.length === 0) {
+          rootSpan.setStatus({ code: SpanStatusCode.OK });
+          return { chunkCount: 0, title: null, description: null };
+        }
 
-  if (await checkCancelled()) return { chunkCount: 0, title: null, description: null };
+        // 4. Generate document-level title and description
+        await announce('metadata');
+        let metaMs = 0;
+        const docMeta = await tracer.startActiveSpan('metadata', async (metaSpan) => {
+          const tMeta = Date.now();
+          const result = await withTimeout(
+            generateDocumentMetadata(text, extractionLlm),
+            STAGE_TIMEOUTS.metadata,
+            'metadata',
+          );
+          metaMs = Date.now() - tMeta;
+          recordStageDuration('metadata', metaMs);
+          metaSpan.setAttribute('metadata.title', result.title);
+          metaSpan.end();
+          log.info('Generated document metadata', { filename, title: result.title, ms: metaMs });
+          return result;
+        });
 
-  // 6. Upsert to PgVector with extracted metadata
-  const docTitle = title ?? docMeta.title;
-  await announce('upsert');
-  const tUpsert = Date.now();
-  const chunkIds = chunks.map((chunk, i) => makeChunkId(documentId, startIndices[i], chunk.text));
+        if (await checkCancelled()) return { chunkCount: 0, title: null, description: null };
 
-  await withTimeout(
-    vectorStore.upsert({
-      indexName: 'knowledge_base',
-      ids: chunkIds,
-      vectors: embeddings,
-      metadata: chunks.map((chunk, i) => ({
-        text: chunk.text,
-        documentId,
-        syncTargetId,
-        source: sourceKey,
-        title: docTitle,
-        section: (chunk.metadata as Record<string, unknown>)?.section ?? '',
-        keywords: (chunk.metadata as Record<string, unknown>)?.excerptKeywords ?? '',
-        startIndex: startIndices[i],
-      })),
-    }),
-    STAGE_TIMEOUTS.upsert,
-    'upsert',
+        // 5. Embed using AI SDK (rate-limited, adaptive chunk sizing)
+        await announce('embed');
+        const embedded: EmbeddedChunk[] = [];
+        const ratioTracker = new TokenRatioTracker();
+        let retryCount = 0;
+        let totalTokens = 0;
+        let proactiveSplits = 0;
+        let embedMs = 0;
+
+        await tracer.startActiveSpan('embed', async (embedSpan) => {
+          const tEmbed = Date.now();
+          const embeddingModel = createEmbeddingModel();
+
+          const onTokens = (chars: number, tokens: number) => {
+            ratioTracker.record(chars, tokens);
+            totalTokens += tokens;
+            embedTokenUsage.record(tokens);
+          };
+
+          // Embed chunks with interleaved adaptive splitting — each chunk's split
+          // decision uses the latest ratio from previous successful embeds.
+          const pendingBatch: Array<{ text: string; metadata: Record<string, unknown> }> = [];
+
+          const flushBatch = async () => {
+            if (pendingBatch.length === 0) return;
+            const batch = pendingBatch.splice(0);
+            await embeddingLimiter.acquire();
+            try {
+              if (EMBED_BATCH_SIZE > 1 && batch.length > 1) {
+                try {
+                  const result = await withTimeout(
+                    embedMany({ model: embeddingModel, values: batch.map((c) => c.text) }),
+                    STAGE_TIMEOUTS.embed,
+                    'embed',
+                  );
+                  if (result.embeddings.length === batch.length) {
+                    for (let j = 0; j < batch.length; j++) {
+                      embedded.push({ ...batch[j], embedding: result.embeddings[j] });
+                    }
+                    // biome-ignore lint/suspicious/noExplicitAny: usage shape varies by provider
+                    const usage = (result as any).usage;
+                    if (usage?.tokens)
+                      onTokens(
+                        batch.reduce((a, c) => a + c.text.length, 0),
+                        usage.tokens,
+                      );
+                    return;
+                  }
+                  log.warn('embedMany returned wrong count, falling back to per-chunk', {
+                    expected: batch.length,
+                    got: result.embeddings.length,
+                  });
+                } catch (batchError) {
+                  log.warn('Batch embed failed, falling back to per-chunk', {
+                    batchSize: batch.length,
+                    error: batchError instanceof Error ? batchError.message : String(batchError),
+                  });
+                }
+              }
+              // Per-chunk embed (default when EMBED_BATCH_SIZE=1, or batch fallback)
+              for (const item of batch) {
+                const result = await embedChunkWithRetry(item, embeddingModel, 0, 3, onTokens);
+                retryCount += result.retries;
+                embedded.push(...result.results);
+              }
+            } finally {
+              embeddingLimiter.release();
+            }
+          };
+
+          for (const chunk of chunks) {
+            const adaptiveMax = Math.min(EMBEDDING_MAX_CHARS, ratioTracker.safeMaxChars(EMBEDDING_MAX_TOKENS));
+
+            if (chunk.text.length > adaptiveMax) {
+              proactiveSplits++;
+              log.info('Proactively splitting chunk based on measured ratio', {
+                chunkChars: chunk.text.length,
+                adaptiveMax,
+                ratio: ratioTracker.ratio,
+              });
+              const subTexts = splitOversizedText(chunk.text, adaptiveMax);
+              for (const sub of subTexts) pendingBatch.push({ text: sub, metadata: { ...chunk.metadata } });
+            } else {
+              pendingBatch.push(chunk);
+            }
+
+            if (pendingBatch.length >= EMBED_BATCH_SIZE) {
+              await flushBatch();
+            }
+          }
+          await flushBatch();
+
+          embedMs = Date.now() - tEmbed;
+          recordStageDuration('embed', embedMs);
+
+          // Validate no undefined embeddings before upsert
+          const badIdx = embedded.findIndex((e) => !Array.isArray(e.embedding));
+          if (badIdx >= 0) {
+            throw new Error(
+              `Embedding at index ${badIdx} is missing or invalid (chars: ${embedded[badIdx].text.length})`,
+            );
+          }
+
+          embedSpan.setAttributes({
+            'embed.count': embedded.length,
+            'embed.retries': retryCount,
+            'embed.proactive_splits': proactiveSplits,
+            'embed.total_tokens': totalTokens,
+            'embed.chars_per_token': ratioTracker.ratio ?? 0,
+          });
+          embedSpan.end();
+          log.info('Embedded chunks', { filename, embeddings: embedded.length, ms: embedMs });
+        });
+
+        // 6. Compute startIndex for embedded chunks
+        const startIndices: (number | null)[] = [];
+        let searchFrom = 0;
+        for (const entry of embedded) {
+          const existing = (entry.metadata as Record<string, unknown>)?.startIndex;
+          if (typeof existing === 'number') {
+            startIndices.push(existing);
+            searchFrom = existing + entry.text.length;
+          } else {
+            const idx = text.indexOf(entry.text.slice(0, 80), searchFrom);
+            startIndices.push(idx >= 0 ? idx : null);
+            if (idx >= 0) searchFrom = idx + entry.text.length;
+          }
+        }
+
+        if (await checkCancelled()) return { chunkCount: 0, title: null, description: null };
+
+        // 7. Upsert to PgVector with extracted metadata
+        const docTitle = title ?? docMeta.title;
+        await announce('upsert');
+        let upsertMs = 0;
+        await tracer.startActiveSpan('upsert', async (upsertSpan) => {
+          const tUpsert = Date.now();
+          const chunkIds = embedded.map((entry, i) => makeChunkId(documentId, startIndices[i], entry.text));
+
+          await withTimeout(
+            vectorStore.upsert({
+              indexName: 'knowledge_base',
+              ids: chunkIds,
+              vectors: embedded.map((e) => e.embedding),
+              metadata: embedded.map((entry, i) => ({
+                text: entry.text,
+                documentId,
+                syncTargetId,
+                source: sourceKey,
+                title: docTitle,
+                section: (entry.metadata as Record<string, unknown>)?.section ?? '',
+                keywords: (entry.metadata as Record<string, unknown>)?.excerptKeywords ?? '',
+                startIndex: startIndices[i],
+              })),
+            }),
+            STAGE_TIMEOUTS.upsert,
+            'upsert',
+          );
+
+          upsertMs = Date.now() - tUpsert;
+          recordStageDuration('upsert', upsertMs);
+          upsertSpan.setAttribute('upsert.count', embedded.length);
+          upsertSpan.end();
+        });
+
+        // Summary span attributes
+        rootSpan.setAttributes({
+          'pipeline.chunk_count': embedded.length,
+          'pipeline.min_chunk_chars': minChunkChars,
+          'pipeline.max_chunk_chars': maxChunkChars,
+          'pipeline.avg_chunk_chars': avgChunkChars,
+          'pipeline.embed_retries': retryCount,
+          'pipeline.embed_proactive_splits': proactiveSplits,
+          'pipeline.total_tokens': totalTokens,
+          'pipeline.chars_per_token': ratioTracker.ratio ?? 0,
+        });
+        rootSpan.setStatus({ code: SpanStatusCode.OK });
+
+        // Per-document summary log
+        log.info('Pipeline complete', {
+          documentId,
+          filename,
+          format,
+          totalChars: text.length,
+          chunkCount: embedded.length,
+          minChunkChars,
+          maxChunkChars,
+          avgChunkChars,
+          retries: retryCount,
+          proactiveSplits,
+          totalTokens,
+          charsPerToken: ratioTracker.ratio,
+          parseMs,
+          chunkMs,
+          metaMs,
+          embedMs,
+          upsertMs,
+          totalMs: Date.now() - tStart,
+        });
+
+        return { chunkCount: embedded.length, title: docTitle, description: docMeta.description || null };
+      } catch (error) {
+        rootSpan.setStatus({
+          code: SpanStatusCode.ERROR,
+          message: error instanceof Error ? error.message : String(error),
+        });
+        if (error instanceof Error) rootSpan.recordException(error);
+        throw error;
+      } finally {
+        rootSpan.end();
+      }
+    },
   );
-
-  const upsertMs = Date.now() - tUpsert;
-  recordStageDuration('upsert', upsertMs);
-  log.info('Upserted vectors', { documentId, chunkCount: chunks.length, ms: upsertMs });
-
-  return { chunkCount: chunks.length, title: docTitle, description: docMeta.description || null };
 }
 
 /**
@@ -304,12 +506,124 @@ function reassemble(parts: string[], maxChars: number, joiner: string): string[]
   return result;
 }
 
+interface EmbeddedChunk {
+  text: string;
+  metadata: Record<string, unknown>;
+  embedding: number[];
+}
+
+/**
+ * Tracks the observed chars-per-token ratio from successful embeds.
+ * Used to proactively split oversized chunks before sending them to the API.
+ */
+export class TokenRatioTracker {
+  private totalChars = 0;
+  private totalTokens = 0;
+
+  /** Record a successful embedding's character count and token count. */
+  record(chars: number, tokens: number) {
+    this.totalChars += chars;
+    this.totalTokens += tokens;
+  }
+
+  /** Returns the max safe chars for the given token limit, or Infinity if no data yet. */
+  safeMaxChars(maxTokens: number, margin = 0.9): number {
+    if (this.totalTokens === 0) return Number.POSITIVE_INFINITY;
+    const ratio = this.totalChars / this.totalTokens;
+    return Math.floor(maxTokens * ratio * margin);
+  }
+
+  get hasData() {
+    return this.totalTokens > 0;
+  }
+
+  get ratio() {
+    return this.totalTokens > 0 ? this.totalChars / this.totalTokens : null;
+  }
+}
+
+interface EmbedRetryResult {
+  results: EmbeddedChunk[];
+  retries: number;
+}
+
+/**
+ * Embed a single chunk. On any error, split the text in half and retry
+ * recursively (up to `maxDepth` levels). Non-size errors will fail at all
+ * split levels and eventually throw.
+ */
+async function embedChunkWithRetry(
+  chunk: { text: string; metadata: Record<string, unknown> },
+  model: ReturnType<typeof createEmbeddingModel>,
+  depth = 0,
+  maxDepth = 3,
+  onTokens?: (chars: number, tokens: number) => void,
+): Promise<EmbedRetryResult> {
+  return tracer.startActiveSpan(
+    'embed_chunk',
+    { attributes: { 'chunk.chars': chunk.text.length, 'chunk.depth': depth } },
+    async (span) => {
+      try {
+        // biome-ignore lint/suspicious/noExplicitAny: usage shape varies by provider
+        const response = (await embed({ model, value: chunk.text })) as any;
+        if (response.usage?.tokens) {
+          onTokens?.(chunk.text.length, response.usage.tokens);
+          span.setAttribute('chunk.tokens', response.usage.tokens);
+        }
+        log.debug('Embedded chunk', { chars: chunk.text.length, depth });
+        span.end();
+        return {
+          results: [{ text: chunk.text, metadata: chunk.metadata, embedding: response.embedding }],
+          retries: 0,
+        };
+      } catch (error) {
+        span.setStatus({
+          code: SpanStatusCode.ERROR,
+          message: error instanceof Error ? error.message : String(error),
+        });
+        if (error instanceof Error) span.recordException(error);
+        span.end();
+
+        if (depth >= maxDepth) throw error;
+        embedRetryCount.add(1);
+        log.warn('Embed failed, splitting and retrying', {
+          chars: chunk.text.length,
+          depth,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        const halvedMax = Math.ceil(chunk.text.length / 2);
+        const subTexts = splitOversizedText(chunk.text, halvedMax);
+        log.debug('Split chunk for retry', {
+          originalChars: chunk.text.length,
+          subChunks: subTexts.length,
+          halvedMax,
+        });
+        const allResults: EmbeddedChunk[] = [];
+        let totalRetries = 1;
+        for (const sub of subTexts) {
+          const inner = await embedChunkWithRetry(
+            { text: sub, metadata: { ...chunk.metadata } },
+            model,
+            depth + 1,
+            maxDepth,
+            onTokens,
+          );
+          allResults.push(...inner.results);
+          totalRetries += inner.retries;
+        }
+        return { results: allResults, retries: totalRetries };
+      }
+    },
+  );
+}
+
 export function buildChunkOptions(format: string, extract: Record<string, unknown>) {
   switch (format) {
     case 'markdown':
       return {
         strategy: 'semantic-markdown' as const,
         joinThreshold: 500,
+        maxSize: EMBEDDING_MAX_CHARS,
         overlap: 50,
         addStartIndex: true,
         extract,
@@ -322,7 +636,7 @@ export function buildChunkOptions(format: string, extract: Record<string, unknow
           ['h2', 'section'],
           ['h3', 'subsection'],
         ] as [string, string][],
-        maxSize: EMBEDDING_MAX_CHUNK_CHARS,
+        maxSize: EMBEDDING_MAX_CHARS,
         overlap: 200,
         addStartIndex: true,
         extract,

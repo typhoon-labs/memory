@@ -72,6 +72,7 @@ typhoon/
 │   ├── storage/  (L1)   S3/MinIO client
 │   ├── logger/   (L1)   Structured logging (Mastra logger)
 │   ├── telemetry/(L1)   OpenTelemetry SDK, metrics, Hono middleware
+│   ├── queue/    (L1)   BullMQ job queue wrapper
 │   ├── ingestion/(L2)   Document parsers + chunking + sync jobs
 │   ├── agents/   (L2)   Mastra agent definitions + tools
 │   ├── chat/     (L2)   React chat UI components (streaming, markdown)

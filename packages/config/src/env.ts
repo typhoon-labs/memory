@@ -53,7 +53,7 @@ export type S3Env = z.infer<typeof s3Schema>;
 export const llmSchema = z.object({
   LLM_BASE_URL: z.string().url(),
   LLM_API_KEY: z.string().min(1),
-  LLM_CHAT_MODEL: optionalString('anthropic.claude-sonnet-4-6-v1:0'),
+  LLM_CHAT_MODEL: optionalString('anthropic.claude-sonnet-4-6'),
   LLM_TITLE_MODEL: z.string().optional(),
   ANTHROPIC_API_KEY: z.string().min(1).optional(),
 });
@@ -69,7 +69,8 @@ export const embeddingSchema = z.object({
   EMBEDDING_API_KEY: optionalString(''),
   EMBEDDING_MODEL: optionalString('amazon.titan-embed-text-v2:0'),
   EMBEDDING_DIMENSION: z.coerce.number().int().positive().default(1024),
-  EMBEDDING_MAX_CHUNK_CHARS: z.coerce.number().int().positive().default(24_000),
+  EMBEDDING_MAX_CHARS: z.coerce.number().int().positive().default(50_000),
+  EMBEDDING_MAX_TOKENS: z.coerce.number().int().positive().default(8_192),
 });
 
 export type EmbeddingEnv = z.infer<typeof embeddingSchema>;

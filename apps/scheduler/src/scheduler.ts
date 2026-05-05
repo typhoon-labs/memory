@@ -1,6 +1,6 @@
 import { failedJobs, syncTargets } from '@typhoon/db';
-import { JOB_PRIORITY, type ScanJobData } from '@typhoon/ingestion';
 import { createAppLogger } from '@typhoon/logger';
+import { JOB_PRIORITY, type ScanJobData } from '@typhoon/queue';
 import { Cron } from 'croner';
 import { eq, lt } from 'drizzle-orm';
 import { db } from './db';

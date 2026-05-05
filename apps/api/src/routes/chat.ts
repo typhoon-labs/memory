@@ -1,8 +1,8 @@
 import { handleChatStream } from '@mastra/ai-sdk';
 import { registerApiRoute } from '@mastra/core/server';
 import { isScoringEnabled } from '@typhoon/config';
-import type { ScoringJobData } from '@typhoon/ingestion';
 import { createAppLogger } from '@typhoon/logger';
+import type { ScoringJobData } from '@typhoon/queue';
 import { conversationStarted, getActiveTraceId } from '@typhoon/telemetry';
 import { createUIMessageStreamResponse } from 'ai';
 import type { Queue } from 'bullmq';

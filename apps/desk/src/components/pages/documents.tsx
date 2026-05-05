@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { DocumentViewerPanel, documentContentQuery, documentParsedQuery } from '@typhoon/chat';
 import type { ColumnDef } from '@typhoon/ui';
 import {
   apiFetch,
@@ -21,8 +22,6 @@ import {
 } from '@typhoon/ui';
 import { DatabaseIcon, FileTextIcon } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
-import { documentContentQuery, documentParsedQuery } from '../../lib/document-queries';
-import { DocumentViewerPanel } from './document-viewer-panel';
 
 interface Document {
   id: string;

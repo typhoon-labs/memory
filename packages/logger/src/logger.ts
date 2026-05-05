@@ -10,6 +10,7 @@ const LEVEL_ORDER: Record<string, number> = {
 };
 
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+const SERVICE_NAME = process.env.OTEL_SERVICE_NAME;
 
 function resolveLevel(): LogLevel {
   const env = process.env.LOG_LEVEL?.toLowerCase();
@@ -51,6 +52,7 @@ function formatProd(level: string, name: string, message: string, ctx?: Record<s
   const entry: Record<string, unknown> = {
     ts: new Date().toISOString(),
     level,
+    ...(SERVICE_NAME ? { service: SERVICE_NAME } : {}),
     name,
     msg: message,
     ...getTraceContext(),
@@ -84,40 +86,35 @@ export class TyphoonLogger extends MastraLogger {
     this.levelNum = LEVEL_ORDER[level] ?? 1;
   }
 
-  debug(message: string, ...args: unknown[]): void {
-    if (this.levelNum > 0) return;
+  private _log(
+    level: string,
+    threshold: number,
+    out: (...a: unknown[]) => void,
+    message: string,
+    args: unknown[],
+  ): void {
+    if (this.levelNum > threshold) return;
     const ctx = parseContext(args);
     const line = IS_PRODUCTION
-      ? formatProd('debug', this.loggerName, message, ctx)
-      : formatDev('debug', this.loggerName, message, ctx);
-    console.debug(line);
+      ? formatProd(level, this.loggerName, message, ctx)
+      : formatDev(level, this.loggerName, message, ctx);
+    out(line);
+  }
+
+  debug(message: string, ...args: unknown[]): void {
+    this._log('debug', 0, console.debug, message, args);
   }
 
   info(message: string, ...args: unknown[]): void {
-    if (this.levelNum > 1) return;
-    const ctx = parseContext(args);
-    const line = IS_PRODUCTION
-      ? formatProd('info', this.loggerName, message, ctx)
-      : formatDev('info', this.loggerName, message, ctx);
-    console.info(line);
+    this._log('info', 1, console.info, message, args);
   }
 
   warn(message: string, ...args: unknown[]): void {
-    if (this.levelNum > 2) return;
-    const ctx = parseContext(args);
-    const line = IS_PRODUCTION
-      ? formatProd('warn', this.loggerName, message, ctx)
-      : formatDev('warn', this.loggerName, message, ctx);
-    console.warn(line);
+    this._log('warn', 2, console.warn, message, args);
   }
 
   error(message: string, ...args: unknown[]): void {
-    if (this.levelNum > 3) return;
-    const ctx = parseContext(args);
-    const line = IS_PRODUCTION
-      ? formatProd('error', this.loggerName, message, ctx)
-      : formatDev('error', this.loggerName, message, ctx);
-    console.error(line);
+    this._log('error', 3, console.error, message, args);
   }
 }
 

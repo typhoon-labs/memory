@@ -52,20 +52,27 @@ export function TokenBarChart({ data, range }: TokenBarChartProps) {
   }
 
   return (
-    <ResponsiveContainer width="100%" height={250}>
+    <ResponsiveContainer width="100%" height={250} className="[&_*]:outline-none">
       <BarChart data={data} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
         <XAxis dataKey="date" tickFormatter={formatDate} tick={AXIS_TICK} ticks={ticks} />
         <YAxis tickFormatter={formatTokens} tick={AXIS_TICK} />
-        <Tooltip content={TokenTooltip} />
+        <Tooltip content={TokenTooltip} cursor={{ stroke: 'var(--border)' }} />
         <Legend content={<ChartLegend />} />
-        <Bar dataKey="promptTokens" name="Prompt" stackId="tokens" fill="oklch(0.65 0.1 250)" />
+        <Bar
+          dataKey="promptTokens"
+          name="Prompt"
+          stackId="tokens"
+          fill="oklch(0.65 0.1 250)"
+          isAnimationActive={false}
+        />
         <Bar
           dataKey="completionTokens"
           name="Completion"
           stackId="tokens"
           fill="oklch(0.65 0.1 165)"
           radius={[3, 3, 0, 0]}
+          isAnimationActive={false}
         />
       </BarChart>
     </ResponsiveContainer>

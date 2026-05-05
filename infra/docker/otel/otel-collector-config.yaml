@@ -106,6 +106,18 @@ receivers:
       - id: container-parser
         type: container
         format: docker
+      # Parse structured JSON log body to extract service name and trace context.
+      # Non-JSON lines (e.g. from nginx, dex) are silently skipped.
+      - id: json-parser
+        type: json_parser
+        if: body != ""
+        on_error: send
+      # Promote "service" field to resource attribute for Loki service_name label
+      - id: move-service
+        type: move
+        from: attributes.service
+        to: resource["service.name"]
+        if: attributes.service != nil
 
 connectors:
   # Derive Prometheus metrics from span attributes automatically.
@@ -165,8 +177,8 @@ service:
       processors: [batch]
       exporters: [otlphttp/metrics]
 
-    # Docker container logs → Loki
+    # Docker container logs + OTLP logs → Loki
     logs:
-      receivers: [filelog/docker]
+      receivers: [filelog/docker, otlp]
       processors: [batch]
       exporters: [otlphttp/logs]

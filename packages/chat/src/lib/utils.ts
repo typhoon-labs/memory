@@ -1,9 +1,4 @@
-import { type ClassValue, clsx } from 'clsx';
-import { twMerge } from 'tailwind-merge';
-
-export function cn(...inputs: ClassValue[]): string {
-  return twMerge(clsx(inputs));
-}
+export { cn } from '@typhoon/ui';
 
 /**
  * Strip common inline markdown syntax (bold, italic, code, strikethrough)

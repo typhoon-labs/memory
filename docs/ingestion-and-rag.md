@@ -59,10 +59,12 @@ Uses Mastra's `MDocument.chunk()` with format-aware strategies. All strategies i
 
 | Format | Strategy | Description |
 |--------|----------|-------------|
-| Markdown | `semantic-markdown` | Semantic boundary splitting; 500-token join threshold, 50-token overlap |
-| HTML | `html` | Respects heading hierarchy (h1→title, h2→section, h3→subsection) |
+| Markdown | `semantic-markdown` | Semantic boundary splitting; 500-token join threshold, `EMBEDDING_MAX_CHARS` max size, 50-token overlap |
+| HTML | `html` | Respects heading hierarchy (h1→title, h2→section, h3→subsection); `EMBEDDING_MAX_CHARS` max size |
 | JSON | `token` | Token-based splitting; 512 max, 50 overlap |
 | All others | `sentence` | Sentence-boundary splitting; 512 max, 50 overlap |
+
+After chunking, a safety net (`enforceChunkSizeLimit`) splits any chunk exceeding `EMBEDDING_MAX_CHARS` on paragraph, sentence, or hard character boundaries. Empty/whitespace-only chunks are filtered out.
 
 ## Metadata Extraction
 
@@ -75,7 +77,27 @@ Two LLM passes run via `LLM_EXTRACTION_MODEL` during ingestion:
 
 ## Embedding
 
-Embeddings are generated via `embedMany()` from the `ai` package using the configured OpenAI-compatible embedding endpoint (`EMBEDDING_BASE_URL`). The model and dimension are configured via `EMBEDDING_MODEL` and `EMBEDDING_DIMENSION` environment variables.
+Chunks are embedded via the configured OpenAI-compatible endpoint (`EMBEDDING_BASE_URL`). The model and dimension are configured via `EMBEDDING_MODEL` and `EMBEDDING_DIMENSION`.
+
+### Adaptive Ratio Tracking
+
+A per-document `TokenRatioTracker` learns the chars-per-token ratio from successful embeds. On the first chunk, the ratio is unknown and the ceiling is `EMBEDDING_MAX_CHARS`. As chunks embed successfully and the provider returns token usage, the tracker computes `safeMaxChars = EMBEDDING_MAX_TOKENS * measured_ratio * 0.9`. Subsequent chunks that exceed this adaptive limit are proactively split *before* calling the API — avoiding wasted API calls. Splitting and embedding are interleaved so each chunk's split decision uses the latest ratio.
+
+### Retry on Failure
+
+If any embed call fails (regardless of error type), the chunk is split in half and retried recursively (up to 3 levels). This handles cold-start failures (before the ratio calibrates), transient errors, and unknown error formats from different providers.
+
+### Batching
+
+When `EMBEDDING_BATCH_SIZE` is set >1, chunks are sent in batches via `embedMany`. If a batch fails or returns the wrong count, the pipeline falls back to per-chunk embedding with retry. Default is 1 (per-chunk only).
+
+### Observability
+
+The embedding stage records:
+- **OTel span** (`processFile`) with attributes: chunk count, min/max/avg chunk chars, retries, proactive splits, total tokens, chars-per-token ratio
+- **Metrics:** `embed.chunk.size_chars` (histogram), `embed.retry` (counter), `embed.token_usage` (histogram)
+- **Summary log** at pipeline end with all stats including per-stage timing
+- **Debug logs** per-chunk (index, chars, preview) and per-embed (success/retry)
 
 ## Vector Storage
 

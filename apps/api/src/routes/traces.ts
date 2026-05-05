@@ -16,6 +16,12 @@ function parseDateRange(c: { req: { query(key: string): string | undefined } }) 
 function extractTokens(attributes: Record<string, unknown> | null, ...keys: string[]): number | null {
   if (!attributes) return null;
   for (const key of keys) {
+    // Try direct flat-key lookup (OTel-style: 'gen_ai.usage.prompt_tokens')
+    if (key in attributes) {
+      const n = Number(attributes[key]);
+      if (Number.isFinite(n)) return n;
+    }
+    // Fall back to dot-path traversal (nested Mastra-style: { usage: { inputTokens: 100 } })
     const parts = key.split('.');
     let val: unknown = attributes;
     for (const p of parts) {
@@ -101,7 +107,9 @@ export const traceRoutes = [
       }
       if (search) {
         outerParams.push(`%${search}%`);
-        outerConditions.push(`root_span_name ILIKE $OUTER_${outerParams.length}`);
+        outerConditions.push(
+          `(root_span_name ILIKE $OUTER_${outerParams.length} OR trace_id ILIKE $OUTER_${outerParams.length})`,
+        );
       }
 
       // Renumber outer params to follow inner params
@@ -295,7 +303,7 @@ export const traceRoutes = [
 
       // Compute summary
       const hasError = spans.some((s) => s.error != null);
-      const allCompleted = spans.every((s) => s.endedAt != null);
+      const allCompleted = spans.every((s) => s.endedAt != null || s.spanType === 'model_chunk');
       const rootSpan = spans.find((s) => s.parentSpanId == null) ?? spans[0];
       const minStart = Math.min(...spans.map((s) => new Date(s.startedAt).getTime()));
       const endTimes = spans.filter((s) => s.endedAt).map((s) => new Date(s.endedAt as string).getTime());

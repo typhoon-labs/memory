@@ -96,9 +96,42 @@ export const reviewRoutes = [
         );
       }
 
+      // Step 2b: Batch-fetch feedback counts
+      let feedbackCounts = new Map<string, { feedbackCount: number; negativeFeedbackCount: number }>();
+      if (threadIds.length > 0) {
+        // feedback.thread_id references threads.id (internal), so we join to filter by external_id
+        const externalIds = allThreads.map((t) => t.id);
+        const fbRows = (await sql.unsafe(
+          `SELECT
+            t."external_id" AS thread_id,
+            COUNT(*)::int AS feedback_count,
+            COUNT(*) FILTER (WHERE f."rating" = 'negative')::int AS negative_feedback_count
+          FROM "feedback" f
+          JOIN "threads" t ON f."thread_id" = t."id"
+          WHERE t."external_id" = ANY($1)
+          GROUP BY t."external_id"`,
+          [externalIds],
+        )) as Array<{
+          thread_id: string;
+          feedback_count: number;
+          negative_feedback_count: number;
+        }>;
+        feedbackCounts = new Map(
+          fbRows.map((r) => [
+            r.thread_id,
+            { feedbackCount: r.feedback_count, negativeFeedbackCount: r.negative_feedback_count },
+          ]),
+        );
+      }
+
       // Step 3: Merge, filter, sort, paginate
+      const fbDefaults = { feedbackCount: 0, negativeFeedbackCount: 0 };
       const defaults = { avgScore: null, minScore: null, scoreCount: 0, annotationCount: 0 };
-      let merged = allThreads.map((t) => ({ ...t, ...(aggregates.get(t.id) ?? defaults) }));
+      let merged = allThreads.map((t) => ({
+        ...t,
+        ...(aggregates.get(t.id) ?? defaults),
+        ...(feedbackCounts.get(t.id) ?? fbDefaults),
+      }));
 
       if (annotationStatus === 'annotated') {
         merged = merged.filter((t) => t.annotationCount > 0);
@@ -151,18 +184,76 @@ export const reviewRoutes = [
         [threadId],
       )) as Array<Record<string, unknown>>;
 
-      // Group by entity_id (message externalId)
+      // Resolve annotator names for human-review scores
+      const annotatorIds = [
+        ...new Set(
+          allScores
+            .filter((s) => s.scorer_id === 'human-review')
+            .map((s) => (s.metadata as Record<string, unknown> | null)?.annotatorId as string | undefined)
+            .filter(Boolean),
+        ),
+      ] as string[];
+
+      let annotatorNames = new Map<string, string>();
+      if (annotatorIds.length > 0) {
+        const users = (await sql.unsafe(`SELECT id, name FROM "user" WHERE id = ANY($1)`, [annotatorIds])) as Array<{
+          id: string;
+          name: string;
+        }>;
+        annotatorNames = new Map(users.map((u) => [u.id, u.name]));
+      }
+
+      // Group by entity_id (message externalId) and enrich human-review with annotator names
       const scoresByMessage: Record<string, Array<Record<string, unknown>>> = {};
       for (const score of allScores) {
         const key = score.entity_id as string;
         if (!scoresByMessage[key]) scoresByMessage[key] = [];
+        if (score.scorer_id === 'human-review') {
+          const meta = score.metadata as Record<string, unknown> | null;
+          const annotatorId = meta?.annotatorId as string | undefined;
+          if (annotatorId && annotatorNames.has(annotatorId)) {
+            score.metadata = { ...meta, annotatorName: annotatorNames.get(annotatorId) };
+          }
+        }
         scoresByMessage[key].push(score);
+      }
+
+      // Fetch user feedback for this thread
+      const feedbackRows = (await sql.unsafe(
+        `SELECT f.rating, f.comment, f.created_at, u.name AS user_name, m.external_id AS message_external_id
+         FROM "feedback" f
+         JOIN "messages" m ON f.message_id = m.id
+         JOIN "user" u ON f.user_id = u.id
+         WHERE f.thread_id = $1`,
+        [thread.id],
+      )) as Array<{
+        rating: string;
+        comment: string | null;
+        created_at: string;
+        user_name: string;
+        message_external_id: string;
+      }>;
+
+      const feedbackByMessage: Record<
+        string,
+        Array<{ rating: string; comment: string | null; userName: string; createdAt: string }>
+      > = {};
+      for (const row of feedbackRows) {
+        const key = row.message_external_id;
+        if (!feedbackByMessage[key]) feedbackByMessage[key] = [];
+        feedbackByMessage[key].push({
+          rating: row.rating,
+          comment: row.comment,
+          userName: row.user_name,
+          createdAt: row.created_at,
+        });
       }
 
       return c.json({
         ...toThreadResponse(thread),
         messages: uiMessages,
         scoresByMessage,
+        feedbackByMessage,
       });
     },
   }),

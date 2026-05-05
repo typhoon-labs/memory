@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { DocumentViewerPanel, documentContentQuery, documentParsedQuery } from '@typhoon/chat';
 import {
   apiFetch,
   Badge,
@@ -20,8 +21,6 @@ import {
 } from '@typhoon/ui';
 import { DatabaseIcon, FileTextIcon, SearchIcon, SparklesIcon } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { documentContentQuery, documentParsedQuery } from '../../lib/document-queries';
-import { DocumentViewerPanel } from './document-viewer-panel';
 
 // ── Types ───────────────────────────────────────────────────────
 

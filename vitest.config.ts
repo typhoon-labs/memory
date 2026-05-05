@@ -20,6 +20,8 @@ export default defineConfig({
         'packages/db/src/connection.ts',
         // Test infrastructure — not application code
         'tests/**',
+        // shadcn/ui primitives — vendor-like thin Radix wrappers
+        'packages/ui/src/components/ui/**',
       ],
     },
     projects: [
@@ -34,6 +36,7 @@ export default defineConfig({
       'packages/db/vitest.config.ts',
       'packages/storage/vitest.config.ts',
       'packages/agents/vitest.config.ts',
+      'packages/queue/vitest.config.ts',
       'packages/ingestion/vitest.config.ts',
       'packages/chat/vitest.config.ts',
       'packages/ai/vitest.config.ts',

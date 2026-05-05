@@ -42,6 +42,7 @@ Higher layers import from lower layers. No circular dependencies. Turborepo enfo
 | `@typhoon/storage` | 1 | S3/MinIO client (list, download, delete) |
 | `@typhoon/logger` | 1 | Structured logging via Mastra logger |
 | `@typhoon/telemetry` | 1 | OpenTelemetry SDK, custom metrics, Hono middleware |
+| `@typhoon/queue` | 1 | BullMQ job queue wrapper (sync, scoring, experiments) |
 | `@typhoon/agents` | 2 | Mastra supervisor + knowledge agent with RAG tools |
 | `@typhoon/ingestion` | 2 | Document parsers, MDocument pipeline, BullMQ sync jobs |
 | `@typhoon/chat` | 2 | React chat UI components (streaming, markdown rendering) |
@@ -150,5 +151,5 @@ Called via `searchKnowledge` wrapper tool (two-phase): Phase 1 searches the know
 
 ## Authentication
 
-- **Reps/Admins:** Better Auth (email/password + OIDC plugin for Dex/Okta)
+- **Reps/Admins:** Better Auth (OIDC via Dex/Okta)
 - **Widget:** Deployment-level API keys (one key per widget deployment)

@@ -17,6 +17,7 @@
       "@typhoon/db": ["../../packages/db/src"],
       "@typhoon/storage": ["../../packages/storage/src"],
       "@typhoon/agents": ["../../packages/agents/src"],
+      "@typhoon/queue": ["../../packages/queue/src"],
       "@typhoon/ingestion": ["../../packages/ingestion/src"],
       "@typhoon/db/drivers/pg": ["../../packages/db/src/drivers/pg"],
       "@typhoon/db/queries": ["../../packages/db/src/queries"],

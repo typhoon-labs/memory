@@ -6,10 +6,10 @@ import {
   Button,
   cn,
   DataTable,
-  DocumentContentViewer,
   EmptyState,
   formatRelativeTime,
   LoadingSpinner,
+  MarkdownContent,
   PageHeader,
   SectionLabel,
   Sheet,
@@ -26,7 +26,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@typhoon/ui';
-import { ChevronRightIcon, FlaskConicalIcon, GitCompareArrowsIcon, InfoIcon, XIcon } from 'lucide-react';
+import { ChevronRightIcon, FlaskConicalIcon, GitCompareArrowsIcon, InfoIcon, SquareIcon } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
 // ---------- Types ----------
@@ -107,7 +107,8 @@ function truncateValue(value: unknown, maxLen = 60): string {
   return s.length > maxLen ? `${s.slice(0, maxLen)}...` : s;
 }
 
-function formatScorerId(id: string): string {
+function formatScorerId(id: string | undefined): string {
+  if (!id) return 'Unknown';
   return id
     .replace(/([A-Z])/g, ' $1')
     .replace(/^./, (s) => s.toUpperCase())
@@ -219,7 +220,7 @@ function ResultDetailSheet({
                 <SectionLabel>Response</SectionLabel>
                 <div className="mt-2 text-sm leading-relaxed">
                   {result.output?.responseText ? (
-                    <DocumentContentViewer text={result.output.responseText} mimeType="text/markdown" />
+                    <MarkdownContent text={result.output.responseText} />
                   ) : (
                     <span className="text-muted-foreground">{'\u2014'}</span>
                   )}
@@ -271,7 +272,7 @@ function ResultDetailSheet({
               <>
                 <hr className="my-3 border-border" />
                 <div className="text-sm leading-relaxed">
-                  <DocumentContentViewer text={activeScore.reason} mimeType="text/markdown" />
+                  <MarkdownContent text={activeScore.reason} />
                 </div>
               </>
             ) : (
@@ -452,12 +453,12 @@ export function ExperimentDetailPage() {
             <>
               {isRunning && (
                 <Button
-                  variant="destructive"
+                  variant="outline"
                   size="sm"
                   onClick={() => cancelMutation.mutate()}
                   disabled={cancelMutation.isPending}
                 >
-                  <XIcon className="mr-1.5 size-3.5" />
+                  <SquareIcon className="mr-1.5 size-3.5" />
                   {cancelMutation.isPending ? 'Cancelling...' : 'Cancel'}
                 </Button>
               )}
@@ -465,7 +466,7 @@ export function ExperimentDetailPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => navigate({ to: '/experiments/compare', search: { a: experiment.id } })}
+                  onClick={() => navigate({ to: '/experiments/compare', search: { b: experiment.id } })}
                 >
                   <GitCompareArrowsIcon className="mr-1.5 size-3.5" />
                   Compare

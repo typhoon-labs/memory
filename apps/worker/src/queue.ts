@@ -1,43 +1,32 @@
-import { createExperimentQueue, createScoringQueue, createSyncQueue } from '@typhoon/ingestion';
+import { createQueueRegistry } from '@typhoon/queue';
 import type { Queue } from 'bullmq';
 
-let _syncQueue: Queue | undefined;
-let _scoringQueue: Queue | undefined;
-let _experimentQueue: Queue | undefined;
+const registry = createQueueRegistry();
 
 export function initSyncQueue(redisUrl: string): Queue {
-  if (_syncQueue) return _syncQueue;
-  _syncQueue = createSyncQueue({ url: redisUrl });
-  return _syncQueue;
+  return registry.init('sync', redisUrl);
 }
 
 export function getSyncQueue(): Queue {
-  if (!_syncQueue) throw new Error('Sync queue not initialized');
-  return _syncQueue;
+  return registry.get('sync');
 }
 
 export function initScoringQueue(redisUrl: string): Queue {
-  if (_scoringQueue) return _scoringQueue;
-  _scoringQueue = createScoringQueue({ url: redisUrl });
-  return _scoringQueue;
+  return registry.init('scoring', redisUrl);
 }
 
 export function getScoringQueue(): Queue {
-  if (!_scoringQueue) throw new Error('Scoring queue not initialized');
-  return _scoringQueue;
+  return registry.get('scoring');
 }
 
 export function initExperimentQueue(redisUrl: string): Queue {
-  if (_experimentQueue) return _experimentQueue;
-  _experimentQueue = createExperimentQueue({ url: redisUrl });
-  return _experimentQueue;
+  return registry.init('experiments', redisUrl);
 }
 
 export function getExperimentQueue(): Queue {
-  if (!_experimentQueue) throw new Error('Experiment queue not initialized');
-  return _experimentQueue;
+  return registry.get('experiments');
 }
 
 export async function shutdownQueues(): Promise<void> {
-  await Promise.all([_syncQueue?.close(), _scoringQueue?.close(), _experimentQueue?.close()]);
+  await registry.shutdown();
 }

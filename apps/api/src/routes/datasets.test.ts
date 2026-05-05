@@ -14,6 +14,7 @@ const { mockDatasetsStorage } = vi.hoisted(() => ({
     listItems: vi.fn().mockResolvedValue({ items: [], total: 0, page: 0, perPage: 100, hasMore: false }),
     _doAddItem: vi.fn().mockResolvedValue({ id: 'item-1' }),
     _doBatchInsertItems: vi.fn().mockResolvedValue([{ id: 'item-1' }, { id: 'item-2' }]),
+    _doUpdateItem: vi.fn().mockResolvedValue({ id: 'item-1', input: { question: 'updated' } }),
     _doDeleteItem: vi.fn().mockResolvedValue(undefined),
   },
 }));
@@ -31,6 +32,7 @@ vi.mock('@typhoon/db/drivers/pg', () => ({
     listItems = mockDatasetsStorage.listItems;
     _doAddItem = mockDatasetsStorage._doAddItem;
     _doBatchInsertItems = mockDatasetsStorage._doBatchInsertItems;
+    _doUpdateItem = mockDatasetsStorage._doUpdateItem;
     _doDeleteItem = mockDatasetsStorage._doDeleteItem;
   },
 }));
@@ -77,8 +79,8 @@ describe('Dataset Routes', () => {
   });
 
   describe('route structure', () => {
-    it('has 8 routes, all using requireAuth and requireAdmin', () => {
-      expect(datasetRoutes).toHaveLength(8);
+    it('has 9 routes, all using requireAuth and requireAdmin', () => {
+      expect(datasetRoutes).toHaveLength(9);
       for (const route of datasetRoutes as unknown as Record<string, unknown>[]) {
         const mid = route.middleware as unknown[];
         expect(mid).toHaveLength(2);
@@ -253,6 +255,31 @@ describe('Dataset Routes', () => {
         body: JSON.stringify({ groundTruth: { answer: 'test' } }),
       });
       expect(res.status).toBe(400);
+    });
+  });
+
+  describe('PATCH /v1/admin/datasets/:id/items/:itemId', () => {
+    it('updates an item', async () => {
+      mockDatasetsStorage.getDatasetById.mockResolvedValueOnce({ id: 'ds-1', version: 0 });
+      mockDatasetsStorage._doUpdateItem.mockResolvedValueOnce({ id: 'item-1', input: { question: 'updated' } });
+
+      const res = await app.request('/v1/admin/datasets/ds-1/items/item-1', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ input: { question: 'updated' } }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(mockDatasetsStorage._doUpdateItem).toHaveBeenCalledWith(expect.objectContaining({ id: 'item-1' }));
+    });
+
+    it('returns 404 when dataset not found', async () => {
+      const res = await app.request('/v1/admin/datasets/unknown/items/item-1', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ input: { question: 'updated' } }),
+      });
+      expect(res.status).toBe(404);
     });
   });
 

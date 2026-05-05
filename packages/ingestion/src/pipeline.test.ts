@@ -3,11 +3,33 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('@typhoon/ai', () => ({
   createEmbeddingModel: vi.fn(),
   createExtractionModel: vi.fn(),
-  EMBEDDING_MAX_CHUNK_CHARS: 24_000,
+  EMBEDDING_MAX_CHARS: 50_000,
+  EMBEDDING_MAX_TOKENS: 8_192,
 }));
 vi.mock('ai', () => ({
-  embedMany: vi.fn(async () => ({ embeddings: [[0.1, 0.2]] })),
+  embed: vi.fn(async () => ({ embedding: [0.1, 0.2] })),
   generateText: vi.fn(async () => ({ text: 'Title\nDescription' })),
+}));
+vi.mock('@typhoon/telemetry', () => ({
+  SpanStatusCode: { OK: 0, ERROR: 2 },
+  getTracer: () => ({
+    startActiveSpan: (_name: string, ...args: unknown[]) => {
+      const mockSpan = {
+        setAttribute: vi.fn(),
+        setAttributes: vi.fn(),
+        setStatus: vi.fn(),
+        recordException: vi.fn(),
+        end: vi.fn(),
+      };
+      // Handle both (name, fn) and (name, opts, fn) signatures
+      const fn = typeof args[0] === 'function' ? args[0] : args[1];
+      return (fn as (span: unknown) => unknown)(mockSpan);
+    },
+  }),
+  chunkSizeChars: { record: vi.fn() },
+  embedRetryCount: { add: vi.fn() },
+  embedTokenUsage: { record: vi.fn() },
+  syncStageDuration: { record: vi.fn() },
 }));
 vi.mock('@mastra/rag', () => {
   class MockMDocument {
@@ -20,25 +42,27 @@ vi.mock('@mastra/rag', () => {
   return { MDocument: MockMDocument };
 });
 
-import { generateText } from 'ai';
+import { embed, generateText } from 'ai';
 import {
   buildChunkOptions,
   deleteDocumentVectors,
-  EMBEDDING_MAX_CHUNK_CHARS,
+  EMBEDDING_MAX_CHARS,
   enforceChunkSizeLimit,
   generateDocumentMetadata,
   makeChunkId,
   processFile,
+  TokenRatioTracker,
   updateDocumentVectorSource,
 } from './pipeline';
 
 describe('buildChunkOptions', () => {
   const extract = { keywords: { llm: {}, keywords: 5 } };
 
-  it('returns semantic-markdown strategy for markdown', () => {
+  it('returns semantic-markdown strategy for markdown with maxSize', () => {
     const opts = buildChunkOptions('markdown', extract);
     expect(opts.strategy).toBe('semantic-markdown');
     expect(opts).toHaveProperty('joinThreshold', 500);
+    expect(opts).toHaveProperty('maxSize', EMBEDDING_MAX_CHARS);
     expect(opts).toHaveProperty('overlap', 50);
     expect(opts).toHaveProperty('addStartIndex', true);
     expect(opts).toHaveProperty('extract', extract);
@@ -54,7 +78,7 @@ describe('buildChunkOptions', () => {
       ['h2', 'section'],
       ['h3', 'subsection'],
     ]);
-    expect(htmlOpts.maxSize).toBe(EMBEDDING_MAX_CHUNK_CHARS);
+    expect(htmlOpts.maxSize).toBe(EMBEDDING_MAX_CHARS);
     expect(htmlOpts.overlap).toBe(200);
     expect(opts).toHaveProperty('addStartIndex', true);
   });
@@ -345,5 +369,91 @@ describe('enforceChunkSizeLimit', () => {
     expect(result[0]?.text).toBe('small');
     expect(result[result.length - 1]?.text).toBe('also small');
     expect(result.length).toBe(5); // 1 + 3 splits + 1
+  });
+
+  it('splits chunks exceeding the model hard limit (50K chars)', () => {
+    const text = 'x'.repeat(55_000);
+    const result = enforceChunkSizeLimit([{ text, metadata: { ...meta } }], EMBEDDING_MAX_CHARS);
+    expect(result.length).toBe(2);
+    for (const chunk of result) {
+      expect(chunk.text.length).toBeLessThanOrEqual(EMBEDDING_MAX_CHARS);
+    }
+  });
+
+  it('does not include empty or whitespace-only chunks in filtered results', () => {
+    const chunks = [
+      { text: 'valid chunk', metadata: { ...meta } },
+      { text: '', metadata: { ...meta } },
+      { text: '   \n  ', metadata: { ...meta } },
+      { text: 'another valid', metadata: { ...meta } },
+    ];
+    const result = enforceChunkSizeLimit(chunks, maxChars).filter((c) => c.text.trim());
+    expect(result).toHaveLength(2);
+    expect(result[0]?.text).toBe('valid chunk');
+    expect(result[1]?.text).toBe('another valid');
+  });
+});
+
+describe('TokenRatioTracker', () => {
+  it('returns Infinity when no data recorded', () => {
+    const tracker = new TokenRatioTracker();
+    expect(tracker.safeMaxChars(8192)).toBe(Number.POSITIVE_INFINITY);
+    expect(tracker.hasData).toBe(false);
+    expect(tracker.ratio).toBeNull();
+  });
+
+  it('computes safe max chars from measured ratio', () => {
+    const tracker = new TokenRatioTracker();
+    // 4000 chars / 1000 tokens = 4 chars/token
+    tracker.record(4000, 1000);
+    // safeMax = 8192 * 4 * 0.9 = 29491.2 → 29491
+    expect(tracker.safeMaxChars(8192)).toBe(29491);
+    expect(tracker.hasData).toBe(true);
+    expect(tracker.ratio).toBeCloseTo(4.0);
+  });
+
+  it('refines ratio with multiple recordings', () => {
+    const tracker = new TokenRatioTracker();
+    tracker.record(4000, 1000); // 4 chars/token
+    tracker.record(2000, 1000); // 2 chars/token
+    // combined: 6000/2000 = 3 chars/token
+    expect(tracker.ratio).toBeCloseTo(3.0);
+    // safeMax = 8192 * 3 * 0.9 = 22118.4 → 22118
+    expect(tracker.safeMaxChars(8192)).toBe(22118);
+  });
+
+  it('applies custom margin', () => {
+    const tracker = new TokenRatioTracker();
+    tracker.record(4000, 1000);
+    // margin 0.8: 8192 * 4 * 0.8 = 26214.4 → 26214
+    expect(tracker.safeMaxChars(8192, 0.8)).toBe(26214);
+  });
+});
+
+describe('processFile embed retry', () => {
+  const vectorStore = { upsert: vi.fn(async () => []) };
+
+  it('retries with smaller chunks when embed fails', async () => {
+    const mockEmbed = vi.mocked(embed);
+
+    // First call fails, subsequent calls succeed
+    mockEmbed
+      .mockRejectedValueOnce(new Error('Too many input tokens'))
+      .mockResolvedValue({ embedding: [0.1, 0.2] } as never);
+
+    const result = await processFile(
+      {
+        content: Buffer.from('Some content that triggers retry.'),
+        filename: 'test.txt',
+        documentId: 'doc-1',
+        syncTargetId: 'st-1',
+        sourceKey: 'test.txt',
+      },
+      vectorStore as never,
+    );
+
+    expect(result.chunkCount).toBeGreaterThanOrEqual(1);
+    // embed was called more than once due to retry splitting
+    expect(mockEmbed.mock.calls.length).toBeGreaterThan(1);
   });
 });

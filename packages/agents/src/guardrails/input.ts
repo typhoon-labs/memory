@@ -52,7 +52,7 @@ export function createInputGuardrails(
   if (steps.length === 0) return processors;
 
   if (steps.length === 1) {
-    // Single processor — no need for a parallel workflow
+    // Single guardrail step — chain with token limiter (no parallel workflow needed)
     const workflow = createWorkflow({
       id: 'input-guardrails',
       inputSchema: ProcessorStepSchema,

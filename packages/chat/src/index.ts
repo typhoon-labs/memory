@@ -18,15 +18,12 @@ export {
   PromptInputSubmit,
   PromptInputTextarea,
 } from './components/ai-elements/prompt-input';
-
 // Chat config
 export type { ChatConfig } from './components/chat/chat-config';
 export { ChatConfigProvider, useChatConfig } from './components/chat/chat-config';
-
 // Citation context
 export type { CitationContextValue } from './components/chat/citation-context';
 export { CitationProvider, useCitations } from './components/chat/citation-context';
-
 // Chat components
 export { SourceCitations } from './components/chat/source-citations';
 export { StreamdownText } from './components/chat/streamdown-text';
@@ -38,3 +35,7 @@ export type { ChatMessage } from './components/chat/typhoon-message';
 export { TyphoonMessage } from './components/chat/typhoon-message';
 export type { TyphoonThreadProps } from './components/chat/typhoon-thread';
 export { TyphoonThread } from './components/chat/typhoon-thread';
+export type { DocumentContentResponse, DocumentParsedResponse } from './components/document-viewer/document-queries';
+export { documentContentQuery, documentParsedQuery } from './components/document-viewer/document-queries';
+// Document viewer
+export { DocumentViewerPanel } from './components/document-viewer/document-viewer-panel';

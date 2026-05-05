@@ -18,6 +18,7 @@ vi.mock('ai', () => ({
 vi.mock('@typhoon/ai', () => ({
   createEmbeddingModel: () => 'mock-embedding-model',
   createRerankerModel: () => 'mock-reranker-model',
+  EMBEDDING_MAX_CHARS: 50_000,
 }));
 
 vi.mock('@typhoon/db/drivers/pg', () => {
@@ -208,6 +209,18 @@ describe('POST /v1/search', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ topK: 5 }),
+    });
+
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.error).toBe('Invalid request');
+  });
+
+  it('rejects query exceeding embedding char limit', async () => {
+    const res = await app.request('/v1/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: 'x'.repeat(50_001) }),
     });
 
     expect(res.status).toBe(400);
@@ -540,6 +553,18 @@ describe('POST /v1/search/hybrid', () => {
     });
 
     expect(res.status).toBe(400);
+  });
+
+  it('rejects query exceeding embedding char limit', async () => {
+    const res = await app.request('/v1/search/hybrid', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: 'x'.repeat(50_001) }),
+    });
+
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.error).toBe('Invalid request');
   });
 
   it('rejects topK below 1', async () => {

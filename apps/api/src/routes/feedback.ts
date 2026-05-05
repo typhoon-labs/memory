@@ -73,7 +73,7 @@ export const feedbackRoutes = [
     },
   }),
 
-  // List feedback — optionally filtered by threadId (external) for the current user
+  // List feedback — all entries (admin) or filtered by threadId (external) for the current user
   registerApiRoute('/v1/feedback', {
     method: 'GET',
     middleware: [requireAuth],

@@ -220,7 +220,7 @@ describe('Experiment Routes', () => {
   describe('GET /v1/admin/experiments/:id/results', () => {
     it('returns experiment results', async () => {
       mockExperimentsStorage.listExperimentResults.mockResolvedValueOnce({
-        results: [{ id: 'r-1', item_id: 'item-1', output: { responseText: 'test' } }],
+        results: [{ id: 'r-1', itemId: 'item-1', output: { responseText: 'test' } }],
         total: 1,
         page: 0,
         perPage: 100,
@@ -237,16 +237,16 @@ describe('Experiment Routes', () => {
   describe('GET /v1/admin/experiments/compare', () => {
     it('compares two experiments on the same dataset', async () => {
       mockExperimentsStorage.getExperimentById
-        .mockResolvedValueOnce({ id: 'exp-1', dataset_id: 'ds-1', status: 'completed' })
-        .mockResolvedValueOnce({ id: 'exp-2', dataset_id: 'ds-1', status: 'completed' });
+        .mockResolvedValueOnce({ id: 'exp-1', datasetId: 'ds-1', status: 'completed' })
+        .mockResolvedValueOnce({ id: 'exp-2', datasetId: 'ds-1', status: 'completed' });
 
       mockExperimentsStorage.listExperimentResults
         .mockResolvedValueOnce({
-          results: [{ item_id: 'item-1', input: { question: 'Q' }, output: { scores: [{ score: 0.8 }] } }],
+          results: [{ itemId: 'item-1', input: { question: 'Q' }, output: { scores: [{ score: 0.8 }] } }],
           total: 1,
         })
         .mockResolvedValueOnce({
-          results: [{ item_id: 'item-1', input: { question: 'Q' }, output: { scores: [{ score: 0.9 }] } }],
+          results: [{ itemId: 'item-1', input: { question: 'Q' }, output: { scores: [{ score: 0.9 }] } }],
           total: 1,
         });
 
@@ -268,8 +268,8 @@ describe('Experiment Routes', () => {
 
     it('rejects experiments from different datasets', async () => {
       mockExperimentsStorage.getExperimentById
-        .mockResolvedValueOnce({ id: 'exp-1', dataset_id: 'ds-1' })
-        .mockResolvedValueOnce({ id: 'exp-2', dataset_id: 'ds-2' });
+        .mockResolvedValueOnce({ id: 'exp-1', datasetId: 'ds-1' })
+        .mockResolvedValueOnce({ id: 'exp-2', datasetId: 'ds-2' });
 
       const res = await app.request('/v1/admin/experiments/compare?a=exp-1&b=exp-2');
       expect(res.status).toBe(400);

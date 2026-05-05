@@ -1,5 +1,6 @@
 import { createCodePlugin } from '@streamdown/code';
-import { InlineCitationChip } from '@typhoon/ui';
+import { ExternalLinkDialog, InlineCitationChip, markdownComponents } from '@typhoon/ui';
+import { ExternalLinkIcon } from 'lucide-react';
 import { type Components, Streamdown } from 'streamdown';
 import 'streamdown/styles.css';
 import { useCitations } from './citation-context';
@@ -8,8 +9,11 @@ const code = createCodePlugin({
   themes: ['github-light', 'github-dark'],
 });
 
-const components: Components = {
-  // Headings
+// Chat-specific overrides: larger headings, full-size body text, font-medium links
+const chatComponents: Components = {
+  ...(markdownComponents as unknown as Components),
+
+  // Chat uses larger heading sizes than the document viewer
   h1: ({ children, ...props }) => (
     <h1 className="mt-6 mb-2 text-2xl font-semibold leading-tight first:mt-0" {...props}>
       {children}
@@ -31,39 +35,11 @@ const components: Components = {
     </h4>
   ),
 
-  // Text
+  // Chat uses full-size body text (no text-[13px])
   p: ({ children, ...props }) => (
     <p className="my-2 first:mt-0 last:mb-0" {...props}>
       {children}
     </p>
-  ),
-  strong: ({ children, ...props }) => (
-    <strong className="font-semibold" {...props}>
-      {children}
-    </strong>
-  ),
-  a: ({ children, href, ...props }) => (
-    <a
-      href={href}
-      className="font-medium text-primary underline underline-offset-2 hover:opacity-80"
-      target="_blank"
-      rel="noopener noreferrer"
-      {...props}
-    >
-      {children}
-    </a>
-  ),
-
-  // Lists
-  ul: ({ children, ...props }) => (
-    <ul className="my-2 list-inside list-disc space-y-0.5 [&_ul]:my-1 [&_ul]:list-[circle]" {...props}>
-      {children}
-    </ul>
-  ),
-  ol: ({ children, ...props }) => (
-    <ol className="my-2 list-inside list-decimal space-y-0.5 [&_ol]:my-1" {...props}>
-      {children}
-    </ol>
   ),
   li: ({ children, ...props }) => (
     <li className="pl-4 [&>p]:inline" {...props}>
@@ -71,12 +47,36 @@ const components: Components = {
     </li>
   ),
 
-  // Code
+  // Chat links have font-medium
+  a: ({ children, href }) => {
+    if (href?.startsWith('#')) {
+      return (
+        <a href={href} className="font-medium text-primary underline underline-offset-2 hover:opacity-80">
+          {children}
+        </a>
+      );
+    }
+    return (
+      <ExternalLinkDialog href={href ?? '#'}>
+        <button
+          type="button"
+          className="inline cursor-pointer font-medium text-primary underline underline-offset-2 hover:opacity-80"
+        >
+          {children}
+          <ExternalLinkIcon className="ml-0.5 mb-0.5 inline size-3 opacity-60" />
+        </button>
+      </ExternalLinkDialog>
+    );
+  },
+
+  // Streamdown-only: inline code is a separate key from code blocks
   inlineCode: ({ children, ...props }) => (
     <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[0.8125em]" {...props}>
       {children}
     </code>
   ),
+
+  // Chat pre uses slightly different spacing
   pre: ({ children, ...props }) => (
     <pre
       className="my-4 overflow-x-auto rounded-xl border border-border bg-card p-4 font-mono text-[0.8125rem] leading-relaxed"
@@ -86,7 +86,7 @@ const components: Components = {
     </pre>
   ),
 
-  // Blockquote
+  // Chat blockquote without text-[13px]
   blockquote: ({ children, ...props }) => (
     <blockquote
       className="my-3 rounded-r border-l-[3px] border-border bg-muted px-4 py-2 italic text-muted-foreground"
@@ -96,19 +96,7 @@ const components: Components = {
     </blockquote>
   ),
 
-  // Tables
-  table: ({ children, ...props }) => (
-    <div className="my-4 overflow-x-auto rounded-lg border border-border">
-      <table className="w-full border-collapse" {...props}>
-        {children}
-      </table>
-    </div>
-  ),
-  thead: ({ children, ...props }) => (
-    <thead className="bg-muted" {...props}>
-      {children}
-    </thead>
-  ),
+  // Chat table cells without border-r
   th: ({ children, ...props }) => (
     <th className="whitespace-nowrap px-4 py-2 text-left text-[0.8125rem] font-semibold" {...props}>
       {children}
@@ -119,9 +107,6 @@ const components: Components = {
       {children}
     </td>
   ),
-
-  // Horizontal rule
-  hr: ({ ...props }) => <hr className="my-6 border-t border-border" {...props} />,
 };
 
 /**
@@ -132,7 +117,7 @@ const components: Components = {
  * 1. CitationContext (populated from tool outputs when available)
  * 2. The `title` attribute on the `<cite>` tag itself (always available)
  *
- * In a supervisor→knowledge-agent architecture, the RAG search results
+ * In a supervisor->knowledge-agent architecture, the RAG search results
  * live in the sub-agent's context and aren't exposed at the message level.
  * The `title` attribute is the reliable fallback in that case.
  */
@@ -161,7 +146,7 @@ function CiteElement({
 }
 
 const allComponents: Components = {
-  ...components,
+  ...chatComponents,
   cite: CiteElement as Components['cite'],
 };
 

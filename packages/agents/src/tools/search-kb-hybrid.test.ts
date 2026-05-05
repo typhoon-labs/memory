@@ -32,6 +32,7 @@ vi.mock('@mastra/rag', () => ({
 vi.mock('@typhoon/ai', () => ({
   createEmbeddingModel: mockCreateEmbeddingModel,
   createRerankerModel: mockCreateRerankerModel,
+  EMBEDDING_MAX_CHARS: 50_000,
 }));
 
 vi.mock('@typhoon/db/drivers/pg', () => ({
@@ -94,6 +95,13 @@ describe('searchKnowledgeBaseHybrid', () => {
   it('has correct id and description', () => {
     expect(searchKnowledgeBaseHybrid.id).toBe('search_knowledge_base_hybrid');
     expect(searchKnowledgeBaseHybrid.description).toContain('keyword matching and semantic similarity');
+  });
+
+  it('rejects queryText exceeding embedding char limit', () => {
+    // biome-ignore lint/suspicious/noExplicitAny: mock returns raw config, Zod schema has safeParse at runtime
+    const schema = searchKnowledgeBaseHybrid.inputSchema as any;
+    const result = schema.safeParse({ queryText: 'x'.repeat(50_001), topK: 5 });
+    expect(result.success).toBe(false);
   });
 
   it('throws when mastra context is missing', async () => {

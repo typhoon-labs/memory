@@ -1,7 +1,7 @@
 import type { MastraLanguageModel } from '@mastra/core/agent';
 import { createTool } from '@mastra/core/tools';
 import { rerank } from '@mastra/rag';
-import { createEmbeddingModel, createRerankerModel } from '@typhoon/ai';
+import { createEmbeddingModel, createRerankerModel, EMBEDDING_MAX_CHARS } from '@typhoon/ai';
 import { refineResults } from '@typhoon/db/drivers/pg';
 import { embed } from 'ai';
 import { z } from 'zod';
@@ -15,7 +15,7 @@ export const searchKnowledgeBaseHybrid = createTool({
   description:
     'Search the knowledge base for relevant document chunks using keyword matching and semantic similarity with reranking. Use this tool to find answers to customer questions from ingested source documents.',
   inputSchema: z.object({
-    queryText: z.string().describe('The search query text'),
+    queryText: z.string().max(EMBEDDING_MAX_CHARS).describe('The search query text'),
     topK: z.number().int().min(1).max(50).default(15).describe('Number of results to return'),
   }),
   execute: async ({ queryText, topK }, context) => {

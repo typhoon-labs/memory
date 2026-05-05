@@ -272,6 +272,7 @@ export function ExperimentsPage() {
               data={data?.experiments ?? []}
               columns={columns}
               enableSorting
+              enableFiltering
               getRowId={(row) => row.id}
               onRowClick={(row) => navigate({ to: '/experiments/$experimentId', params: { experimentId: row.id } })}
               showRowCount

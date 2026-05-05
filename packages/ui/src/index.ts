@@ -8,7 +8,7 @@ export type { AppShellProps, NavGroup, NavItem } from './components/AppShell';
 export { AppShell } from './components/AppShell';
 // === Custom Compound Components ===
 export { AccessDenied } from './components/access-denied';
-export { CsvTableViewer } from './components/CsvTableViewer';
+export { CsvTableViewer, normalizeRows, parseCsv, parseCsvRow } from './components/CsvTableViewer';
 export type { DataTableProps } from './components/DataTable';
 export { DataTable } from './components/DataTable';
 export type { DocumentContentViewerProps } from './components/DocumentContentViewer';
@@ -31,6 +31,8 @@ export {
 } from './components/Form';
 export type { LoadingSpinnerProps, LoadingSpinnerSize } from './components/LoadingSpinner';
 export { LoadingSpinner } from './components/LoadingSpinner';
+export type { MarkdownContentProps } from './components/markdown-components';
+export { MarkdownContent, markdownComponents } from './components/markdown-components';
 export type { PageHeaderProps } from './components/PageHeader';
 export { PageHeader } from './components/PageHeader';
 export type { SectionLabelProps } from './components/SectionLabel';

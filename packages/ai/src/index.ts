@@ -1,19 +1,16 @@
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 
 /** Default chat model ID (Anthropic on Bedrock). */
-const DEFAULT_CHAT_MODEL = 'anthropic.claude-sonnet-4-6-v1:0';
+const DEFAULT_CHAT_MODEL = 'anthropic.claude-sonnet-4-6';
 
 /** Default embedding model ID (Titan V2 on Bedrock). */
 const DEFAULT_EMBEDDING_MODEL = 'amazon.titan-embed-text-v2:0';
 
-/** Titan V2 maximum input tokens per chunk. */
-export const EMBEDDING_MAX_TOKENS = 8_192;
+/** Maximum input tokens accepted by the embedding model. Default: 8,192 (Titan V2). */
+export const EMBEDDING_MAX_TOKENS = Number(process.env.EMBEDDING_MAX_TOKENS ?? 8_192);
 
-/** Titan V2 maximum input characters per chunk. */
-export const EMBEDDING_MAX_CHARS = 50_000;
-
-/** Titan V2 supported output dimension values. */
-export const EMBEDDING_SUPPORTED_DIMENSIONS = [256, 512, 1024] as const;
+/** Maximum input characters accepted by the embedding model. Default: 50,000 (Titan V2). */
+export const EMBEDDING_MAX_CHARS = Number(process.env.EMBEDDING_MAX_CHARS ?? 50_000);
 
 /**
  * Creates a chat model via the configured OpenAI-compatible LLM gateway.
@@ -110,12 +107,5 @@ export function createScoringModel(modelId?: string) {
   return createChatModel(modelId ?? process.env.LLM_SCORING_MODEL);
 }
 
-/** Embedding vector dimension from environment (default: 1024 for Titan V2). */
+/** Embedding vector dimension from environment. Default: 1024. */
 export const EMBEDDING_DIMENSION = Number(process.env.EMBEDDING_DIMENSION ?? 1024);
-
-/**
- * Maximum characters per chunk before embedding. Configurable per model:
- * - Titan V2: 24,000 (conservative for 8,192 token / 50K char limit)
- * - Nomic: 32,000 (8,192 token context, generous char-to-token ratio)
- */
-export const EMBEDDING_MAX_CHUNK_CHARS = Number(process.env.EMBEDDING_MAX_CHUNK_CHARS ?? 24_000);

@@ -27,7 +27,7 @@ import {
   TabsTrigger,
 } from '@typhoon/ui';
 import { RefreshCwIcon, RotateCwIcon, Trash2Icon } from 'lucide-react';
-import { useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import type { Document } from './shared';
 import { DOC_STATUS_MAP, formatBytes } from './shared';
 
@@ -237,6 +237,31 @@ function DetailsTab({ document, hasError, onClose }: { document: Document; hasEr
 }
 
 function ContentTab({ documentId, mimeType }: { documentId: string; mimeType: string | null }) {
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  const handleAnchorClick = useCallback((id: string) => {
+    const target = contentRef.current?.querySelector(`[id="${CSS.escape(id)}"]`);
+    if (!target) return;
+    // Find the nearest actually-scrollable ancestor (scrollHeight > clientHeight)
+    let scrollable: HTMLElement | null = target.parentElement as HTMLElement | null;
+    while (scrollable) {
+      if (scrollable.scrollHeight > scrollable.clientHeight && getComputedStyle(scrollable).overflowY !== 'visible') {
+        break;
+      }
+      scrollable = scrollable.parentElement as HTMLElement | null;
+    }
+    if (scrollable) {
+      const elRect = target.getBoundingClientRect();
+      const vpRect = scrollable.getBoundingClientRect();
+      scrollable.scrollTo({
+        top: scrollable.scrollTop + (elRect.top - vpRect.top) - 80,
+        behavior: 'smooth',
+      });
+    } else {
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, []);
+
   const { data, isLoading } = useQuery<DocumentContentResponse>({
     queryKey: ['document-content', documentId],
     queryFn: () => apiFetch(`/api/v1/documents/${documentId}/chunks`),
@@ -272,8 +297,8 @@ function ContentTab({ documentId, mimeType }: { documentId: string; mimeType: st
 
   return (
     <ScrollArea className="max-h-[60vh]">
-      <div className="text-sm leading-relaxed">
-        <DocumentContentViewer text={fullText} mimeType={mimeType} />
+      <div ref={contentRef} className="text-sm leading-relaxed">
+        <DocumentContentViewer text={fullText} mimeType={mimeType} onAnchorClick={handleAnchorClick} />
       </div>
     </ScrollArea>
   );

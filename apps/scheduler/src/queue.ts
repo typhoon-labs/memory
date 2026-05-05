@@ -1,19 +1,16 @@
-import { createSyncQueue } from '@typhoon/ingestion';
+import { createQueueRegistry } from '@typhoon/queue';
 import type { Queue } from 'bullmq';
 
-let _syncQueue: Queue | undefined;
+const registry = createQueueRegistry();
 
 export function initSyncQueue(redisUrl: string): Queue {
-  if (_syncQueue) return _syncQueue;
-  _syncQueue = createSyncQueue({ url: redisUrl });
-  return _syncQueue;
+  return registry.init('sync', redisUrl);
 }
 
 export function getSyncQueue(): Queue {
-  if (!_syncQueue) throw new Error('Sync queue not initialized');
-  return _syncQueue;
+  return registry.get('sync');
 }
 
 export async function shutdownQueues(): Promise<void> {
-  if (_syncQueue) await _syncQueue.close();
+  await registry.shutdown();
 }

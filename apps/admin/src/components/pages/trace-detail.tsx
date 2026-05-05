@@ -89,24 +89,22 @@ export function TraceDetailPage() {
                     Traces
                   </a>
                   <ChevronRightIcon className="size-3.5 text-muted-foreground/50" />
-                  {data.summary.rootSpanName}
+                  {traceId}
+                  <StatusBadge variant={STATUS_VARIANT[data.summary.status] ?? 'pending'}>
+                    {data.summary.status}
+                  </StatusBadge>
                 </span>
               }
               description={`${data.summary.spanCount} spans · ${formatAbsoluteTime(data.summary.startedAt)}`}
               actions={
-                <div className="flex items-center gap-2">
-                  <StatusBadge variant={STATUS_VARIANT[data.summary.status] ?? 'pending'}>
-                    {data.summary.status}
-                  </StatusBadge>
-                  {data.summary.threadId && (
-                    <Button variant="outline" size="sm" asChild>
-                      <a href={`/reviews/${data.summary.threadId}`}>
-                        <ClipboardCheckIcon className="mr-1.5 size-3.5" />
-                        View Review
-                      </a>
-                    </Button>
-                  )}
-                </div>
+                data.summary.threadId ? (
+                  <Button variant="outline" size="sm" asChild>
+                    <a href={`/reviews/${data.summary.threadId}`}>
+                      <ClipboardCheckIcon className="mr-1.5 size-3.5" />
+                      View Review
+                    </a>
+                  </Button>
+                ) : undefined
               }
             />
 

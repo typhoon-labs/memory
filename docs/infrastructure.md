@@ -30,10 +30,11 @@ All services require a profile. Use `--profile <name>` to select which services 
 
 | Profile | Services |
 |---------|----------|
-| `all` | Everything (infra + app) |
+| `all` | Everything (infra + app + observability) |
 | `infra` | postgres, redis, minio, minio-init, bifrost, dex |
 | `app` | migrate, api, worker, scheduler, desk, admin, widget |
 | `migrate` | migrate only |
+| `observability` | otel-lgtm only |
 
 `scripts/docker.sh` always uses `--profile all`.
 
@@ -46,7 +47,7 @@ All services require a profile. Use `--profile <name>` to select which services 
 | `minio` | `minio/minio:latest` | 9000 (API), 9001 (console) | infra | S3-compatible object storage |
 | `minio-init` | `minio/mc:latest` | — | infra | Creates the `typhoon-documents` bucket on startup |
 | `bifrost` | `maximhq/bifrost:v1.4.7` | 8787 | infra | LLM gateway proxy (Anthropic, OpenAI, Bedrock) |
-| `dex` | `dexidp/dex:v2.41.1` | 5556 | infra | OIDC provider for local SSO testing |
+| `dex` | `dexidp/dex:v2.45.1` | 5556 | infra | OIDC provider for local SSO testing |
 | `migrate` | (local build) | — | app | Database migrations (one-shot) |
 | `worker` | (local build) | 5170 (health) | app | BullMQ job consumer (ingestion) |
 | `scheduler` | (local build) | 5171 (health) | app | Cron scheduler (enqueues sync scans) |
@@ -94,7 +95,7 @@ Bifrost starts automatically with the `infra` or `all` profile (i.e. `./scripts/
 
 Dex provides local OIDC authentication for testing SSO flows before connecting to production providers like Okta.
 
-**Static user:** `admin@typhoon.local` / `password`
+**Static users:** `admin@typhoon.local` / `password` (admin), `rep@typhoon.local` / `password` (rep)
 
 Dex starts automatically with the `infra` or `all` profile (i.e. `./scripts/docker.sh up -d`).
 
@@ -149,7 +150,7 @@ Access Grafana at `http://localhost:3000` (admin/admin). Dashboards are organize
 | Dashboard | What it shows |
 |-----------|---------------|
 | API Server | HTTP request rate/duration/errors by route, active requests, conversations, agent traces |
-| Worker (BullMQ) | Job processing duration and call rate (from spanmetrics), traces, logs |
+| Worker (BullMQ) | Queue depth, job completed/failed/stalled rates, job duration p50/p95/p99, pipeline stage duration p95, embedding chunk size distribution, embed retries, token usage, processFile span duration, traces, logs |
 | LLM Operations | LLM call rate/duration by model (from spanmetrics), agent invocations, conversations |
 
 **Infrastructure**

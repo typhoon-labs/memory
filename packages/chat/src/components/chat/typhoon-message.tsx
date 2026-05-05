@@ -148,7 +148,7 @@ export function TyphoonMessage({ message, isStreaming }: { message: ChatMessage;
 
         {/* Content: iterate parts in order. The ProgressTracker (TaskProgress)
             renders once at the position of the first visible tool part and
-            absorbs every other tool part in the message — keeps narration
+            absorbs all remaining tool parts in the message — keeps narration
             text bubbles interleaved with one consolidated activity card. */}
         <MessageContent>
           <CitationProvider citations={citationsMap} onDocumentOpen={config.onDocumentOpen}>
@@ -347,6 +347,7 @@ function FeedbackButtons({
   // Thumbs up is inactive while the comment form is open so the two buttons are never both highlighted.
   const thumbsUpActive = currentRating === 'positive' && !commentFormOpen;
   const thumbsDownActive = currentRating === 'negative' || commentFormOpen;
+  const readOnly = config.feedbackReadOnly;
 
   return (
     <>
@@ -354,8 +355,16 @@ function FeedbackButtons({
         label="Thumbs up"
         active={thumbsUpActive}
         activeClassName="text-emerald-400"
-        onClick={handleThumbsUp}
-        className={thumbsUpActive ? 'text-emerald-400 hover:text-emerald-300' : 'hover:text-emerald-400'}
+        onClick={readOnly ? undefined : handleThumbsUp}
+        className={
+          readOnly
+            ? thumbsUpActive
+              ? 'text-emerald-400 cursor-default hover:text-emerald-400'
+              : 'opacity-30 cursor-default hover:text-muted-foreground/50'
+            : thumbsUpActive
+              ? 'text-emerald-400 hover:text-emerald-300'
+              : 'hover:text-emerald-400'
+        }
       >
         <ThumbsUpIcon className="size-3.5" />
       </MessageAction>
@@ -364,8 +373,16 @@ function FeedbackButtons({
           label="Thumbs down"
           active={thumbsDownActive}
           activeClassName="text-red-400"
-          onClick={handleThumbsDown}
-          className={thumbsDownActive ? 'text-red-400 hover:text-red-300' : 'hover:text-red-400'}
+          onClick={readOnly ? undefined : handleThumbsDown}
+          className={
+            readOnly
+              ? thumbsDownActive
+                ? 'text-red-400 cursor-default hover:text-red-400'
+                : 'opacity-30 cursor-default hover:text-muted-foreground/50'
+              : thumbsDownActive
+                ? 'text-red-400 hover:text-red-300'
+                : 'hover:text-red-400'
+          }
         >
           <ThumbsDownIcon className="size-3.5" />
         </MessageAction>

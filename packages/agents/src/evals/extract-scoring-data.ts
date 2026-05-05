@@ -75,8 +75,8 @@ function extractChunkSources(content: { parts?: unknown[] }): ChunkSource[] {
     if (typeof p.type !== 'string' || !p.type.startsWith('tool-')) continue;
 
     // Two storage formats:
-    // v6 Mastra: { type: 'tool-invocation', toolInvocation: { state: 'result', result: { _chunkSources } } }
-    // hydrate-chunks style: { type: 'tool-*', state: 'output-available', output: { _chunkSources } }
+    // Mastra v4: { type: 'tool-invocation', toolInvocation: { state: 'result', result: { _chunkSources } } }
+    // Normalized (AI SDK v6): { type: 'tool-*', state: 'output-available', output: { _chunkSources } }
     let output: Record<string, unknown> | undefined;
     const toolInvocation = p.toolInvocation as Record<string, unknown> | undefined;
     if (toolInvocation?.state === 'result') {

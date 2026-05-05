@@ -17,6 +17,7 @@ import {
   Label,
   LoadingSpinner,
   PageHeader,
+  parseCsv,
   SectionLabel,
   Sheet,
   SheetContent,
@@ -274,8 +275,23 @@ export function DatasetDetailPage() {
     setIsImporting(true);
     try {
       const text = await file.text();
-      const parsed = JSON.parse(text);
-      const importItems = Array.isArray(parsed) ? parsed : parsed.items;
+      const rows = parseCsv(text);
+      if (rows.length < 2) return; // Need at least header + 1 data row
+
+      const header = rows[0].map((h) => h.trim().toLowerCase());
+      const questionIdx = header.indexOf('question');
+      const answerIdx = header.indexOf('answer');
+      const qIdx = questionIdx >= 0 ? questionIdx : 0;
+      const aIdx = answerIdx >= 0 ? answerIdx : header.length > 1 ? 1 : -1;
+
+      const importItems = rows
+        .slice(1)
+        .map((row) => ({
+          input: { question: row[qIdx]?.trim() ?? '' },
+          groundTruth: aIdx >= 0 ? { answer: row[aIdx]?.trim() ?? '' } : null,
+        }))
+        .filter((item) => item.input.question !== '');
+
       await apiFetch(`/api/v1/admin/datasets/${datasetId}/items`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -291,13 +307,31 @@ export function DatasetDetailPage() {
     }
   }
 
+  function escapeCsvField(value: string): string {
+    if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+      return `"${value.replace(/"/g, '""')}"`;
+    }
+    return value;
+  }
+
   async function handleExport() {
     const data: DatasetItemsResponse = await apiFetch(`/api/v1/admin/datasets/${datasetId}/items`);
-    const blob = new Blob([JSON.stringify(data.items, null, 2)], { type: 'application/json' });
+    const header = 'question,answer';
+    const csvRows = data.items.map((item) => {
+      const question =
+        typeof item.input?.question === 'string' ? item.input.question : (JSON.stringify(item.input) ?? '');
+      const answer =
+        typeof item.groundTruth?.answer === 'string'
+          ? item.groundTruth.answer
+          : (JSON.stringify(item.groundTruth) ?? '');
+      return `${escapeCsvField(question)},${escapeCsvField(answer)}`;
+    });
+    const csvContent = [header, ...csvRows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${dataset?.name ?? 'dataset'}-items.json`;
+    a.download = `${dataset?.name ?? 'dataset'}-items.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -306,6 +340,10 @@ export function DatasetDetailPage() {
     () => [
       {
         id: 'input',
+        accessorFn: (row) => {
+          const val = row.input?.question ?? row.input;
+          return typeof val === 'string' ? val : JSON.stringify(val);
+        },
         header: 'Input',
         cell: ({ row }) => (
           <div className="max-w-[260px] truncate">
@@ -315,6 +353,10 @@ export function DatasetDetailPage() {
       },
       {
         id: 'groundTruth',
+        accessorFn: (row) => {
+          const val = row.groundTruth?.answer ?? row.groundTruth;
+          return typeof val === 'string' ? val : JSON.stringify(val);
+        },
         header: 'Expected Output',
         cell: ({ row }) => (
           <div className="max-w-[320px] truncate">
@@ -443,7 +485,7 @@ export function DatasetDetailPage() {
                     </DialogContent>
                   </Dialog>
 
-                  <input ref={fileInputRef} type="file" accept=".json" className="hidden" onChange={handleImport} />
+                  <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={handleImport} />
                   <Button
                     variant="outline"
                     size="sm"
@@ -451,12 +493,12 @@ export function DatasetDetailPage() {
                     disabled={isImporting}
                   >
                     <UploadIcon className="mr-1.5 size-3.5" />
-                    {isImporting ? 'Importing...' : 'Import JSON'}
+                    {isImporting ? 'Importing...' : 'Import CSV'}
                   </Button>
 
                   <Button variant="outline" size="sm" onClick={handleExport} disabled={items.length === 0}>
                     <DownloadIcon className="mr-1.5 size-3.5" />
-                    Export JSON
+                    Export CSV
                   </Button>
                 </div>
               }
@@ -474,6 +516,7 @@ export function DatasetDetailPage() {
                   data={items}
                   columns={columns}
                   enableSorting
+                  enableFiltering
                   getRowId={(row) => row.id}
                   onRowClick={setViewingItem}
                   showRowCount

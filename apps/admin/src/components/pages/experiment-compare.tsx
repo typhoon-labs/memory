@@ -4,18 +4,35 @@ import type { ColumnDef } from '@typhoon/ui';
 import {
   apiFetch,
   Button,
+  cn,
   DataTable,
   EmptyState,
   LoadingSpinner,
+  MarkdownContent,
   PageHeader,
+  SectionLabel,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-  StatCard,
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
 } from '@typhoon/ui';
-import { ArrowDownIcon, ArrowUpIcon, ChevronRightIcon, GitCompareArrowsIcon } from 'lucide-react';
+import {
+  ArrowDownIcon,
+  ArrowLeftRightIcon,
+  ArrowUpIcon,
+  ChevronRightIcon,
+  GitCompareArrowsIcon,
+  InfoIcon,
+} from 'lucide-react';
 import { useMemo, useState } from 'react';
 
 // ---------- Types ----------
@@ -36,12 +53,27 @@ interface ExperimentListResponse {
   total: number;
 }
 
+interface ScoreEntry {
+  scorerId?: string;
+  name?: string;
+  score: number;
+  reason?: string;
+}
+
+interface ResultDetail {
+  responseText?: string;
+  scores?: ScoreEntry[];
+}
+
 interface ComparisonItem {
   index: number;
   input: unknown;
+  groundTruth: unknown;
   scoreA: number | null;
   scoreB: number | null;
   delta: number | null;
+  resultA: ResultDetail | null;
+  resultB: ResultDetail | null;
 }
 
 interface ComparisonResponse {
@@ -66,6 +98,10 @@ interface CompareApiResponse {
     regressionCount: number;
   };
   items?: Array<Record<string, unknown>>;
+}
+
+interface ScorersResponse {
+  scorers: Array<{ name: string | null; description: string | null }>;
 }
 
 // ---------- Helpers ----------
@@ -98,6 +134,12 @@ function extractResultScore(result: Record<string, unknown> | null): number | nu
   return scores.reduce((sum, s) => sum + s.score, 0) / scores.length;
 }
 
+function scoreDotClass(score: number): string {
+  if (score >= 0.7) return 'bg-emerald-400/60';
+  if (score >= 0.4) return 'bg-amber-400/60';
+  return 'bg-red-400/60';
+}
+
 function DeltaIndicator({ delta }: { delta: number | null }) {
   if (delta === null) return <span className="text-muted-foreground">&mdash;</span>;
   const rounded = Math.round(delta * 100) / 100;
@@ -119,16 +161,298 @@ function DeltaIndicator({ delta }: { delta: number | null }) {
   return <span className="text-sm text-muted-foreground">0.00</span>;
 }
 
-// ---------- Experiment B Selector ----------
+// ---------- Score Breakdown ----------
 
-function ExperimentBSelector({
+function ScoreBreakdown({ scoresA, scoresB }: { scoresA: ScoreEntry[]; scoresB: ScoreEntry[] }) {
+  const allScorerIds = useMemo(
+    () => [
+      ...new Set([
+        ...scoresA.map((s) => s.scorerId ?? s.name ?? 'unknown'),
+        ...scoresB.map((s) => s.scorerId ?? s.name ?? 'unknown'),
+      ]),
+    ],
+    [scoresA, scoresB],
+  );
+
+  const [selectedScorer, setSelectedScorer] = useState<string | undefined>();
+  const effectiveScorer = selectedScorer ?? allScorerIds[0];
+
+  const activeA = scoresA.find((s) => (s.scorerId ?? s.name ?? 'unknown') === effectiveScorer);
+  const activeB = scoresB.find((s) => (s.scorerId ?? s.name ?? 'unknown') === effectiveScorer);
+
+  const { data: scorersData } = useQuery<ScorersResponse>({
+    queryKey: ['admin-scorers'],
+    queryFn: () => apiFetch('/api/v1/admin/scorers'),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const scorerDescriptions = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const s of scorersData?.scorers ?? []) {
+      if (s.name && s.description) map[s.name] = s.description;
+    }
+    return map;
+  }, [scorersData]);
+
+  return (
+    <div>
+      <SectionLabel>Score Breakdown</SectionLabel>
+      <TooltipProvider delayDuration={200}>
+        <div className="mt-2 grid grid-cols-1 gap-4 sm:grid-cols-2 sm:divide-x sm:divide-border">
+          {/* Baseline */}
+          <div className="sm:pr-4">
+            <p className="mb-1 text-xs font-medium text-muted-foreground">Baseline</p>
+            <div className="flex flex-col">
+              {allScorerIds.map((sid) => {
+                const s = scoresA.find((sc) => (sc.scorerId ?? sc.name ?? 'unknown') === sid);
+                return (
+                  <button
+                    key={sid}
+                    type="button"
+                    onClick={() => setSelectedScorer(sid)}
+                    className={cn(
+                      'flex w-full items-center justify-between gap-2 rounded px-1.5 py-1.5 text-xs transition-colors',
+                      effectiveScorer === sid ? 'bg-muted/50' : 'hover:bg-muted/30',
+                    )}
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <span className={cn('size-2 shrink-0 rounded-full', s ? scoreDotClass(s.score) : 'bg-muted')} />
+                      <span className={cn(effectiveScorer === sid && 'font-semibold')}>{sid}</span>
+                      {scorerDescriptions[sid] && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <InfoIcon className="size-3 text-muted-foreground/60 hover:text-muted-foreground" />
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-xs text-xs">{scorerDescriptions[sid]}</TooltipContent>
+                        </Tooltip>
+                      )}
+                    </span>
+                    <span className={cn('tabular-nums', effectiveScorer === sid && 'font-semibold')}>
+                      {s ? s.score.toFixed(2) : '\u2014'}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Candidate */}
+          <div className="sm:pl-4">
+            <p className="mb-1 text-xs font-medium text-muted-foreground">Candidate</p>
+            <div className="flex flex-col">
+              {allScorerIds.map((sid) => {
+                const s = scoresB.find((sc) => (sc.scorerId ?? sc.name ?? 'unknown') === sid);
+                return (
+                  <button
+                    key={sid}
+                    type="button"
+                    onClick={() => setSelectedScorer(sid)}
+                    className={cn(
+                      'flex w-full items-center justify-between gap-2 rounded px-1.5 py-1.5 text-xs transition-colors',
+                      effectiveScorer === sid ? 'bg-muted/50' : 'hover:bg-muted/30',
+                    )}
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <span className={cn('size-2 shrink-0 rounded-full', s ? scoreDotClass(s.score) : 'bg-muted')} />
+                      <span className={cn(effectiveScorer === sid && 'font-semibold')}>{sid}</span>
+                      {scorerDescriptions[sid] && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <InfoIcon className="size-3 text-muted-foreground/60 hover:text-muted-foreground" />
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-xs text-xs">{scorerDescriptions[sid]}</TooltipContent>
+                        </Tooltip>
+                      )}
+                    </span>
+                    <span className={cn('tabular-nums', effectiveScorer === sid && 'font-semibold')}>
+                      {s ? s.score.toFixed(2) : '\u2014'}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </TooltipProvider>
+
+      {/* Selected scorer reason */}
+      {activeA?.reason || activeB?.reason ? (
+        <>
+          <hr className="my-3 border-border" />
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:divide-x sm:divide-border">
+            <div className="text-sm leading-relaxed sm:pr-4">
+              {activeA?.reason ? (
+                <MarkdownContent text={activeA.reason} />
+              ) : (
+                <p className="text-muted-foreground">No reasoning provided.</p>
+              )}
+            </div>
+            <div className="text-sm leading-relaxed sm:pl-4">
+              {activeB?.reason ? (
+                <MarkdownContent text={activeB.reason} />
+              ) : (
+                <p className="text-muted-foreground">No reasoning provided.</p>
+              )}
+            </div>
+          </div>
+        </>
+      ) : (
+        effectiveScorer && (
+          <>
+            <hr className="my-3 border-border" />
+            <p className="text-sm text-muted-foreground">No reasoning provided for this scorer.</p>
+          </>
+        )
+      )}
+    </div>
+  );
+}
+
+// ---------- Comparison Detail Sheet ----------
+
+function ComparisonDetailSheet({
+  item,
+  open,
+  onOpenChange,
+}: {
+  item: ComparisonItem | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  if (!item) return null;
+
+  const inputText = (() => {
+    if (item.input == null) return '\u2014';
+    if (typeof item.input === 'string') return item.input;
+    if (typeof item.input === 'object') {
+      const obj = item.input as Record<string, unknown>;
+      for (const key of ['question', 'text', 'content', 'input', 'prompt']) {
+        if (typeof obj[key] === 'string') return obj[key] as string;
+      }
+      return JSON.stringify(item.input, null, 2);
+    }
+    return String(item.input);
+  })();
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent resizable defaultWidth={900} className="overflow-y-auto">
+        <SheetHeader>
+          <SheetTitle className="text-base">Comparison Detail</SheetTitle>
+        </SheetHeader>
+
+        <div className="space-y-5 px-4 pb-4">
+          {/* Input */}
+          <div>
+            <SectionLabel>Input</SectionLabel>
+            <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed">{inputText}</p>
+          </div>
+
+          {/* Ground truth */}
+          {item.groundTruth != null && (
+            <div>
+              <SectionLabel>Expected</SectionLabel>
+              <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed">{truncateValue(item.groundTruth, 500)}</p>
+            </div>
+          )}
+
+          {/* Scores */}
+          <div>
+            <SectionLabel>Scores</SectionLabel>
+            <div className="mt-2 grid grid-cols-3 gap-3">
+              <div className="rounded-lg border border-border bg-card px-4 py-3">
+                <p className="text-xs font-medium text-muted-foreground">Baseline</p>
+                <div className="mt-1.5 flex items-center gap-2">
+                  {item.scoreA != null && (
+                    <span className={`size-2 shrink-0 rounded-full ${scoreDotClass(item.scoreA)}`} />
+                  )}
+                  <span className="text-xl font-semibold leading-none tabular-nums">
+                    {item.scoreA?.toFixed(2) ?? '\u2014'}
+                  </span>
+                </div>
+              </div>
+              <div className="rounded-lg border border-border bg-card px-4 py-3">
+                <p className="text-xs font-medium text-muted-foreground">Delta</p>
+                <div className="mt-1.5">
+                  {item.delta !== null ? (
+                    <span
+                      className={`inline-flex items-center gap-1 text-xl font-semibold leading-none tabular-nums ${item.delta > 0 ? 'text-emerald-500' : item.delta < 0 ? 'text-red-500' : 'text-muted-foreground'}`}
+                    >
+                      {item.delta > 0 && <ArrowUpIcon className="size-4" />}
+                      {item.delta < 0 && <ArrowDownIcon className="size-4" />}
+                      {item.delta >= 0 ? '+' : ''}
+                      {item.delta.toFixed(2)}
+                    </span>
+                  ) : (
+                    <span className="text-xl font-semibold leading-none text-muted-foreground">{'\u2014'}</span>
+                  )}
+                </div>
+              </div>
+              <div className="rounded-lg border border-border bg-card px-4 py-3">
+                <p className="text-xs font-medium text-muted-foreground">Candidate</p>
+                <div className="mt-1.5 flex items-center gap-2">
+                  {item.scoreB != null && (
+                    <span className={`size-2 shrink-0 rounded-full ${scoreDotClass(item.scoreB)}`} />
+                  )}
+                  <span className="text-xl font-semibold leading-none tabular-nums">
+                    {item.scoreB?.toFixed(2) ?? '\u2014'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Responses */}
+          <div>
+            <SectionLabel>Responses</SectionLabel>
+            <div className="mt-2 grid grid-cols-1 gap-4 sm:grid-cols-2 sm:divide-x sm:divide-border">
+              <div className="sm:pr-4">
+                <p className="mb-1 text-xs font-medium text-muted-foreground">Baseline</p>
+                <div className="text-sm leading-relaxed">
+                  {item.resultA?.responseText ? (
+                    <MarkdownContent text={item.resultA.responseText} />
+                  ) : (
+                    <span className="text-muted-foreground">{'\u2014'}</span>
+                  )}
+                </div>
+              </div>
+              <div className="sm:pl-4">
+                <p className="mb-1 text-xs font-medium text-muted-foreground">Candidate</p>
+                <div className="text-sm leading-relaxed">
+                  {item.resultB?.responseText ? (
+                    <MarkdownContent text={item.resultB.responseText} />
+                  ) : (
+                    <span className="text-muted-foreground">{'\u2014'}</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Score breakdown */}
+          {item.resultA?.scores?.length || item.resultB?.scores?.length ? (
+            <ScoreBreakdown scoresA={item.resultA?.scores ?? []} scoresB={item.resultB?.scores ?? []} />
+          ) : null}
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+// ---------- Experiment Selector ----------
+
+function ExperimentSelector({
   datasetId,
   excludeId,
   onSelect,
+  label,
+  placeholder,
 }: {
   datasetId: string;
   excludeId: string;
   onSelect: (id: string) => void;
+  label: string;
+  placeholder: string;
 }) {
   const [selectedId, setSelectedId] = useState('');
 
@@ -165,12 +489,12 @@ function ExperimentBSelector({
 
   return (
     <div className="rounded-lg border border-border bg-card p-5">
-      <h3 className="text-sm font-medium text-muted-foreground">Select an experiment to compare against</h3>
+      <h3 className="text-sm font-medium text-muted-foreground">{label}</h3>
       <div className="mt-3 flex items-end gap-3">
         <div className="flex-1">
           <Select value={selectedId} onValueChange={setSelectedId}>
             <SelectTrigger>
-              <SelectValue placeholder="Select experiment B" />
+              <SelectValue placeholder={placeholder} />
             </SelectTrigger>
             <SelectContent>
               {candidates.map((e) => (
@@ -194,12 +518,16 @@ function ExperimentBSelector({
 export function ExperimentComparePage() {
   const navigate = useNavigate();
   const { a, b } = useSearch({ strict: false }) as { a?: string; b?: string };
+  const [selectedItem, setSelectedItem] = useState<ComparisonItem | null>(null);
 
-  // Fetch experiment A details (to get datasetId for filtering)
-  const { data: experimentA } = useQuery<Experiment>({
-    queryKey: ['admin-experiment', a],
-    queryFn: () => apiFetch(`/api/v1/admin/experiments/${a}`),
-    enabled: !!a,
+  // The known experiment is whichever param is set (used to get datasetId for filtering)
+  const knownId = a || b;
+
+  // Fetch known experiment details (to get datasetId for filtering)
+  const { data: knownExperiment } = useQuery<Experiment>({
+    queryKey: ['admin-experiment', knownId],
+    queryFn: () => apiFetch(`/api/v1/admin/experiments/${knownId}`),
+    enabled: !!knownId,
   });
 
   // Fetch comparison data when both a and b are provided
@@ -223,13 +551,20 @@ export function ExperimentComparePage() {
           name: raw.experimentB?.name ?? null,
           avgScore: raw.aggregate?.avgScoreB ?? null,
         },
-        items: (raw.items ?? []).map((item: Record<string, unknown>, i: number) => ({
-          index: i,
-          input: item.input,
-          scoreA: extractResultScore(item.resultA as Record<string, unknown> | null),
-          scoreB: extractResultScore(item.resultB as Record<string, unknown> | null),
-          delta: (item.scoreDelta as number | null) ?? null,
-        })),
+        items: (raw.items ?? []).map((item: Record<string, unknown>, i: number) => {
+          const rA = item.resultA as Record<string, unknown> | null;
+          const rB = item.resultB as Record<string, unknown> | null;
+          return {
+            index: i,
+            input: item.input,
+            groundTruth: rA?.groundTruth ?? rB?.groundTruth ?? null,
+            scoreA: extractResultScore(rA),
+            scoreB: extractResultScore(rB),
+            delta: (item.scoreDelta as number | null) ?? null,
+            resultA: rA?.output ? (rA.output as ResultDetail) : null,
+            resultB: rB?.output ? (rB.output as ResultDetail) : null,
+          };
+        }),
         summary: {
           improvements: raw.aggregate?.improvementCount ?? 0,
           regressions: raw.aggregate?.regressionCount ?? 0,
@@ -241,8 +576,16 @@ export function ExperimentComparePage() {
     enabled: !!a && !!b,
   });
 
-  function handleSelectB(bId: string) {
-    navigate({ to: '/experiments/compare', search: { a, b: bId }, replace: true });
+  function handleSelectBaseline(baselineId: string) {
+    navigate({ to: '/experiments/compare', search: { a: baselineId, b }, replace: true });
+  }
+
+  function handleSelectCandidate(candidateId: string) {
+    navigate({ to: '/experiments/compare', search: { a, b: candidateId }, replace: true });
+  }
+
+  function handleSwap() {
+    navigate({ to: '/experiments/compare', search: { a: b, b: a }, replace: true });
   }
 
   const columns: ColumnDef<ComparisonItem, unknown>[] = useMemo(
@@ -250,31 +593,73 @@ export function ExperimentComparePage() {
       {
         id: 'input',
         header: 'Input',
+        accessorFn: (row) => truncateValue(row.input, 200),
         cell: ({ row }) => <div className="max-w-[240px] truncate text-sm">{truncateValue(row.original.input)}</div>,
       },
       {
         id: 'scoreA',
-        header: 'Score A',
-        cell: ({ row }) =>
-          row.original.scoreA != null ? (
-            <span className="tabular-nums">{row.original.scoreA.toFixed(2)}</span>
-          ) : (
-            <span className="text-muted-foreground">&mdash;</span>
-          ),
+        header: 'Baseline',
+        accessorFn: (row) => row.scoreA ?? -Infinity,
+        cell: ({ row }) => {
+          const scores = row.original.resultA?.scores;
+          const scoreVal = row.original.scoreA;
+          if (scoreVal == null) return <span className="text-muted-foreground">&mdash;</span>;
+          if (!scores || scores.length <= 1) {
+            return <span className="tabular-nums">{scoreVal.toFixed(2)}</span>;
+          }
+          return (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="tabular-nums cursor-default">{scoreVal.toFixed(2)}</span>
+              </TooltipTrigger>
+              <TooltipContent className="text-xs">
+                <div className="space-y-0.5">
+                  {scores.map((s) => (
+                    <div key={s.scorerId ?? s.name ?? 'unknown'} className="flex items-center justify-between gap-3">
+                      <span>{s.name ?? s.scorerId ?? 'unknown'}</span>
+                      <span className="tabular-nums font-medium">{s.score.toFixed(2)}</span>
+                    </div>
+                  ))}
+                </div>
+              </TooltipContent>
+            </Tooltip>
+          );
+        },
       },
       {
         id: 'scoreB',
-        header: 'Score B',
-        cell: ({ row }) =>
-          row.original.scoreB != null ? (
-            <span className="tabular-nums">{row.original.scoreB.toFixed(2)}</span>
-          ) : (
-            <span className="text-muted-foreground">&mdash;</span>
-          ),
+        header: 'Candidate',
+        accessorFn: (row) => row.scoreB ?? -Infinity,
+        cell: ({ row }) => {
+          const scores = row.original.resultB?.scores;
+          const scoreVal = row.original.scoreB;
+          if (scoreVal == null) return <span className="text-muted-foreground">&mdash;</span>;
+          if (!scores || scores.length <= 1) {
+            return <span className="tabular-nums">{scoreVal.toFixed(2)}</span>;
+          }
+          return (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="tabular-nums cursor-default">{scoreVal.toFixed(2)}</span>
+              </TooltipTrigger>
+              <TooltipContent className="text-xs">
+                <div className="space-y-0.5">
+                  {scores.map((s) => (
+                    <div key={s.scorerId ?? s.name ?? 'unknown'} className="flex items-center justify-between gap-3">
+                      <span>{s.name ?? s.scorerId ?? 'unknown'}</span>
+                      <span className="tabular-nums font-medium">{s.score.toFixed(2)}</span>
+                    </div>
+                  ))}
+                </div>
+              </TooltipContent>
+            </Tooltip>
+          );
+        },
       },
       {
         id: 'delta',
         header: 'Delta',
+        accessorFn: (row) => row.delta ?? -Infinity,
         cell: ({ row }) => <DeltaIndicator delta={row.original.delta} />,
       },
     ],
@@ -310,7 +695,7 @@ export function ExperimentComparePage() {
           description="Side-by-side comparison of experiment results"
         />
 
-        {!a && (
+        {!a && !b && (
           <div className="mt-6">
             <EmptyState
               icon={<GitCompareArrowsIcon className="size-8" />}
@@ -320,10 +705,29 @@ export function ExperimentComparePage() {
           </div>
         )}
 
-        {/* Selector for experiment B when only A is provided */}
-        {a && !b && experimentA && (
+        {/* Selector for baseline (A) when only candidate (B) is provided */}
+        {!a && b && knownExperiment && (
           <div className="mt-6">
-            <ExperimentBSelector datasetId={experimentA.datasetId} excludeId={a} onSelect={handleSelectB} />
+            <ExperimentSelector
+              datasetId={knownExperiment.datasetId}
+              excludeId={b}
+              onSelect={handleSelectBaseline}
+              label="Select a baseline to compare against"
+              placeholder="Select baseline (A)"
+            />
+          </div>
+        )}
+
+        {/* Selector for candidate (B) when only baseline (A) is provided */}
+        {a && !b && knownExperiment && (
+          <div className="mt-6">
+            <ExperimentSelector
+              datasetId={knownExperiment.datasetId}
+              excludeId={a}
+              onSelect={handleSelectCandidate}
+              label="Select a candidate to compare against"
+              placeholder="Select candidate (B)"
+            />
           </div>
         )}
 
@@ -336,17 +740,32 @@ export function ExperimentComparePage() {
 
         {a && b && comparison && (
           <>
+            {/* Swap button */}
+            <div className="mt-6 flex justify-end">
+              <Button variant="outline" size="sm" onClick={handleSwap}>
+                <ArrowLeftRightIcon className="mr-1.5 size-3.5" />
+                Swap A / B
+              </Button>
+            </div>
+
             {/* Aggregate stat cards */}
-            <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <StatCard
-                label={`A: ${comparison.experimentA.name || comparison.experimentA.id.slice(0, 8)}`}
-                value={comparison.experimentA.avgScore != null ? comparison.experimentA.avgScore.toFixed(2) : '\u2014'}
-                description="Average score"
-              />
+            <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <div className="rounded-lg border border-border bg-card px-5 py-4">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Baseline (A)</p>
+                <p className="mt-1 h-5 truncate text-sm font-medium text-foreground">
+                  {comparison.experimentA.name || comparison.experimentA.id.slice(0, 8)}
+                </p>
+                <p className="mt-3 text-xs text-muted-foreground">Avg. score</p>
+                <span className="mt-1 block text-xl font-semibold leading-none tracking-tight text-foreground">
+                  {comparison.experimentA.avgScore != null ? comparison.experimentA.avgScore.toFixed(2) : '\u2014'}
+                </span>
+              </div>
 
               <div className="rounded-lg border border-border bg-card px-5 py-4">
-                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Delta</p>
-                <div className="mt-1.5">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Delta</p>
+                <p className="mt-1 h-5 truncate text-sm font-medium text-foreground">Candidate − Baseline</p>
+                <p className="mt-3 text-xs text-muted-foreground">Score change</p>
+                <span className="mt-1 block">
                   {overallDelta !== null ? (
                     <span
                       className={`inline-flex items-center gap-1 text-xl font-semibold leading-none tracking-tight ${overallDelta > 0 ? 'text-emerald-500' : overallDelta < 0 ? 'text-red-500' : 'text-muted-foreground'}`}
@@ -361,15 +780,19 @@ export function ExperimentComparePage() {
                       {'\u2014'}
                     </span>
                   )}
-                </div>
-                <p className="mt-1 text-xs text-muted-foreground">Score change (B − A)</p>
+                </span>
               </div>
 
-              <StatCard
-                label={`B: ${comparison.experimentB.name || comparison.experimentB.id.slice(0, 8)}`}
-                value={comparison.experimentB.avgScore != null ? comparison.experimentB.avgScore.toFixed(2) : '\u2014'}
-                description="Average score"
-              />
+              <div className="rounded-lg border border-border bg-card px-5 py-4">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Candidate (B)</p>
+                <p className="mt-1 h-5 truncate text-sm font-medium text-foreground">
+                  {comparison.experimentB.name || comparison.experimentB.id.slice(0, 8)}
+                </p>
+                <p className="mt-3 text-xs text-muted-foreground">Avg. score</p>
+                <span className="mt-1 block text-xl font-semibold leading-none tracking-tight text-foreground">
+                  {comparison.experimentB.avgScore != null ? comparison.experimentB.avgScore.toFixed(2) : '\u2014'}
+                </span>
+              </div>
             </div>
 
             {/* Summary line */}
@@ -386,13 +809,17 @@ export function ExperimentComparePage() {
             {/* Per-item comparison table */}
             <div className="mt-6">
               {comparison.items.length > 0 ? (
-                <DataTable
-                  data={comparison.items}
-                  columns={columns}
-                  enableSorting
-                  getRowId={(row) => String(row.index)}
-                  showRowCount
-                />
+                <TooltipProvider delayDuration={200}>
+                  <DataTable
+                    data={comparison.items}
+                    columns={columns}
+                    enableSorting
+                    enableFiltering
+                    getRowId={(row) => String(row.index)}
+                    onRowClick={setSelectedItem}
+                    showRowCount
+                  />
+                </TooltipProvider>
               ) : (
                 <EmptyState
                   icon={<GitCompareArrowsIcon className="size-8" />}
@@ -404,6 +831,12 @@ export function ExperimentComparePage() {
           </>
         )}
       </div>
+
+      <ComparisonDetailSheet
+        item={selectedItem}
+        open={selectedItem !== null}
+        onOpenChange={(open) => !open && setSelectedItem(null)}
+      />
     </div>
   );
 }

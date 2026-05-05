@@ -7,10 +7,15 @@ vi.mock('@typhoon/db', () => ({
     cronSchedule: 'cronSchedule',
     isActive: 'isActive',
   },
+  failedJobs: {
+    id: 'id',
+    createdAt: 'createdAt',
+  },
 }));
 
 vi.mock('drizzle-orm', () => ({
   eq: vi.fn((_col, val) => ({ __eq: val })),
+  lt: vi.fn((_col, val) => ({ __lt: val })),
 }));
 
 // Capture Cron instances so tests can inspect and trigger callbacks
@@ -56,9 +61,15 @@ const { mockDbSelect } = vi.hoisted(() => {
   return { mockDbSelect };
 });
 
+const { mockDbDelete } = vi.hoisted(() => {
+  const mockDbDelete = vi.fn();
+  return { mockDbDelete };
+});
+
 vi.mock('./db', () => ({
   db: {
     select: mockDbSelect,
+    delete: mockDbDelete,
   },
 }));
 
@@ -210,5 +221,58 @@ describe('stopScheduler', () => {
     // Second stop should not call the already-stopped job's stop() again
     stopScheduler();
     expect(cronInstances[0].stop.mock.calls.length).toBe(stopCallCount);
+  });
+});
+
+describe('failed job retention', () => {
+  beforeEach(() => {
+    cronInstances.length = 0;
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    setupDbTargets([]);
+    mockDbDelete.mockReturnValue({
+      where: vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([]),
+      }),
+    });
+  });
+
+  afterEach(() => {
+    stopScheduler();
+    cronInstances.length = 0;
+    vi.useRealTimers();
+  });
+
+  it('sets up retention interval on first refresh', async () => {
+    await refreshScheduler();
+    // The interval is set up internally — stopScheduler clears it
+    // Verify it doesn't throw and can be cleaned up
+    stopScheduler();
+  });
+
+  it('retention callback deletes old failed jobs', async () => {
+    const mockReturning = vi.fn().mockResolvedValue([{ id: 'fj-1' }]);
+    const mockWhere = vi.fn().mockReturnValue({ returning: mockReturning });
+    mockDbDelete.mockReturnValue({ where: mockWhere });
+
+    await refreshScheduler();
+
+    // Advance time by 1 day to trigger the interval
+    await vi.advanceTimersByTimeAsync(24 * 60 * 60 * 1000);
+
+    expect(mockDbDelete).toHaveBeenCalled();
+    expect(mockWhere).toHaveBeenCalled();
+  });
+
+  it('retention callback handles errors gracefully', async () => {
+    const mockWhere = vi.fn().mockReturnValue({
+      returning: vi.fn().mockRejectedValue(new Error('DB error')),
+    });
+    mockDbDelete.mockReturnValue({ where: mockWhere });
+
+    await refreshScheduler();
+
+    // Should not throw
+    await vi.advanceTimersByTimeAsync(24 * 60 * 60 * 1000);
   });
 });

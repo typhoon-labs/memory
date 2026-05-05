@@ -20,7 +20,7 @@ describe('validateEnv', () => {
     expect(result.DATABASE_URL).toBe('postgresql://typhoon:typhoon@localhost:5432/typhoon');
     expect(result.PORT).toBe(5172);
     expect(result.S3_BUCKET).toBe('typhoon-documents');
-    expect(result.LLM_CHAT_MODEL).toBe('anthropic.claude-sonnet-4-6-v1:0');
+    expect(result.LLM_CHAT_MODEL).toBe('anthropic.claude-sonnet-4-6');
   });
 
   it('throws on missing required fields', () => {
@@ -71,16 +71,6 @@ describe('validateEnv', () => {
     expect(result.EMBEDDING_DIMENSION).toBe(768);
   });
 
-  it('applies EMBEDDING_MAX_CHUNK_CHARS default', () => {
-    const result = validateEnv(validEnv);
-    expect(result.EMBEDDING_MAX_CHUNK_CHARS).toBe(24_000);
-  });
-
-  it('accepts custom EMBEDDING_MAX_CHUNK_CHARS', () => {
-    const result = validateEnv({ ...validEnv, EMBEDDING_MAX_CHUNK_CHARS: '32000' });
-    expect(result.EMBEDDING_MAX_CHUNK_CHARS).toBe(32_000);
-  });
-
   it('accepts valid LOG_LEVEL enum values', () => {
     for (const level of ['debug', 'info', 'warn', 'error', 'silent'] as const) {
       const result = validateEnv({ ...validEnv, LOG_LEVEL: level });
@@ -115,7 +105,7 @@ describe('validateEnv', () => {
     const result = validateEnv({
       ...validEnv,
       SCORING_ENABLED: 'false',
-      LLM_SCORING_MODEL: 'anthropic.claude-sonnet-4-6-v1:0',
+      LLM_SCORING_MODEL: 'anthropic.claude-sonnet-4-6',
       LLM_SCORING_MODEL_OPTIONS: 'model-a,model-b,model-c',
       SCORING_SAMPLE_RATE: '0.5',
       SCORING_CONCURRENCY: '3',
@@ -123,7 +113,7 @@ describe('validateEnv', () => {
       SCORE_RETENTION_DAYS: '365',
     });
     expect(result.SCORING_ENABLED).toBe('false');
-    expect(result.LLM_SCORING_MODEL).toBe('anthropic.claude-sonnet-4-6-v1:0');
+    expect(result.LLM_SCORING_MODEL).toBe('anthropic.claude-sonnet-4-6');
     expect(result.LLM_SCORING_MODEL_OPTIONS).toBe('model-a,model-b,model-c');
     expect(result.SCORING_SAMPLE_RATE).toBe(0.5);
     expect(result.SCORING_CONCURRENCY).toBe(3);

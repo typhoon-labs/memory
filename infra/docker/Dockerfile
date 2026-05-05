@@ -25,6 +25,7 @@ COPY packages/config/package.json packages/config/
 COPY packages/db/package.json packages/db/
 COPY packages/ingestion/package.json packages/ingestion/
 COPY packages/logger/package.json packages/logger/
+COPY packages/queue/package.json packages/queue/
 COPY packages/storage/package.json packages/storage/
 COPY packages/telemetry/package.json packages/telemetry/
 COPY packages/types/package.json packages/types/

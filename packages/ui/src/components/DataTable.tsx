@@ -140,17 +140,17 @@ export function DataTable<TData>({
   return (
     <div className={cn('w-full', className)}>
       {(enableFiltering || toolbar) && (
-        <div className="mb-4 flex flex-col gap-3">
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          {toolbar && <div className="flex-1">{toolbar}</div>}
           {enableFiltering && (
             <Input
               type="text"
               placeholder="Filter..."
               value={globalFilter}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setGlobalFilter(e.target.value)}
-              className="h-8 w-[220px] text-sm"
+              className="ml-auto h-8 w-[220px] text-sm"
             />
           )}
-          {toolbar}
         </div>
       )}
 

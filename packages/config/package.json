@@ -8,12 +8,18 @@
     "./tsconfig.base.json": "./tsconfig.base.json",
     "./tsconfig.lib.json": "./tsconfig.lib.json",
     "./tsconfig.app.json": "./tsconfig.app.json",
-    "./biome.json": "./biome.json"
+    "./biome.json": "./biome.json",
+    "./vite": "./vite.shared.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.2.2",
+    "@vitejs/plugin-react": "^6.0.1",
+    "vite": "^8.0.2"
   }
 }

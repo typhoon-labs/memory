@@ -4,7 +4,7 @@ import { useMemo } from 'react';
 // ── CSV parsing ────────────────────────────────────────────────
 
 /** Parse a single CSV row, handling quoted fields with commas and escaped quotes. */
-function parseCsvRow(line: string): string[] {
+export function parseCsvRow(line: string): string[] {
   const fields: string[] = [];
   let current = '';
   let inQuotes = false;
@@ -35,7 +35,7 @@ function parseCsvRow(line: string): string[] {
   return fields;
 }
 
-function parseCsv(text: string): string[][] {
+export function parseCsv(text: string): string[][] {
   return text
     .split('\n')
     .filter((line) => line.trim() !== '')
@@ -43,7 +43,7 @@ function parseCsv(text: string): string[][] {
 }
 
 /** Pad or trim all rows to match the column count of the header row. */
-function normalizeRows(rows: string[][]): string[][] {
+export function normalizeRows(rows: string[][]): string[][] {
   if (rows.length === 0) return rows;
   const colCount = rows[0].length;
   return rows.map((row) => {

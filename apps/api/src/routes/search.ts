@@ -1,6 +1,6 @@
 import { registerApiRoute } from '@mastra/core/server';
 import { rerank } from '@mastra/rag';
-import { createEmbeddingModel, createRerankerModel } from '@typhoon/ai';
+import { createEmbeddingModel, createRerankerModel, EMBEDDING_MAX_CHARS } from '@typhoon/ai';
 import { PgVector, type RerankFn, refineResults } from '@typhoon/db/drivers/pg';
 import { embed } from 'ai';
 import { z } from 'zod';
@@ -18,13 +18,13 @@ const boundReranker: RerankFn = (results, q) =>
   });
 
 const searchSchema = z.object({
-  query: z.string().min(1),
+  query: z.string().min(1).max(EMBEDDING_MAX_CHARS),
   topK: z.number().int().min(1).max(50).optional().default(10),
   minScore: z.number().min(0).max(1).optional().default(0.6),
 });
 
 const hybridSearchSchema = z.object({
-  query: z.string().min(1),
+  query: z.string().min(1).max(EMBEDDING_MAX_CHARS),
   topK: z.number().int().min(1).max(50).optional().default(10),
   minScore: z.number().min(0).max(1).optional(),
   dedup: z.boolean().optional().default(false),

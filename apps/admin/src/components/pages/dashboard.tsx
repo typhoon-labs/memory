@@ -41,6 +41,7 @@ interface DashboardThread {
 
 interface DashboardUser {
   resourceId: string;
+  email: string | null;
   avgScore: number;
   minScore: number;
   scoreCount: number;
@@ -124,9 +125,9 @@ export function AdminDashboard() {
   });
 
   // Analytics queries
-  const scores = useQuery<{ series: ScoreDataPoint[] }>({
-    queryKey: ['dashboard-scores', dateFrom, dateTo],
-    queryFn: () => fetchDashboard('scores', { dateFrom, dateTo }),
+  const scores = useQuery<{ series: ScoreDataPoint[]; buckets: string[] }>({
+    queryKey: ['dashboard-scores', dateFrom, dateTo, range],
+    queryFn: () => fetchDashboard('scores', { dateFrom, dateTo, range }),
   });
 
   const worstThreads = useQuery<{ threads: DashboardThread[] }>({
@@ -139,16 +140,18 @@ export function AdminDashboard() {
     queryFn: () => fetchDashboard('users', { dateFrom, dateTo, limit: '10' }),
   });
 
-  const latency = useQuery<{ series: Array<{ date: string; p50: number; p95: number; p99: number; count: number }> }>({
-    queryKey: ['dashboard-latency', dateFrom, dateTo],
-    queryFn: () => fetchDashboard('latency', { dateFrom, dateTo }),
+  const latency = useQuery<{
+    series: Array<{ date: string; p50: number | null; p95: number | null; p99: number | null; count: number }>;
+  }>({
+    queryKey: ['dashboard-latency', dateFrom, dateTo, range],
+    queryFn: () => fetchDashboard('latency', { dateFrom, dateTo, range }),
   });
 
   const cost = useQuery<{
     series: Array<{ date: string; promptTokens: number; completionTokens: number; callCount: number }>;
   }>({
-    queryKey: ['dashboard-cost', dateFrom, dateTo],
-    queryFn: () => fetchDashboard('cost', { dateFrom, dateTo }),
+    queryKey: ['dashboard-cost', dateFrom, dateTo, range],
+    queryFn: () => fetchDashboard('cost', { dateFrom, dateTo, range }),
   });
 
   // Derived stat values
@@ -156,6 +159,7 @@ export function AdminDashboard() {
   const docTotal = docs.data?.length ?? 0;
 
   const scoreSeries = scores.data?.series ?? [];
+  const scoreBuckets = scores.data?.buckets ?? [];
   const avgScoreOverall = useMemo(() => {
     if (scoreSeries.length === 0) return null;
     const total = scoreSeries.reduce((sum, p) => sum + p.avgScore * p.count, 0);
@@ -164,38 +168,43 @@ export function AdminDashboard() {
   }, [scoreSeries]);
 
   const avgScoreData = useMemo(() => {
-    const byDay = new Map<string, { total: number; count: number }>();
+    const byBucket = new Map<string, { total: number; count: number }>();
     for (const p of scoreSeries) {
-      const day = p.date.slice(0, 10);
-      const existing = byDay.get(day);
+      const existing = byBucket.get(p.date);
       if (existing) {
         existing.total += p.avgScore * p.count;
         existing.count += p.count;
       } else {
-        byDay.set(day, { total: p.avgScore * p.count, count: p.count });
+        byBucket.set(p.date, { total: p.avgScore * p.count, count: p.count });
       }
     }
-    return Array.from(byDay.values()).map((d) => ({ value: d.count > 0 ? d.total / d.count : 0 }));
-  }, [scoreSeries]);
+    return scoreBuckets.map((date) => {
+      const d = byBucket.get(date);
+      return { value: d && d.count > 0 ? d.total / d.count : null };
+    });
+  }, [scoreSeries, scoreBuckets]);
 
   const hallucinationData = useMemo(() => {
-    const byDay = new Map<string, { total: number; count: number }>();
+    const byBucket = new Map<string, { total: number; count: number }>();
     for (const p of scoreSeries.filter((s) => s.scorerId === 'hallucination')) {
-      const day = p.date.slice(0, 10);
-      const existing = byDay.get(day);
+      const existing = byBucket.get(p.date);
       if (existing) {
         existing.total += p.avgScore * p.count;
         existing.count += p.count;
       } else {
-        byDay.set(day, { total: p.avgScore * p.count, count: p.count });
+        byBucket.set(p.date, { total: p.avgScore * p.count, count: p.count });
       }
     }
-    return Array.from(byDay.values()).map((d) => ({ value: d.count > 0 ? d.total / d.count : 0 }));
-  }, [scoreSeries]);
+    return scoreBuckets.map((date) => {
+      const d = byBucket.get(date);
+      return { value: d && d.count > 0 ? d.total / d.count : null };
+    });
+  }, [scoreSeries, scoreBuckets]);
 
   const hallucinationAvg = useMemo(() => {
-    if (hallucinationData.length === 0) return null;
-    return hallucinationData.reduce((s, d) => s + d.value, 0) / hallucinationData.length;
+    const withData = hallucinationData.filter((d) => d.value !== null);
+    if (withData.length === 0) return null;
+    return withData.reduce((s, d) => s + (d.value as number), 0) / withData.length;
   }, [hallucinationData]);
 
   // Thread table columns
@@ -242,7 +251,7 @@ export function AdminDashboard() {
         accessorKey: 'resourceId',
         header: 'User',
         cell: ({ row }) => (
-          <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{row.original.resourceId.slice(0, 12)}</code>
+          <span className="text-sm">{row.original.email ?? row.original.resourceId.slice(0, 12)}</span>
         ),
       },
       {
@@ -338,7 +347,7 @@ export function AdminDashboard() {
         <div className="mt-6">
           <WidgetCard title="Score Distributions Over Time">
             {scores.data?.series && scores.data.series.length > 0 ? (
-              <ScoreTrendChart data={scores.data.series} range={range} />
+              <ScoreTrendChart data={scores.data.series} range={range} buckets={scores.data.buckets} />
             ) : !scores.isLoading ? (
               <EmptyState
                 icon={<BarChart3Icon className="size-6" />}

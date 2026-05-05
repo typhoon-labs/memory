@@ -15,6 +15,7 @@ interface ScoreDataPoint {
 interface ScoreTrendChartProps {
   data: ScoreDataPoint[];
   range: DateRange;
+  buckets?: string[];
 }
 
 const SCORER_LABELS: Record<string, string> = {
@@ -34,9 +35,16 @@ const CHART_COLORS = [
 ];
 
 /** Pivot flat series data into one row per date with scorer IDs as keys. */
-function pivotData(data: ScoreDataPoint[]) {
+function pivotData(data: ScoreDataPoint[], buckets?: string[]) {
   const byDate = new Map<string, Record<string, string | number>>();
   const scorerIds = new Set<string>();
+
+  // Pre-populate all bucket dates so empty ones appear in the chart
+  if (buckets) {
+    for (const date of buckets) {
+      byDate.set(date, { date });
+    }
+  }
 
   for (const point of data) {
     scorerIds.add(point.scorerId);
@@ -54,8 +62,8 @@ function pivotData(data: ScoreDataPoint[]) {
 const AXIS_TICK = { fontSize: 11, fill: 'var(--muted-foreground)', fontFamily: 'var(--font-sans)' };
 
 /** Multi-line chart showing score averages per scorer over time. */
-export function ScoreTrendChart({ data, range }: ScoreTrendChartProps) {
-  const { rows, scorerIds } = useMemo(() => pivotData(data), [data]);
+export function ScoreTrendChart({ data, range, buckets }: ScoreTrendChartProps) {
+  const { rows, scorerIds } = useMemo(() => pivotData(data, buckets), [data, buckets]);
   const formatDate = useCallback((dateStr: string) => formatDateForRange(dateStr, range), [range]);
   const ticks = useMemo(
     () =>
@@ -82,19 +90,19 @@ export function ScoreTrendChart({ data, range }: ScoreTrendChartProps) {
   }
 
   return (
-    <ResponsiveContainer width="100%" height={300}>
+    <ResponsiveContainer width="100%" height={300} className="[&_*]:outline-none">
       <LineChart data={rows} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
         <XAxis dataKey="date" tickFormatter={formatDate} tick={AXIS_TICK} ticks={ticks} />
         <YAxis domain={[0, 1]} tick={AXIS_TICK} tickFormatter={(v) => Number(v).toFixed(1)} />
-        <Tooltip content={ScoreTooltip} />
+        <Tooltip content={ScoreTooltip} cursor={{ stroke: 'var(--border)' }} />
         <Legend content={<ChartLegend />} />
         {scorerIds.map((id, i) => {
           const color = CHART_COLORS[i % CHART_COLORS.length];
           return (
             <Line
               key={id}
-              type="monotone"
+              type="linear"
               dataKey={id}
               name={SCORER_LABELS[id] ?? id}
               stroke={color}
@@ -102,6 +110,7 @@ export function ScoreTrendChart({ data, range }: ScoreTrendChartProps) {
               dot={{ r: 2, fill: color, stroke: color }}
               activeDot={{ r: 3, fill: color, stroke: color }}
               connectNulls
+              isAnimationActive={false}
             />
           );
         })}

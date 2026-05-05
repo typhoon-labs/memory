@@ -22,6 +22,7 @@
     { "path": "packages/db" },
     { "path": "packages/storage" },
     { "path": "packages/agents" },
+    { "path": "packages/queue" },
     { "path": "packages/ingestion" },
     { "path": "packages/ui" },
     { "path": "packages/chat" },

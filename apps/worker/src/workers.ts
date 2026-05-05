@@ -11,7 +11,6 @@ import { createScoringModel } from '@typhoon/ai';
 import { isScoringEnabled } from '@typhoon/config';
 import { createDb, messages, threads } from '@typhoon/db';
 import { DrizzleDatasetsStorage, DrizzleExperimentsStorage, PgVector } from '@typhoon/db/drivers/pg';
-import type { ExperimentJobData, ScoringJobData } from '@typhoon/ingestion';
 import {
   handleDeleteFileJob,
   handleProcessFileJob,
@@ -20,6 +19,7 @@ import {
   managePartitions,
 } from '@typhoon/ingestion';
 import { createAppLogger } from '@typhoon/logger';
+import type { ExperimentJobData, ScoringJobData } from '@typhoon/queue';
 import type { ConnectionOptions } from 'bullmq';
 import { UnrecoverableError, Worker } from 'bullmq';
 import { and, desc, eq } from 'drizzle-orm';

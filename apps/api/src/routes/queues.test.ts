@@ -9,6 +9,41 @@ const { mockGetAllQueues, mockGetQueue, mockQueueEventBus } = vi.hoisted(() => (
   mockQueueEventBus: { on: vi.fn(), off: vi.fn(), emit: vi.fn() },
 }));
 
+const { mockDbChain } = vi.hoisted(() => {
+  const mockDbChain = {
+    _result: [] as unknown[],
+    select: vi.fn(),
+    from: vi.fn(),
+    where: vi.fn(),
+    orderBy: vi.fn(),
+    limit: vi.fn(),
+    offset: vi.fn(),
+    delete: vi.fn(),
+    returning: vi.fn(),
+  };
+  // Make every method return mockDbChain for chaining, except terminal ones
+  mockDbChain.select.mockReturnValue(mockDbChain);
+  mockDbChain.from.mockReturnValue(mockDbChain);
+  mockDbChain.where.mockReturnValue(mockDbChain);
+  mockDbChain.orderBy.mockReturnValue(mockDbChain);
+  mockDbChain.limit.mockReturnValue(mockDbChain);
+  mockDbChain.offset.mockImplementation(() => Promise.resolve(mockDbChain._result));
+  mockDbChain.delete.mockReturnValue(mockDbChain);
+  mockDbChain.returning.mockImplementation(() => Promise.resolve(mockDbChain._result));
+  return { mockDbChain };
+});
+
+vi.mock('../db', () => ({ db: mockDbChain }));
+
+vi.mock('@typhoon/db', () => ({
+  failedJobs: { id: 'id', queue: 'queue', createdAt: 'createdAt' },
+}));
+
+vi.mock('drizzle-orm', () => ({
+  eq: vi.fn((_col, val) => ({ __eq: val })),
+  desc: vi.fn((col) => ({ __desc: col })),
+}));
+
 vi.mock('../middleware/require-auth', () => ({
   requireAuth: vi.fn(async (_c: unknown, next: () => Promise<void>) => next()),
 }));
@@ -662,5 +697,67 @@ describe('DELETE /v1/queues/:name/jobs/:jobId', () => {
 
     expect(res.status).toBe(200);
     expect(job.remove).toHaveBeenCalledOnce();
+  });
+});
+
+// ── GET /v1/queues/failed-jobs ──────────────────────────────────────
+
+describe('GET /v1/queues/failed-jobs', () => {
+  it('returns list of failed jobs', async () => {
+    mockDbChain._result = [{ id: 'fj-1', queue: 'sync', jobName: 'scan' }];
+    // Reset offset to resolve with _result
+    mockDbChain.offset.mockImplementation(() => Promise.resolve(mockDbChain._result));
+
+    const res = await app.request('/v1/queues/failed-jobs', { method: 'GET' });
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json).toHaveLength(1);
+    expect(json[0].id).toBe('fj-1');
+  });
+
+  it('returns empty list when no failed jobs', async () => {
+    mockDbChain._result = [];
+    mockDbChain.offset.mockImplementation(() => Promise.resolve([]));
+
+    const res = await app.request('/v1/queues/failed-jobs', { method: 'GET' });
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json).toEqual([]);
+  });
+});
+
+// ── GET /v1/queues/failed-jobs/:id ──────────────────────────────────
+
+describe('GET /v1/queues/failed-jobs/:id', () => {
+  it('returns a specific failed job', async () => {
+    mockDbChain.where.mockResolvedValueOnce([{ id: 'fj-1', queue: 'sync' }]);
+
+    const res = await app.request('/v1/queues/failed-jobs/fj-1', { method: 'GET' });
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.id).toBe('fj-1');
+  });
+
+  it('returns 404 when not found', async () => {
+    mockDbChain.where.mockResolvedValueOnce([]);
+
+    const res = await app.request('/v1/queues/failed-jobs/missing', { method: 'GET' });
+
+    expect(res.status).toBe(404);
+  });
+});
+
+// ── DELETE /v1/queues/failed-jobs/:id ───────────────────────────────
+
+describe('DELETE /v1/queues/failed-jobs/:id', () => {
+  it('deletes a failed job and returns ok', async () => {
+    const res = await app.request('/v1/queues/failed-jobs/fj-1', { method: 'DELETE' });
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json).toEqual({ ok: true });
   });
 });
