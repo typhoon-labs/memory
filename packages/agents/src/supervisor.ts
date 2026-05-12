@@ -46,9 +46,27 @@ export interface GuardrailsConfig {
   systemPromptScrubbing?: boolean;
 }
 
-export function createSupervisor(supervisorMemory: MastraMemory, guardrails?: GuardrailsConfig) {
-  const knowledgeAgent = createKnowledgeAgent();
-  const searchKnowledge = createKnowledgeSearchTool(knowledgeAgent);
+export interface SupervisorOptions {
+  guardrails?: GuardrailsConfig;
+  /** Async function that returns current metadata field names and values (cached with TTL). */
+  getMetadataContext?: () => Promise<string | undefined>;
+}
+
+export function createSupervisor(
+  supervisorMemory: MastraMemory,
+  guardrailsOrOptions?: GuardrailsConfig | SupervisorOptions,
+) {
+  // Support both old signature (GuardrailsConfig) and new (SupervisorOptions)
+  const isSupervisorOptions = (v: unknown): v is SupervisorOptions =>
+    typeof v === 'object' && v !== null && ('guardrails' in v || 'getMetadataContext' in v);
+  const options: SupervisorOptions = isSupervisorOptions(guardrailsOrOptions)
+    ? guardrailsOrOptions
+    : { guardrails: guardrailsOrOptions };
+
+  const knowledgeAgent = createKnowledgeAgent({ rerank: false });
+  const searchKnowledge = createKnowledgeSearchTool(knowledgeAgent, {
+    getMetadataContext: options.getMetadataContext,
+  });
   const guardrailModel = createGuardrailModel();
 
   return new Agent({
@@ -58,8 +76,8 @@ export function createSupervisor(supervisorMemory: MastraMemory, guardrails?: Gu
     instructions: SUPERVISOR_INSTRUCTIONS,
     tools: { searchKnowledge, setThreadTitle },
     memory: supervisorMemory,
-    inputProcessors: createInputGuardrails(guardrailModel, guardrails),
-    outputProcessors: createOutputGuardrails(guardrailModel, guardrails),
+    inputProcessors: createInputGuardrails(guardrailModel, options.guardrails),
+    outputProcessors: createOutputGuardrails(guardrailModel, options.guardrails),
     errorProcessors: [new PrefillErrorHandler()],
     defaultOptions: {
       modelSettings: { temperature: 0 },

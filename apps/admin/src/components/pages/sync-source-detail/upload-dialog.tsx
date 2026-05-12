@@ -129,7 +129,7 @@ export function UploadDialog({
           <button
             type="button"
             className={`flex w-full cursor-pointer flex-col items-center gap-2 rounded-lg border-2 border-dashed p-6 transition-colors ${
-              isDragging ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/40 hover:bg-muted/30'
+              isDragging ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/40 hover:bg-muted'
             }`}
             onClick={() => fileInputRef.current?.click()}
             onDragOver={handleDragOver}

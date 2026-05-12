@@ -1,0 +1,23 @@
+{
+  "name": "@typhoon/evals",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./scorer-categories": "./src/scorer-categories.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@mastra/core": "^1.22.0",
+    "@mastra/evals": "^1.2.0",
+    "@typhoon/ai": "workspace:*",
+    "@typhoon/logger": "workspace:*",
+    "@typhoon/types": "workspace:*"
+  },
+  "devDependencies": {
+    "@typhoon/config": "workspace:*"
+  }
+}

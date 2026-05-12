@@ -42,10 +42,19 @@ describe('constructScorer', () => {
   });
 
   describe('context-dependent types', () => {
-    for (const type of ['faithfulness', 'hallucination', 'contextRelevance', 'contextPrecision']) {
+    // Only retrieval scorers are blocked with empty context
+    for (const type of ['contextRelevance', 'contextPrecision']) {
       it(`returns null for "${type}" when context is empty`, () => {
         const result = constructScorer(makeDefinition({ type }), mockModel, []);
         expect(result).toBeNull();
+      });
+    }
+
+    // Response quality scorers work with empty context
+    for (const type of ['faithfulness', 'hallucination']) {
+      it(`returns scorer for "${type}" even when context is empty`, () => {
+        const result = constructScorer(makeDefinition({ type }), mockModel, []);
+        expect(result).not.toBeNull();
       });
     }
 

@@ -32,7 +32,7 @@ export function FeedbackPage() {
           <div className="mt-6 overflow-x-auto rounded-lg border border-border">
             <table className="min-w-[600px] w-full text-sm">
               <thead>
-                <tr className="border-b border-border bg-muted/50">
+                <tr className="border-b border-border bg-muted">
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">Rating</th>
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">Comment</th>
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">Thread</th>

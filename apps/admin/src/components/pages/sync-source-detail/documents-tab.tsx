@@ -279,7 +279,7 @@ function RecentActivityPanel({ sourceId }: { sourceId: string }) {
             </tbody>
           </table>
           {hasMore && (
-            <div className="border-t border-border bg-muted/30 px-4 py-2 text-center text-xs text-muted-foreground">
+            <div className="border-t border-border bg-muted px-4 py-2 text-center text-xs text-muted-foreground">
               Showing {recent.length} of {totalActive} {'\u2014'}{' '}
               <Link
                 to="/documents"
@@ -879,7 +879,7 @@ function S3FileBrowser({
                               setRenamingKey(folder);
                               setRenameError(null);
                             }}
-                            className="ml-auto rounded-md p-1 opacity-0 transition-opacity hover:bg-muted/50 group-hover/name:opacity-100"
+                            className="ml-auto rounded-md p-1 opacity-0 transition-opacity hover:bg-muted group-hover/name:opacity-100"
                             aria-label={`Rename ${folderName}`}
                             title="Rename (F2)"
                           >
@@ -967,7 +967,7 @@ function S3FileBrowser({
                                 setRenamingKey(file.sourceKey);
                                 setRenameError(null);
                               }}
-                              className="ml-auto rounded-md p-1 opacity-0 transition-opacity hover:bg-muted/50 group-hover/name:opacity-100"
+                              className="ml-auto rounded-md p-1 opacity-0 transition-opacity hover:bg-muted group-hover/name:opacity-100"
                               aria-label={`Rename ${fileName}`}
                               title="Rename (F2)"
                             >

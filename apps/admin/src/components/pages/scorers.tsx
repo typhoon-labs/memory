@@ -1,20 +1,13 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useSearch } from '@tanstack/react-router';
+import { useQuery } from '@tanstack/react-query';
+import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 import type { ColumnDef } from '@typhoon/ui';
 import {
   apiFetch,
   Button,
   DataTable,
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
   EmptyState,
   formatRelativeTime,
   Input,
-  Label,
   LoadingSpinner,
   PageHeader,
   Select,
@@ -24,10 +17,10 @@ import {
   SelectValue,
   StatusBadge,
   type StatusBadgeVariant,
-  Textarea,
 } from '@typhoon/ui';
-import { GaugeIcon, PlusIcon } from 'lucide-react';
+import { GaugeIcon, PlusIcon, SearchIcon } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { usePageTitle } from '../../hooks/use-page-title';
 
 interface Scorer {
   id: string;
@@ -58,15 +51,6 @@ const TYPE_LABELS: Record<string, string> = {
   contextPrecision: 'Context Precision',
   custom: 'Custom (LLM Judge)',
 };
-
-const SCORER_TYPES = [
-  { value: 'faithfulness', label: 'Faithfulness' },
-  { value: 'hallucination', label: 'Hallucination' },
-  { value: 'answerRelevancy', label: 'Answer Relevancy' },
-  { value: 'contextRelevance', label: 'Context Relevance' },
-  { value: 'contextPrecision', label: 'Context Precision' },
-  { value: 'custom', label: 'Custom (LLM Judge)' },
-];
 
 const columns: ColumnDef<Scorer, unknown>[] = [
   {
@@ -116,15 +100,10 @@ const STATUS_FILTER_OPTIONS: { value: StatusFilter; label: string }[] = [
 ];
 
 export function ScorersPage() {
+  usePageTitle('Scorers');
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const { status } = useSearch({ strict: false }) as { status: StatusFilter };
-  const [dialogOpen, setDialogOpen] = useState(false);
   const [searchText, setSearchText] = useState('');
-  const [name, setName] = useState('');
-  const [type, setType] = useState('faithfulness');
-  const [description, setDescription] = useState('');
-  const [instructions, setInstructions] = useState('');
 
   function setStatus(next: StatusFilter) {
     navigate({ to: '/scorers', search: { status: next }, replace: true });
@@ -152,30 +131,6 @@ export function ScorersPage() {
     );
   }, [data, searchText]);
 
-  const createMutation = useMutation({
-    mutationFn: async () => {
-      return apiFetch('/api/v1/admin/scorers', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: name.trim(),
-          type,
-          description: description.trim() || undefined,
-          instructions: type === 'custom' ? instructions.trim() || undefined : undefined,
-        }),
-      });
-    },
-    onSuccess: (data: { id: string }) => {
-      queryClient.invalidateQueries({ queryKey: ['admin-scorers'] });
-      setDialogOpen(false);
-      setName('');
-      setType('faithfulness');
-      setDescription('');
-      setInstructions('');
-      navigate({ to: '/scorers/$scorerId', params: { scorerId: data.id } });
-    },
-  });
-
   return (
     <div className="overflow-y-auto p-4 sm:p-6 md:p-8">
       <div className="mx-auto max-w-5xl">
@@ -183,72 +138,12 @@ export function ScorersPage() {
           title="Scorers"
           description="Manage scoring definitions for automated quality evaluation"
           actions={
-            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-              <DialogTrigger asChild>
-                <Button>
-                  <PlusIcon className="mr-2 size-4" />
-                  Create Scorer
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Create Scorer</DialogTitle>
-                </DialogHeader>
-                <div className="flex flex-col gap-4 py-4">
-                  <div className="flex flex-col gap-1.5">
-                    <Label htmlFor="scorer-name">Name</Label>
-                    <Input
-                      id="scorer-name"
-                      placeholder="e.g. tone-checker"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <Label htmlFor="scorer-type">Type</Label>
-                    <Select value={type} onValueChange={setType}>
-                      <SelectTrigger id="scorer-type">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {SCORER_TYPES.map((t) => (
-                          <SelectItem key={t.value} value={t.value}>
-                            {t.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <Label htmlFor="scorer-description">Description (optional)</Label>
-                    <Textarea
-                      id="scorer-description"
-                      placeholder="What does this scorer evaluate?"
-                      value={description}
-                      onChange={(e) => setDescription(e.target.value)}
-                      rows={2}
-                    />
-                  </div>
-                  {type === 'custom' && (
-                    <div className="flex flex-col gap-1.5">
-                      <Label htmlFor="scorer-instructions">Instructions</Label>
-                      <Textarea
-                        id="scorer-instructions"
-                        placeholder="Evaluation criteria for the LLM judge..."
-                        value={instructions}
-                        onChange={(e) => setInstructions(e.target.value)}
-                        rows={4}
-                      />
-                    </div>
-                  )}
-                </div>
-                <DialogFooter>
-                  <Button onClick={() => createMutation.mutate()} disabled={!name.trim() || createMutation.isPending}>
-                    {createMutation.isPending ? 'Creating...' : 'Create'}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+            <Button asChild>
+              <Link to="/scorers/create">
+                <PlusIcon className="mr-2 size-4" />
+                Create Scorer
+              </Link>
+            </Button>
           }
         />
 
@@ -288,12 +183,13 @@ export function ScorersPage() {
                         ))}
                       </SelectContent>
                     </Select>
-                    <div className="ml-auto">
+                    <div className="relative ml-auto">
+                      <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
                       <Input
-                        placeholder="Search scorers..."
+                        placeholder="Search..."
                         value={searchText}
                         onChange={(e) => setSearchText(e.target.value)}
-                        className="h-8 w-[220px] text-sm"
+                        className="h-8 w-[220px] pl-8 text-sm"
                       />
                     </div>
                   </div>

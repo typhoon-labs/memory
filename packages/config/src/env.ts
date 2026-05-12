@@ -61,6 +61,18 @@ export const llmSchema = z.object({
 export type LlmEnv = z.infer<typeof llmSchema>;
 
 // =============================================================================
+// Reranker (Cohere-compatible endpoint)
+// =============================================================================
+
+export const rerankerSchema = z.object({
+  RERANKER_BASE_URL: z.string().url(),
+  RERANKER_MODEL: z.string().min(1),
+  RERANKER_API_KEY: z.string().optional(),
+});
+
+export type RerankerEnv = z.infer<typeof rerankerSchema>;
+
+// =============================================================================
 // Embeddings (OpenAI-compatible endpoint)
 // =============================================================================
 
@@ -150,6 +162,29 @@ export const scoringSchema = z.object({
 export type ScoringEnv = z.infer<typeof scoringSchema>;
 
 // =============================================================================
+// RAG Tuning
+// =============================================================================
+
+export const ragSchema = z.object({
+  RAG_RERANK_WEIGHT_SEMANTIC: z.coerce.number().min(0).max(1).default(1.0),
+  RAG_RERANK_WEIGHT_VECTOR: z.coerce.number().min(0).max(1).default(0),
+  RAG_RERANK_WEIGHT_POSITION: z.coerce.number().min(0).max(1).default(0),
+  RAG_RERANK_MIN_SCORE: z.coerce.number().min(0).max(1).default(0.1),
+  RAG_VECTOR_MIN_SCORE: z.coerce.number().min(0).max(1).default(0.6),
+  RAG_VECTOR_MIN_SCORE_AGENT: z.coerce.number().min(0).max(1).default(0.5),
+  RAG_GRAPH_THRESHOLD: z.coerce.number().min(0).max(1).default(0.7),
+  RAG_KNOWLEDGE_MAX_RESULTS: z.coerce.number().int().min(1).default(10),
+  RAG_HYBRID_RRF_K: z.coerce.number().int().min(1).default(60),
+  RAG_HYBRID_VECTOR_WEIGHT: z.coerce.number().min(0).max(1).default(0.7),
+  RAG_HYBRID_FTS_WEIGHT: z.coerce.number().min(0).max(1).default(0.3),
+  RAG_HYBRID_CANDIDATE_MULTIPLIER: z.coerce.number().int().min(1).default(5),
+  RAG_RERANK_CANDIDATES: z.coerce.number().int().min(10).max(500).default(100),
+  RAG_RERANK_CANDIDATES_EXPANDED: z.coerce.number().int().min(50).max(1000).default(200),
+});
+
+export type RagEnv = z.infer<typeof ragSchema>;
+
+// =============================================================================
 // Combined
 // =============================================================================
 
@@ -157,13 +192,21 @@ export const envSchema = databaseSchema
   .merge(redisSchema)
   .merge(s3Schema)
   .merge(llmSchema)
+  .merge(rerankerSchema)
   .merge(embeddingSchema)
   .merge(authSchema)
   .merge(oidcSchema)
   .merge(otelSchema)
   .merge(logSchema)
   .merge(serverSchema)
-  .merge(scoringSchema);
+  .merge(scoringSchema)
+  .merge(ragSchema)
+  .refine(
+    (env) =>
+      Math.abs(env.RAG_RERANK_WEIGHT_SEMANTIC + env.RAG_RERANK_WEIGHT_VECTOR + env.RAG_RERANK_WEIGHT_POSITION - 1.0) <
+      0.001,
+    { message: 'RAG_RERANK_WEIGHT_SEMANTIC + RAG_RERANK_WEIGHT_VECTOR + RAG_RERANK_WEIGHT_POSITION must sum to 1.0' },
+  );
 
 export type Env = z.infer<typeof envSchema>;
 

@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate, useSearch } from '@tanstack/react-router';
+import { Link, useNavigate, useSearch } from '@tanstack/react-router';
+import { computeCategoryAverages } from '@typhoon/evals/scorer-categories';
 import type { ColumnDef } from '@typhoon/ui';
 import {
   apiFetch,
@@ -34,6 +35,7 @@ import {
   InfoIcon,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { detailTitle, usePageTitle } from '../../hooks/use-page-title';
 
 // ---------- Types ----------
 
@@ -56,8 +58,9 @@ interface ExperimentListResponse {
 interface ScoreEntry {
   scorerId?: string;
   name?: string;
-  score: number;
+  score: number | null;
   reason?: string;
+  status?: 'skipped';
 }
 
 interface ResultDetail {
@@ -125,13 +128,13 @@ function truncateValue(value: unknown, maxLen = 60): string {
   return s.length > maxLen ? `${s.slice(0, maxLen)}...` : s;
 }
 
-/** Extract average score from an experiment result's output JSONB. */
+/** Extract response quality average from experiment result output JSONB. */
 function extractResultScore(result: Record<string, unknown> | null): number | null {
   if (!result?.output) return null;
   const output = result.output as Record<string, unknown>;
-  const scores = output.scores as Array<{ score: number }> | undefined;
+  const scores = output.scores as Array<{ scorerId: string; score: number | null; status?: string }> | undefined;
   if (!scores || scores.length === 0) return null;
-  return scores.reduce((sum, s) => sum + s.score, 0) / scores.length;
+  return computeCategoryAverages(scores).responseAvg;
 }
 
 function scoreDotClass(score: number): string {
@@ -202,7 +205,7 @@ function ScoreBreakdown({ scoresA, scoresB }: { scoresA: ScoreEntry[]; scoresB: 
           {/* Baseline */}
           <div className="sm:pr-4">
             <p className="mb-1 text-xs font-medium text-muted-foreground">Baseline</p>
-            <div className="flex flex-col">
+            <div className="flex flex-col gap-px">
               {allScorerIds.map((sid) => {
                 const s = scoresA.find((sc) => (sc.scorerId ?? sc.name ?? 'unknown') === sid);
                 return (
@@ -212,12 +215,17 @@ function ScoreBreakdown({ scoresA, scoresB }: { scoresA: ScoreEntry[]; scoresB: 
                     onClick={() => setSelectedScorer(sid)}
                     className={cn(
                       'flex w-full items-center justify-between gap-2 rounded px-1.5 py-1.5 text-xs transition-colors',
-                      effectiveScorer === sid ? 'bg-muted/50' : 'hover:bg-muted/30',
+                      effectiveScorer === sid ? 'bg-muted' : 'hover:bg-muted',
                     )}
                   >
                     <span className="flex items-center gap-1.5">
-                      <span className={cn('size-2 shrink-0 rounded-full', s ? scoreDotClass(s.score) : 'bg-muted')} />
-                      <span className={cn(effectiveScorer === sid && 'font-semibold')}>{sid}</span>
+                      <span
+                        className={cn(
+                          'size-2 shrink-0 rounded-full',
+                          s && s.score !== null && s.status !== 'skipped' ? scoreDotClass(s.score) : 'bg-muted',
+                        )}
+                      />
+                      <span>{sid}</span>
                       {scorerDescriptions[sid] && (
                         <Tooltip>
                           <TooltipTrigger asChild>
@@ -227,8 +235,14 @@ function ScoreBreakdown({ scoresA, scoresB }: { scoresA: ScoreEntry[]; scoresB: 
                         </Tooltip>
                       )}
                     </span>
-                    <span className={cn('tabular-nums', effectiveScorer === sid && 'font-semibold')}>
-                      {s ? s.score.toFixed(2) : '\u2014'}
+                    <span className="tabular-nums">
+                      {s
+                        ? s.status === 'skipped'
+                          ? 'N/A'
+                          : s.score !== null
+                            ? s.score.toFixed(2)
+                            : '\u2014'
+                        : '\u2014'}
                     </span>
                   </button>
                 );
@@ -239,7 +253,7 @@ function ScoreBreakdown({ scoresA, scoresB }: { scoresA: ScoreEntry[]; scoresB: 
           {/* Candidate */}
           <div className="sm:pl-4">
             <p className="mb-1 text-xs font-medium text-muted-foreground">Candidate</p>
-            <div className="flex flex-col">
+            <div className="flex flex-col gap-px">
               {allScorerIds.map((sid) => {
                 const s = scoresB.find((sc) => (sc.scorerId ?? sc.name ?? 'unknown') === sid);
                 return (
@@ -249,12 +263,17 @@ function ScoreBreakdown({ scoresA, scoresB }: { scoresA: ScoreEntry[]; scoresB: 
                     onClick={() => setSelectedScorer(sid)}
                     className={cn(
                       'flex w-full items-center justify-between gap-2 rounded px-1.5 py-1.5 text-xs transition-colors',
-                      effectiveScorer === sid ? 'bg-muted/50' : 'hover:bg-muted/30',
+                      effectiveScorer === sid ? 'bg-muted' : 'hover:bg-muted',
                     )}
                   >
                     <span className="flex items-center gap-1.5">
-                      <span className={cn('size-2 shrink-0 rounded-full', s ? scoreDotClass(s.score) : 'bg-muted')} />
-                      <span className={cn(effectiveScorer === sid && 'font-semibold')}>{sid}</span>
+                      <span
+                        className={cn(
+                          'size-2 shrink-0 rounded-full',
+                          s && s.score !== null && s.status !== 'skipped' ? scoreDotClass(s.score) : 'bg-muted',
+                        )}
+                      />
+                      <span>{sid}</span>
                       {scorerDescriptions[sid] && (
                         <Tooltip>
                           <TooltipTrigger asChild>
@@ -264,8 +283,14 @@ function ScoreBreakdown({ scoresA, scoresB }: { scoresA: ScoreEntry[]; scoresB: 
                         </Tooltip>
                       )}
                     </span>
-                    <span className={cn('tabular-nums', effectiveScorer === sid && 'font-semibold')}>
-                      {s ? s.score.toFixed(2) : '\u2014'}
+                    <span className="tabular-nums">
+                      {s
+                        ? s.status === 'skipped'
+                          ? 'N/A'
+                          : s.score !== null
+                            ? s.score.toFixed(2)
+                            : '\u2014'
+                        : '\u2014'}
                     </span>
                   </button>
                 );
@@ -517,8 +542,7 @@ function ExperimentSelector({
 
 export function ExperimentComparePage() {
   const navigate = useNavigate();
-  const { a, b } = useSearch({ strict: false }) as { a?: string; b?: string };
-  const [selectedItem, setSelectedItem] = useState<ComparisonItem | null>(null);
+  const { a, b, item: itemIdx } = useSearch({ strict: false }) as { a?: string; b?: string; item?: number };
 
   // The known experiment is whichever param is set (used to get datasetId for filtering)
   const knownId = a || b;
@@ -576,6 +600,17 @@ export function ExperimentComparePage() {
     enabled: !!a && !!b,
   });
 
+  const compareSubtitle = comparison
+    ? `Compare: ${comparison.experimentA.name || 'A'} vs ${comparison.experimentB.name || 'B'}`
+    : undefined;
+  usePageTitle(detailTitle('Experiments', compareSubtitle));
+
+  // Derive selected item from URL param
+  const selectedItem: ComparisonItem | null = useMemo(
+    () => (itemIdx != null && comparison ? (comparison.items[itemIdx] ?? null) : null),
+    [itemIdx, comparison],
+  );
+
   function handleSelectBaseline(baselineId: string) {
     navigate({ to: '/experiments/compare', search: { a: baselineId, b }, replace: true });
   }
@@ -617,7 +652,9 @@ export function ExperimentComparePage() {
                   {scores.map((s) => (
                     <div key={s.scorerId ?? s.name ?? 'unknown'} className="flex items-center justify-between gap-3">
                       <span>{s.name ?? s.scorerId ?? 'unknown'}</span>
-                      <span className="tabular-nums font-medium">{s.score.toFixed(2)}</span>
+                      <span className="tabular-nums font-medium">
+                        {s.status === 'skipped' ? 'N/A' : s.score != null ? s.score.toFixed(2) : '\u2014'}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -647,7 +684,9 @@ export function ExperimentComparePage() {
                   {scores.map((s) => (
                     <div key={s.scorerId ?? s.name ?? 'unknown'} className="flex items-center justify-between gap-3">
                       <span>{s.name ?? s.scorerId ?? 'unknown'}</span>
-                      <span className="tabular-nums font-medium">{s.score.toFixed(2)}</span>
+                      <span className="tabular-nums font-medium">
+                        {s.status === 'skipped' ? 'N/A' : s.score != null ? s.score.toFixed(2) : '\u2014'}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -678,16 +717,9 @@ export function ExperimentComparePage() {
         <PageHeader
           title={
             <span className="flex items-center gap-1.5">
-              <a
-                href="/experiments"
-                onClick={(e) => {
-                  e.preventDefault();
-                  navigate({ to: '/experiments' });
-                }}
-                className="text-muted-foreground transition-colors hover:text-foreground"
-              >
+              <Link to="/experiments" className="text-muted-foreground transition-colors hover:text-foreground">
                 Experiments
-              </a>
+              </Link>
               <ChevronRightIcon className="size-3.5 text-muted-foreground/50" />
               Compare
             </span>
@@ -816,7 +848,9 @@ export function ExperimentComparePage() {
                     enableSorting
                     enableFiltering
                     getRowId={(row) => String(row.index)}
-                    onRowClick={setSelectedItem}
+                    onRowClick={(row) =>
+                      navigate({ to: '/experiments/compare', search: { a, b, item: row.index }, replace: true })
+                    }
                     showRowCount
                   />
                 </TooltipProvider>
@@ -835,7 +869,9 @@ export function ExperimentComparePage() {
       <ComparisonDetailSheet
         item={selectedItem}
         open={selectedItem !== null}
-        onOpenChange={(open) => !open && setSelectedItem(null)}
+        onOpenChange={(open) => {
+          if (!open) navigate({ to: '/experiments/compare', search: { a, b, item: undefined }, replace: true });
+        }}
       />
     </div>
   );

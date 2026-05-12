@@ -410,7 +410,7 @@ export function DocumentViewerPanel({
               <button
                 type="button"
                 onClick={handleDownload}
-                className="rounded-md p-1 transition-colors hover:bg-muted/50"
+                className="rounded-md p-1 transition-colors hover:bg-muted"
                 title="Download original"
               >
                 <DownloadIcon className="size-4 text-muted-foreground" />
@@ -419,7 +419,7 @@ export function DocumentViewerPanel({
             <button
               type="button"
               onClick={onClose}
-              className="hidden rounded-md p-1 transition-colors hover:bg-muted/50 lg:block"
+              className="hidden rounded-md p-1 transition-colors hover:bg-muted lg:block"
             >
               <XIcon className="size-4 text-muted-foreground" />
             </button>
@@ -460,7 +460,7 @@ export function DocumentViewerPanel({
           <button
             type="button"
             onClick={nav.goPrev}
-            className="rounded p-0.5 transition-colors hover:bg-muted/50"
+            className="rounded p-0.5 transition-colors hover:bg-muted"
             title="Previous (Shift+F3)"
           >
             <ChevronUpIcon className="size-3.5 text-muted-foreground" />
@@ -468,7 +468,7 @@ export function DocumentViewerPanel({
           <button
             type="button"
             onClick={nav.goNext}
-            className="rounded p-0.5 transition-colors hover:bg-muted/50"
+            className="rounded p-0.5 transition-colors hover:bg-muted"
             title="Next (F3)"
           >
             <ChevronDownIcon className="size-3.5 text-muted-foreground" />

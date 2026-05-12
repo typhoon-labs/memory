@@ -6,7 +6,7 @@
 > - **OpenTelemetry** frontend instrumentation was not implemented.
 > - **PDF parsing** uses `unpdf`, not `pdf-parse-new`.
 > - **`@mastra/pg`** functionality was merged into `@typhoon/db` (see `packages/db/src/drivers/pg/`).
-> - **Additional packages** were created: `@typhoon/ai`, `@typhoon/logger`, `@typhoon/chat`, `@typhoon/queue`, `@typhoon/telemetry`.
+> - **Additional packages** were created: `@typhoon/ai`, `@typhoon/logger`, `@typhoon/chat`, `@typhoon/queue`, `@typhoon/telemetry`, `@typhoon/evals`.
 > - **Admin pages** partially built. Done: Reviews, Datasets, Experiments, Scorers, Traces, Queues. Not yet built: Conversations, API Keys, Settings.
 > - **Reports queue** (`feedback-digest` job) was not implemented.
 >

@@ -60,7 +60,7 @@ function SidebarContent({
           <div
             key={thread.id}
             className={`border-border group flex items-start gap-2 border-b px-3 py-2.5 ${
-              thread.id === activeThreadId ? 'bg-accent' : 'hover:bg-muted/50'
+              thread.id === activeThreadId ? 'bg-accent' : 'hover:bg-muted'
             }`}
           >
             <button

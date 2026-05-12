@@ -39,9 +39,12 @@ describe('DataTable', () => {
   });
 
   it('renders with filtering enabled', () => {
-    render(<DataTable data={data} columns={columns} enableFiltering />);
-    const input = screen.getByPlaceholderText('Filter...');
+    const { container } = render(<DataTable data={data} columns={columns} enableFiltering />);
+    const input = screen.getByPlaceholderText('Search...');
     expect(input).toBeTruthy();
+    // Search icon is rendered alongside the input
+    const svg = container.querySelector('svg');
+    expect(svg).toBeTruthy();
   });
 
   it('renders pagination controls for large datasets', () => {

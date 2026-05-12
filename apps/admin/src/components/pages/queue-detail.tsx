@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
+import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import {
   apiFetch,
   Button,
@@ -17,6 +17,7 @@ import {
   TabsTrigger,
 } from '@typhoon/ui';
 import { ChevronRightIcon, PauseIcon, PlayIcon } from 'lucide-react';
+import { detailTitle, usePageTitle } from '../../hooks/use-page-title';
 import { FailedJobsTab } from './queue-detail/failed-jobs-tab';
 import { JobsTab } from './queue-detail/jobs-tab';
 import { OverviewTab } from './queue-detail/overview-tab';
@@ -27,6 +28,8 @@ export function QueueDetailPage() {
   const { queueName } = useParams({ strict: false }) as { queueName: string };
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+
+  usePageTitle(detailTitle('Queues', queueName));
 
   const { data: queues, isLoading } = useQuery<QueueSummary[]>({
     queryKey: ['queues'],
@@ -73,16 +76,9 @@ export function QueueDetailPage() {
         <PageHeader
           title={
             <span className="flex items-center gap-1.5">
-              <a
-                href="/queues"
-                onClick={(e) => {
-                  e.preventDefault();
-                  navigate({ to: '/queues' });
-                }}
-                className="text-muted-foreground transition-colors hover:text-foreground"
-              >
+              <Link to="/queues" className="text-muted-foreground transition-colors hover:text-foreground">
                 Queues
-              </a>
+              </Link>
               <ChevronRightIcon className="size-3.5 text-muted-foreground/50" />
               {queue.name}
             </span>

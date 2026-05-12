@@ -1,5 +1,6 @@
 import { registerApiRoute } from '@mastra/core/server';
 import { DrizzleDatasetsStorage, DrizzleExperimentsStorage } from '@typhoon/db/drivers/pg';
+import { computeCategoryAverages } from '@typhoon/evals';
 import { db } from '../db';
 import { requireAdmin } from '../middleware/require-admin';
 import { requireAuth } from '../middleware/require-auth';
@@ -64,7 +65,7 @@ export const experimentRoutes = [
       try {
         const queue = getQueue('experiments');
         // biome-ignore lint/suspicious/noExplicitAny: storage returns untyped
-        await queue.add('run-experiment', { experimentId: (experiment as any).id });
+        await queue.add('experiment-setup', { experimentId: (experiment as any).id });
       } catch {
         // Queue might not be initialized in test environments
       }
@@ -229,11 +230,11 @@ export const experimentRoutes = [
   }),
 ];
 
-/** Extract average score from experiment result output JSONB. */
+/** Extract response quality average from experiment result output JSONB (primary metric). */
 function extractAvgScore(result: Record<string, unknown> | null): number | null {
   if (!result?.output) return null;
   const output = result.output as Record<string, unknown>;
-  const scores = output.scores as Array<{ score: number }> | undefined;
+  const scores = output.scores as Array<{ scorerId: string; score: number | null }> | undefined;
   if (!scores || scores.length === 0) return null;
-  return scores.reduce((sum, s) => sum + s.score, 0) / scores.length;
+  return computeCategoryAverages(scores).responseAvg;
 }

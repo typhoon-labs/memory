@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch, StatCard, useAuth } from '@typhoon/ui';
 import { CalendarIcon, FileTextIcon, MessageSquareIcon, ThumbsUpIcon } from 'lucide-react';
+import { usePageTitle } from '../../hooks/use-page-title';
 
 import type { ThreadListResponse } from '../chat/use-thread';
 import { ConversationActivity } from '../dashboard/conversation-activity';
@@ -26,6 +27,7 @@ function getGreeting(): string {
 }
 
 export function DashboardPage() {
+  usePageTitle('Dashboard');
   const { user } = useAuth();
   const firstName = user?.name?.split(' ')[0];
 

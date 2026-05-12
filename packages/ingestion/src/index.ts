@@ -7,7 +7,14 @@ export { handleScanJob } from './jobs/sync-scan';
 export type { ParseResult } from './parsers/registry';
 export { getMDocFormat, getParser, needsCustomParser } from './parsers/registry';
 export type { ProcessFileInput, ProcessFileResult } from './pipeline';
-export { deleteDocumentVectors, processFile, updateDocumentVectorSource } from './pipeline';
+export {
+  deleteDocumentVectors,
+  extractMetadataFromContent,
+  processFile,
+  updateDocumentVectorMetadata,
+  updateDocumentVectorSource,
+  updateDocumentVectorTitle,
+} from './pipeline';
 export { getProvider } from './providers/index';
 export type { BrowseResult, SourceObject, SourceProvider } from './providers/types';
 export type { NamedSource } from './source-registry';

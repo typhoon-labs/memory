@@ -55,7 +55,7 @@ vi.mock('@typhoon/db/drivers/pg', () => ({
   },
 }));
 
-vi.mock('@typhoon/agents', () => ({
+vi.mock('@typhoon/evals', () => ({
   constructScorer: mockConstructScorer,
 }));
 
@@ -482,10 +482,10 @@ describe('Scorer Routes', () => {
       expect(body.error).toContain('required');
     });
 
-    it('returns 400 with message when context-dependent scorer has no context', async () => {
+    it('returns 400 with message when retrieval scorer has no context', async () => {
       mockConstructScorer.mockReturnValueOnce(null);
       mockStorage.getLatestVersion.mockResolvedValueOnce(
-        makeVersionRow({ name: 'faithfulness', type: 'faithfulness' }),
+        makeVersionRow({ name: 'contextRelevance', type: 'contextRelevance' }),
       );
 
       const res = await app.request('/v1/admin/scorers/def-1/preview', {

@@ -13,6 +13,8 @@ export { documentStatusEnum, documents } from './document';
 export { experimentResults, experimentStatusEnum, experiments } from './experiments';
 export { feedback, feedbackRatingEnum } from './feedback';
 export { messages } from './messages';
+export { metadataFieldGroups } from './metadata-field-group';
+export { metadataTemplates } from './metadata-template';
 export { aiSpans } from './observability';
 export { resources } from './resources';
 export { scores } from './scores';

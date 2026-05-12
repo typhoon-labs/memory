@@ -54,11 +54,14 @@ describe('model factories', () => {
     expect(mockModelFn).toHaveBeenCalledWith('title-model');
   });
 
-  it('createRerankerModel reads LLM_RERANKER_MODEL', async () => {
-    process.env.LLM_RERANKER_MODEL = 'reranker-model';
-    const { createRerankerModel } = await import('./index.js');
-    createRerankerModel();
-    expect(mockModelFn).toHaveBeenCalledWith('reranker-model');
+  it('createRerankerScorer reads reranker env vars', async () => {
+    process.env.RERANKER_BASE_URL = 'http://localhost:8787/v1';
+    process.env.RERANKER_MODEL = 'bedrock/amazon.rerank-v1:0';
+    process.env.LLM_API_KEY = 'test-key';
+    const { createRerankerScorer } = await import('./index.js');
+    const scorer = createRerankerScorer();
+    expect(scorer).toBeDefined();
+    expect(scorer).toHaveProperty('getRelevanceScore');
   });
 
   it('createExtractionModel reads LLM_EXTRACTION_MODEL', async () => {
@@ -134,12 +137,14 @@ describe('model factories', () => {
     expect(mockModelFn).toHaveBeenCalledWith('anthropic.claude-sonnet-4-6');
   });
 
-  it('createRerankerModel falls back to default chat model when LLM_RERANKER_MODEL not set', async () => {
-    delete process.env.LLM_RERANKER_MODEL;
-    delete process.env.LLM_CHAT_MODEL;
-    const { createRerankerModel } = await import('./index.js');
-    createRerankerModel();
-    expect(mockModelFn).toHaveBeenCalledWith('anthropic.claude-sonnet-4-6');
+  it('createRerankerScorer uses RERANKER_API_KEY over LLM_API_KEY', async () => {
+    process.env.RERANKER_BASE_URL = 'http://localhost:8787/v1';
+    process.env.RERANKER_API_KEY = 'reranker-key';
+    process.env.LLM_API_KEY = 'llm-key';
+    process.env.RERANKER_MODEL = 'bedrock/amazon.rerank-v1:0';
+    const { createRerankerScorer } = await import('./index.js');
+    const scorer = createRerankerScorer();
+    expect(scorer).toBeDefined();
   });
 
   it('createEmbeddingModel uses explicit modelId over env', async () => {
@@ -175,5 +180,23 @@ describe('model factories', () => {
     const { createScoringModel } = await import('./index.js');
     createScoringModel('explicit-scoring');
     expect(mockModelFn).toHaveBeenCalledWith('explicit-scoring');
+  });
+
+  it('RAG_RERANK_CANDIDATES defaults to 100', async () => {
+    delete process.env.RAG_RERANK_CANDIDATES;
+    const { RAG_RERANK_CANDIDATES } = await import('./index.js');
+    expect(RAG_RERANK_CANDIDATES).toBe(100);
+  });
+
+  it('RAG_RERANK_CANDIDATES reads from env', async () => {
+    process.env.RAG_RERANK_CANDIDATES = '75';
+    const { RAG_RERANK_CANDIDATES } = await import('./index.js');
+    expect(RAG_RERANK_CANDIDATES).toBe(75);
+  });
+
+  it('RAG_RERANK_CANDIDATES_EXPANDED defaults to 200', async () => {
+    delete process.env.RAG_RERANK_CANDIDATES_EXPANDED;
+    const { RAG_RERANK_CANDIDATES_EXPANDED } = await import('./index.js');
+    expect(RAG_RERANK_CANDIDATES_EXPANDED).toBe(200);
   });
 });

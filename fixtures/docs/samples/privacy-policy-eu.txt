@@ -1,0 +1,124 @@
+TYPHOON CLOUDVAULT PRIVACY POLICY — EUROPEAN UNION
+
+Last Updated: January 15, 2026
+
+Typhoon Technologies GmbH ("Typhoon", "we", "us", or "our"), registered at Friedrichstrasse 123, 10117 Berlin, Germany, operates the CloudVault service for users in the European Union and European Economic Area. This Privacy Policy describes how we collect, use, and share information in compliance with the General Data Protection Regulation (EU) 2016/679 ("GDPR").
+
+1. DATA CONTROLLER
+
+Typhoon Technologies GmbH is the data controller for personal data processed through CloudVault for EU/EEA users. Our Data Protection Officer can be reached at dpo@typhooncloudvault.com or by post at the address above.
+
+2. LEGAL BASIS FOR PROCESSING
+
+We process personal data under the following legal bases (Article 6 GDPR):
+
+- Contract performance: account creation, file storage, billing, and customer support
+- Legitimate interest: service improvement, fraud prevention, and security monitoring
+- Legal obligation: tax record retention, regulatory compliance
+- Consent: analytics cookies and optional marketing communications (you may withdraw consent at any time)
+
+3. INFORMATION WE COLLECT
+
+3.1 Account Information
+When you create a CloudVault account, we collect your name, email address, organization name, and billing information (processed by Stripe; we do not store full card numbers). If you sign up via SSO, we receive your name and email from the identity provider.
+
+3.2 Files and Content
+Files you upload are encrypted and stored exclusively in EU data centres (Frankfurt, Germany and Amsterdam, Netherlands). We do not access, scan, or analyse file contents for any purpose other than malware detection and integrity verification.
+
+3.3 Usage Data
+We collect login timestamps, IP addresses, browser type, operating system, features used, and file access metadata. This data is processed for service improvement and security purposes under our legitimate interest.
+
+3.4 Cookies
+CloudVault uses strictly necessary cookies for authentication. Analytics cookies (Matomo, self-hosted in the EU) are used only with your explicit consent via our cookie banner. We do not use Google Analytics or any US-based tracking service for EU users. No advertising cookies are used.
+
+4. HOW WE USE YOUR INFORMATION
+
+We use collected information to:
+- Provide, maintain, and improve the CloudVault service
+- Process payments and manage subscriptions
+- Send transactional emails (password resets, billing receipts, security alerts)
+- Provide customer support
+- Detect and prevent fraud, abuse, and security threats
+- Comply with legal obligations
+
+We do not sell your personal information. We do not use your data for profiling or automated decision-making.
+
+5. INFORMATION SHARING
+
+5.1 Sub-Processors
+We use the following sub-processors, all of which have signed Data Processing Agreements:
+- Hetzner Online GmbH (Germany) — infrastructure and hosting
+- Stripe Payments Europe Ltd (Ireland) — payment processing
+- Mailgun Technologies GmbH (Germany) — transactional email
+- Matomo (self-hosted, Frankfurt) — analytics
+
+A complete list of sub-processors is maintained at typhooncloudvault.com/legal/sub-processors. We notify you 30 days before adding new sub-processors.
+
+5.2 Legal Requirements
+We may disclose information if required by EU member state law, court order, or regulatory authority. We will notify you unless legally prohibited. We do not comply with US government requests for data of EU users unless validated through applicable mutual legal assistance treaties (MLATs).
+
+5.3 Business Transfers
+In the event of a merger or acquisition, your information may be transferred. We will notify you at least 30 days in advance and you may object to the transfer.
+
+6. INTERNATIONAL DATA TRANSFERS
+
+All data for EU/EEA users is stored and processed within the European Union. We do not transfer personal data outside the EU/EEA. Our infrastructure, analytics, email, and payment sub-processors all operate within the EU.
+
+In the exceptional case that a transfer outside the EU is required (e.g., at your explicit request), we rely on:
+- EU Commission adequacy decisions (Article 45 GDPR)
+- Standard Contractual Clauses (Article 46(2)(c) GDPR) with supplementary measures
+- Transfer impact assessments in accordance with the EDPB guidelines
+
+7. DATA RETENTION
+
+- Account data: retained while your account is active
+- After deletion: personal data erased within 30 days; encrypted files erased within 30 days
+- Billing records: 10 years (German commercial law, HGB §257)
+- Server logs: 30 days (reduced from 90 days per data minimisation principle)
+- Backup data: rotated on a 30-day cycle
+
+8. YOUR RIGHTS
+
+Under the GDPR, you have the following rights:
+
+- Right of access (Art. 15): obtain a copy of your personal data within 30 days
+- Right to rectification (Art. 16): correct inaccurate data
+- Right to erasure (Art. 17): request deletion ("right to be forgotten")
+- Right to data portability (Art. 20): export in JSON or CSV format via Account Settings → Data Export
+- Right to restrict processing (Art. 18): limit processing while a dispute is resolved
+- Right to object (Art. 21): object to processing based on legitimate interest
+- Right to withdraw consent (Art. 7): withdraw at any time without affecting prior processing
+- Right to lodge a complaint: contact your local Data Protection Authority (DPA)
+
+To exercise these rights: Account Settings → Data and Privacy, or email privacy-eu@typhooncloudvault.com. We respond within 30 days; complex requests may be extended by 60 days with notice.
+
+9. DATA PROTECTION IMPACT ASSESSMENTS
+
+We conduct Data Protection Impact Assessments (DPIAs) for any processing that poses a high risk to individuals, including large-scale file storage, new feature launches, and changes to sub-processors. DPIA summaries are available upon request.
+
+10. CHILDREN'S PRIVACY
+
+CloudVault is not intended for individuals under 16. In member states where the digital age of consent is lower (e.g., 13 in Belgium, 14 in Austria and Italy), the applicable local threshold applies. We promptly delete accounts belonging to underage users upon discovery.
+
+11. AUTOMATED DECISION-MAKING
+
+CloudVault does not use automated decision-making or profiling that produces legal effects or similarly significant effects on users (Article 22 GDPR).
+
+12. CHANGES TO THIS POLICY
+
+We notify EU users of material changes by email at least 30 days before they take effect. Changes are also published at typhooncloudvault.com/legal/privacy. Your continued use after the effective date constitutes acceptance. If you do not agree, you may delete your account and request data erasure.
+
+13. SUPERVISORY AUTHORITY
+
+Our lead supervisory authority is the Berliner Beauftragte fuer Datenschutz und Informationsfreiheit (Berlin Commissioner for Data Protection and Freedom of Information).
+
+You also have the right to lodge a complaint with the supervisory authority in your EU/EEA member state of residence.
+
+14. CONTACT
+
+For EU privacy enquiries:
+
+Email: privacy-eu@typhooncloudvault.com
+DPO: dpo@typhooncloudvault.com
+Post: Typhoon Technologies GmbH, Friedrichstrasse 123, 10117 Berlin, Germany
+Phone: +49 30 1234 5678

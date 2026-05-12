@@ -3,6 +3,7 @@ import { useNavigate } from '@tanstack/react-router';
 import type { ColumnDef } from '@typhoon/ui';
 import { apiFetch, DataTable, EmptyState, LoadingSpinner, PageHeader, StatusBadge } from '@typhoon/ui';
 import { ListChecksIcon } from 'lucide-react';
+import { usePageTitle } from '../../hooks/use-page-title';
 import type { QueueSummary } from './queue-detail/shared';
 
 const columns: ColumnDef<QueueSummary, unknown>[] = [
@@ -58,6 +59,7 @@ const columns: ColumnDef<QueueSummary, unknown>[] = [
 ];
 
 export function QueuesPage() {
+  usePageTitle('Queues');
   const navigate = useNavigate();
 
   const { data: queues, isLoading } = useQuery<QueueSummary[]>({

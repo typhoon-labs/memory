@@ -1,7 +1,22 @@
-import { useQuery } from '@tanstack/react-query';
-import { apiFetch, formatAbsoluteTime, formatRelativeTime, SectionLabel, StatCard, StatusBadge } from '@typhoon/ui';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  apiFetch,
+  Button,
+  Checkbox,
+  formatAbsoluteTime,
+  formatRelativeTime,
+  Label,
+  SectionLabel,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  StatCard,
+  StatusBadge,
+} from '@typhoon/ui';
 import { AlertTriangleIcon, CheckCircleIcon, FileTextIcon, LoaderIcon } from 'lucide-react';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { Document, SyncJob, SyncTarget } from './shared';
 import { formatConfig, formatDuration, JOB_STATUS_MAP } from './shared';
 
@@ -76,6 +91,9 @@ export function OverviewTab({ sourceId, target }: { sourceId: string; target: Sy
         </div>
       </div>
 
+      {/* Metadata Settings */}
+      <MetadataSettings sourceId={sourceId} target={target} />
+
       {/* Last Sync */}
       <div>
         <SectionLabel>Last Sync</SectionLabel>
@@ -122,6 +140,84 @@ export function OverviewTab({ sourceId, target }: { sourceId: string; target: Sy
           </div>
         ) : (
           <p className="mt-2 text-sm text-muted-foreground">No sync jobs yet.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// =============================================================================
+// Metadata Settings
+// =============================================================================
+
+interface MetadataTemplate {
+  id: string;
+  name: string;
+  description: string | null;
+}
+
+function MetadataSettings({ sourceId, target }: { sourceId: string; target: SyncTarget }) {
+  const queryClient = useQueryClient();
+  const [templateId, setTemplateId] = useState<string | null>(target.metadataTemplateId);
+  const [autoExtract, setAutoExtract] = useState(target.autoExtractMetadata);
+
+  const { data: templates = [] } = useQuery<MetadataTemplate[]>({
+    queryKey: ['metadata-templates'],
+    queryFn: () => apiFetch('/api/v1/metadata-templates'),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: (data: { metadataTemplateId?: string | null; autoExtractMetadata?: boolean }) =>
+      apiFetch(`/api/v1/sync-targets/${sourceId}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sync-targets', sourceId] });
+    },
+  });
+
+  const hasChanges = templateId !== target.metadataTemplateId || autoExtract !== target.autoExtractMetadata;
+
+  function handleSave() {
+    updateMutation.mutate({ metadataTemplateId: templateId, autoExtractMetadata: autoExtract });
+  }
+
+  return (
+    <div>
+      <SectionLabel>Metadata Settings</SectionLabel>
+      <div className="mt-2 rounded-lg border border-border bg-card p-4 space-y-4">
+        <div>
+          <Label className="text-sm text-muted-foreground">Metadata Template</Label>
+          <Select value={templateId ?? '__none__'} onValueChange={(v) => setTemplateId(v === '__none__' ? null : v)}>
+            <SelectTrigger className="mt-1">
+              <SelectValue placeholder="None" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">None</SelectItem>
+              {templates.map((t) => (
+                <SelectItem key={t.id} value={t.id}>
+                  {t.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {templateId && (
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="auto-extract-metadata"
+              checked={autoExtract}
+              onCheckedChange={(checked: boolean | 'indeterminate') => setAutoExtract(checked === true)}
+            />
+            <Label htmlFor="auto-extract-metadata" className="cursor-pointer text-sm font-normal">
+              Auto-extract metadata from document content (uses LLM)
+            </Label>
+          </div>
+        )}
+
+        {hasChanges && (
+          <Button size="sm" onClick={handleSave} disabled={updateMutation.isPending}>
+            {updateMutation.isPending ? 'Saving...' : 'Save'}
+          </Button>
         )}
       </div>
     </div>

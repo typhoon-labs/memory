@@ -52,6 +52,19 @@ export const syncStageDuration = meter.createHistogram('sync.stage.duration', {
   unit: 'ms',
 });
 
+// ── Scoring Metrics ─────────────────────────────────────────────────
+
+/** Histogram: individual scorer execution duration, keyed by scorer type. */
+export const scorerDuration = meter.createHistogram('scoring.scorer.duration', {
+  description: 'Individual scorer execution duration in milliseconds',
+  unit: 'ms',
+});
+
+/** Counter: scoring flows that completed with at least one permanently failed scorer. */
+export const scoringPartialFailure = meter.createCounter('scoring.flow.partial_failure', {
+  description: 'Scoring flows with partial scorer failures',
+});
+
 // ── Embedding Metrics ────────────────────────────────────────────────
 
 /** Histogram: chunk character count distribution before embedding. */

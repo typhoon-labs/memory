@@ -5,7 +5,7 @@ import { registerAllSources } from './config/sources';
 import { sql } from './db';
 import { startHealthServer } from './health';
 import { initVectorIndex } from './init';
-import { initExperimentQueue, initScoringQueue, initSyncQueue, shutdownQueues } from './queue';
+import { initExperimentQueue, initReviewsQueue, initScoringQueue, initSyncQueue, shutdownQueues } from './queue';
 import { shutdownWorkers, startWorkers } from './workers';
 
 const log = createAppLogger('worker');
@@ -22,6 +22,7 @@ const connectionString = process.env.DATABASE_URL ?? 'postgresql://typhoon:typho
 
 initSyncQueue(redisUrl);
 initScoringQueue(redisUrl);
+initReviewsQueue(redisUrl);
 initExperimentQueue(redisUrl);
 startWorkers(redisUrl, connectionString);
 

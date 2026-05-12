@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
+import { normalizeScoreForAvg, SCORER_CATEGORIES } from '@typhoon/evals/scorer-categories';
 import type { ColumnDef } from '@typhoon/ui';
 import { apiFetch, DataTable, EmptyState, LoadingSpinner, PageHeader, StatCard } from '@typhoon/ui';
 import {
@@ -9,9 +10,10 @@ import {
   FileTextIcon,
   FolderSyncIcon,
   GaugeIcon,
-  TrendingDownIcon,
+  SearchIcon,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { usePageTitle } from '../../hooks/use-page-title';
 import { LatencyChart } from '../charts/latency-chart';
 import { ScoreTrendChart } from '../charts/score-trend-chart';
 import { Sparkline } from '../charts/sparkline';
@@ -33,8 +35,8 @@ interface DashboardThread {
   threadId: string;
   title: string;
   resourceId: string;
-  avgScore: number;
-  minScore: number;
+  responseAvg: number | null;
+  retrievalAvg: number | null;
   scoreCount: number;
   createdAt: string;
 }
@@ -42,8 +44,8 @@ interface DashboardThread {
 interface DashboardUser {
   resourceId: string;
   email: string | null;
-  avgScore: number;
-  minScore: number;
+  responseAvg: number | null;
+  retrievalAvg: number | null;
   scoreCount: number;
   threadCount: number;
 }
@@ -109,6 +111,7 @@ function WidgetCard({ title, children }: { title: string; children: React.ReactN
 // ---------- Main Dashboard ----------
 
 export function AdminDashboard() {
+  usePageTitle('Dashboard');
   const navigate = useNavigate();
   const [range, setRange] = useState<DateRange>('30d');
   const { dateFrom, dateTo } = useDateRange(range);
@@ -160,52 +163,41 @@ export function AdminDashboard() {
 
   const scoreSeries = scores.data?.series ?? [];
   const scoreBuckets = scores.data?.buckets ?? [];
-  const avgScoreOverall = useMemo(() => {
-    if (scoreSeries.length === 0) return null;
-    const total = scoreSeries.reduce((sum, p) => sum + p.avgScore * p.count, 0);
-    const count = scoreSeries.reduce((sum, p) => sum + p.count, 0);
-    return count > 0 ? total / count : null;
-  }, [scoreSeries]);
 
-  const avgScoreData = useMemo(() => {
-    const byBucket = new Map<string, { total: number; count: number }>();
-    for (const p of scoreSeries) {
-      const existing = byBucket.get(p.date);
-      if (existing) {
-        existing.total += p.avgScore * p.count;
-        existing.count += p.count;
-      } else {
-        byBucket.set(p.date, { total: p.avgScore * p.count, count: p.count });
+  const { responseStats, retrievalStats } = useMemo(() => {
+    function computeCategorySparkline(category: 'response' | 'retrieval') {
+      const scorerIds = Object.entries(SCORER_CATEGORIES)
+        .filter(([, c]) => c.category === category)
+        .map(([k]) => k);
+
+      const byBucket = new Map<string, { total: number; count: number }>();
+      for (const p of scoreSeries.filter((s) => scorerIds.includes(s.scorerId))) {
+        const normalized = normalizeScoreForAvg(p.scorerId, p.avgScore);
+        const existing = byBucket.get(p.date);
+        if (existing) {
+          existing.total += normalized * p.count;
+          existing.count += p.count;
+        } else {
+          byBucket.set(p.date, { total: normalized * p.count, count: p.count });
+        }
       }
-    }
-    return scoreBuckets.map((date) => {
-      const d = byBucket.get(date);
-      return { value: d && d.count > 0 ? d.total / d.count : null };
-    });
-  }, [scoreSeries, scoreBuckets]);
 
-  const hallucinationData = useMemo(() => {
-    const byBucket = new Map<string, { total: number; count: number }>();
-    for (const p of scoreSeries.filter((s) => s.scorerId === 'hallucination')) {
-      const existing = byBucket.get(p.date);
-      if (existing) {
-        existing.total += p.avgScore * p.count;
-        existing.count += p.count;
-      } else {
-        byBucket.set(p.date, { total: p.avgScore * p.count, count: p.count });
-      }
-    }
-    return scoreBuckets.map((date) => {
-      const d = byBucket.get(date);
-      return { value: d && d.count > 0 ? d.total / d.count : null };
-    });
-  }, [scoreSeries, scoreBuckets]);
+      const sparkline = scoreBuckets.map((date) => {
+        const d = byBucket.get(date);
+        return { value: d && d.count > 0 ? d.total / d.count : null };
+      });
 
-  const hallucinationAvg = useMemo(() => {
-    const withData = hallucinationData.filter((d) => d.value !== null);
-    if (withData.length === 0) return null;
-    return withData.reduce((s, d) => s + (d.value as number), 0) / withData.length;
-  }, [hallucinationData]);
+      const withData = sparkline.filter((d) => d.value !== null);
+      const avg = withData.length > 0 ? withData.reduce((s, d) => s + (d.value as number), 0) / withData.length : null;
+
+      return { sparkline, avg };
+    }
+
+    return {
+      responseStats: computeCategorySparkline('response'),
+      retrievalStats: computeCategorySparkline('retrieval'),
+    };
+  }, [scoreSeries, scoreBuckets]);
 
   // Thread table columns
   const threadColumns: ColumnDef<DashboardThread, unknown>[] = useMemo(
@@ -222,17 +214,17 @@ export function AdminDashboard() {
         ),
       },
       {
-        id: 'avgScore',
-        header: 'Avg',
+        id: 'responseAvg',
+        header: 'Response',
         cell: ({ row }) => (
-          <span className="text-sm tabular-nums">{row.original.avgScore?.toFixed(2) ?? '\u2014'}</span>
+          <span className="text-sm tabular-nums">{row.original.responseAvg?.toFixed(2) ?? '\u2014'}</span>
         ),
       },
       {
-        id: 'minScore',
-        header: 'Worst',
+        id: 'retrievalAvg',
+        header: 'Retrieval',
         cell: ({ row }) => (
-          <span className="text-sm tabular-nums">{row.original.minScore?.toFixed(2) ?? '\u2014'}</span>
+          <span className="text-sm tabular-nums">{row.original.retrievalAvg?.toFixed(2) ?? '\u2014'}</span>
         ),
       },
       {
@@ -255,10 +247,17 @@ export function AdminDashboard() {
         ),
       },
       {
-        id: 'avgScore',
-        header: 'Avg',
+        id: 'responseAvg',
+        header: 'Response',
         cell: ({ row }) => (
-          <span className="text-sm tabular-nums">{row.original.avgScore?.toFixed(2) ?? '\u2014'}</span>
+          <span className="text-sm tabular-nums">{row.original.responseAvg?.toFixed(2) ?? '\u2014'}</span>
+        ),
+      },
+      {
+        id: 'retrievalAvg',
+        header: 'Retrieval',
+        cell: ({ row }) => (
+          <span className="text-sm tabular-nums">{row.original.retrievalAvg?.toFixed(2) ?? '\u2014'}</span>
         ),
       },
       {
@@ -307,37 +306,32 @@ export function AdminDashboard() {
           <div className="relative overflow-hidden rounded-lg border border-border bg-card">
             <div className="px-5 pt-4 pb-10">
               <div className="flex items-start justify-between">
-                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Avg Score</p>
+                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Response Quality</p>
                 <GaugeIcon className="size-4 text-muted-foreground" />
               </div>
               <span className="mt-1.5 block text-xl font-semibold leading-none tracking-tight text-foreground">
-                {avgScoreOverall !== null ? avgScoreOverall.toFixed(2) : '\u2014'}
+                {responseStats.avg !== null ? responseStats.avg.toFixed(2) : '\u2014'}
               </span>
             </div>
-            {avgScoreData.length > 1 && (
+            {responseStats.sparkline.length > 1 && (
               <div className="absolute inset-x-0 bottom-0">
-                <Sparkline data={avgScoreData} color="oklch(0.65 0.1 165)" width="100%" height={32} />
+                <Sparkline data={responseStats.sparkline} color="oklch(0.65 0.1 165)" width="100%" height={32} />
               </div>
             )}
           </div>
           <div className="relative overflow-hidden rounded-lg border border-border bg-card">
             <div className="px-5 pt-4 pb-10">
               <div className="flex items-start justify-between">
-                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Hallucination Rate</p>
-                <TrendingDownIcon className="size-4 text-muted-foreground" />
+                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Retrieval Quality</p>
+                <SearchIcon className="size-4 text-muted-foreground" />
               </div>
               <span className="mt-1.5 block text-xl font-semibold leading-none tracking-tight text-foreground">
-                {hallucinationAvg !== null ? hallucinationAvg.toFixed(2) : '\u2014'}
+                {retrievalStats.avg !== null ? retrievalStats.avg.toFixed(2) : '\u2014'}
               </span>
-              {hallucinationAvg !== null && (
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {hallucinationAvg <= 0.3 ? 'Low' : hallucinationAvg <= 0.5 ? 'Moderate' : 'High'} — lower is better
-                </p>
-              )}
             </div>
-            {hallucinationData.length > 1 && (
+            {retrievalStats.sparkline.length > 1 && (
               <div className="absolute inset-x-0 bottom-0">
-                <Sparkline data={hallucinationData} color="oklch(0.65 0.1 250)" width="100%" height={32} />
+                <Sparkline data={retrievalStats.sparkline} color="oklch(0.65 0.1 250)" width="100%" height={32} />
               </div>
             )}
           </div>
@@ -360,7 +354,7 @@ export function AdminDashboard() {
 
         {/* Row 3: Worst Threads + Per-User Quality */}
         <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <WidgetCard title="Worst-Scoring Threads">
+          <WidgetCard title="Lowest Quality Threads">
             {worstThreads.data?.threads && worstThreads.data.threads.length > 0 ? (
               <DataTable
                 data={worstThreads.data.threads}

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
+import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,6 +24,7 @@ import {
   TabsTrigger,
 } from '@typhoon/ui';
 import { ChevronDownIcon, ChevronRightIcon, RefreshCwIcon, SquareIcon, Trash2Icon } from 'lucide-react';
+import { detailTitle, usePageTitle } from '../../hooks/use-page-title';
 import { DocumentsTab } from './sync-source-detail/documents-tab';
 import { OverviewTab } from './sync-source-detail/overview-tab';
 import type { SyncJob, SyncTarget } from './sync-source-detail/shared';
@@ -51,6 +52,8 @@ export function SyncSourceDetailPage() {
     queryKey: ['sync-targets', sourceId],
     queryFn: () => apiFetch(`/api/v1/sync-targets/${sourceId}`),
   });
+
+  usePageTitle(detailTitle('Sources', target?.name));
 
   const { data: syncJobs } = useQuery<SyncJob[]>({
     queryKey: ['sync-targets', sourceId, 'jobs'],
@@ -113,16 +116,9 @@ export function SyncSourceDetailPage() {
         <PageHeader
           title={
             <span className="flex items-center gap-1.5">
-              <a
-                href="/sources"
-                onClick={(e) => {
-                  e.preventDefault();
-                  navigate({ to: '/sources' });
-                }}
-                className="text-muted-foreground transition-colors hover:text-foreground"
-              >
+              <Link to="/sources" className="text-muted-foreground transition-colors hover:text-foreground">
                 Sources
-              </a>
+              </Link>
               <ChevronRightIcon className="size-3.5 text-muted-foreground/50" />
               {target.name}
             </span>

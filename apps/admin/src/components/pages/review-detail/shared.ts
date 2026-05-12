@@ -28,10 +28,13 @@ export const SEVERITY_VARIANT_MAP: Record<Severity, 'info' | 'warning' | 'error'
   critical: 'error',
 };
 
-export const SCORE_THRESHOLDS: Record<string, { pass: number; label: string; invertedScale?: boolean }> = {
-  faithfulness: { pass: 0.7, label: 'Faithfulness' },
-  hallucination: { pass: 0.3, label: 'Hallucination', invertedScale: true },
+export type { ScorerCategory } from '@typhoon/evals/scorer-categories';
+export { computeCategoryAverages, normalizeScoreForAvg, SCORER_CATEGORIES } from '@typhoon/evals/scorer-categories';
+
+export const SCORE_THRESHOLDS: Record<string, { pass: number; label: string }> = {
   answerRelevancy: { pass: 0.6, label: 'Answer Relevancy' },
+  faithfulness: { pass: 0.7, label: 'Faithfulness' },
+  hallucination: { pass: 0.3, label: 'Hallucination' },
   contextRelevance: { pass: 0.5, label: 'Context Relevance' },
   contextPrecision: { pass: 0.5, label: 'Context Precision' },
 };

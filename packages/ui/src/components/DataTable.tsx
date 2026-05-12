@@ -7,6 +7,7 @@ import {
   getSortedRowModel,
   useReactTable,
 } from '@tanstack/react-table';
+import { SearchIcon } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { cn } from '../lib/utils';
 import { Button } from './ui/button';
@@ -143,13 +144,16 @@ export function DataTable<TData>({
         <div className="mb-4 flex flex-wrap items-center gap-3">
           {toolbar && <div className="flex-1">{toolbar}</div>}
           {enableFiltering && (
-            <Input
-              type="text"
-              placeholder="Filter..."
-              value={globalFilter}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setGlobalFilter(e.target.value)}
-              className="ml-auto h-8 w-[220px] text-sm"
-            />
+            <div className="relative ml-auto">
+              <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                type="text"
+                placeholder="Search..."
+                value={globalFilter}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setGlobalFilter(e.target.value)}
+                className="h-8 w-[220px] pl-8 text-sm"
+              />
+            </div>
           )}
         </div>
       )}
@@ -204,7 +208,7 @@ export function DataTable<TData>({
                   className={cn(
                     'hover:bg-accent transition-colors',
                     onRowClick && 'cursor-pointer',
-                    enableRowSelection && row.getIsSelected() && 'bg-muted/50',
+                    enableRowSelection && row.getIsSelected() && 'bg-muted',
                   )}
                   onClick={onRowClick ? () => onRowClick(row.original) : undefined}
                   onMouseEnter={onRowHover ? () => onRowHover(row.original) : undefined}

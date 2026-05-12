@@ -29,6 +29,8 @@ const createSyncTargetSchema = z.object({
   cronSchedule: z.string().optional(),
   isActive: z.boolean().optional(),
   source: z.string().optional(),
+  metadataTemplateId: z.string().uuid().nullable().optional(),
+  autoExtractMetadata: z.boolean().optional(),
 });
 
 const updateSyncTargetSchema = createSyncTargetSchema.partial();

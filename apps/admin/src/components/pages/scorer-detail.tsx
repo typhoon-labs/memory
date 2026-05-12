@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
+import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import {
   apiFetch,
   Button,
@@ -49,6 +49,7 @@ import {
   TrashIcon,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { detailTitle, usePageTitle } from '../../hooks/use-page-title';
 
 const SCORER_TYPES = [
   { value: 'faithfulness', label: 'Faithfulness' },
@@ -170,6 +171,8 @@ export function ScorerDetailPage() {
     queryKey: ['admin-scorer', scorerId],
     queryFn: () => apiFetch(`/api/v1/admin/scorers/${scorerId}`),
   });
+
+  usePageTitle(detailTitle('Scorers', scorer ? (scorer.name ?? undefined) : undefined));
 
   // Fetch version history
   const { data: versionsData } = useQuery<{ versions: Version[] }>({
@@ -302,20 +305,13 @@ export function ScorerDetailPage() {
 
   return (
     <div className="h-full overflow-y-auto p-4 sm:p-6 md:p-8">
-      <div className="mx-auto max-w-3xl">
+      <div className="mx-auto max-w-5xl">
         <PageHeader
           title={
             <span className="flex items-center gap-1.5">
-              <a
-                href="/scorers"
-                onClick={(e) => {
-                  e.preventDefault();
-                  navigate({ to: '/scorers' });
-                }}
-                className="text-muted-foreground transition-colors hover:text-foreground"
-              >
+              <Link to="/scorers" className="text-muted-foreground transition-colors hover:text-foreground">
                 Scorers
-              </a>
+              </Link>
               <ChevronRightIcon className="size-3.5 text-muted-foreground/50" />
               {scorer.name ?? 'Unnamed Scorer'}
               {scorer.versionNumber != null && (
@@ -424,6 +420,12 @@ export function ScorerDetailPage() {
 
           <TabsContent value="configuration" className="mt-4">
             <div className="space-y-5">
+              <div>
+                <h2 className="text-sm font-semibold">Details</h2>
+                <p className="mt-0.5 text-sm text-muted-foreground">
+                  Configure the scorer name, type, and evaluation criteria.
+                </p>
+              </div>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="edit-name">Name</Label>
                 <Input id="edit-name" value={formName} onChange={(e) => setFormName(e.target.value)} />

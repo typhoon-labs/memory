@@ -122,15 +122,20 @@ export const dashboardRoutes = [
           t."title",
           t."resource_id",
           t."created_at" AS thread_created_at,
-          AVG(s."score")::real AS avg_score,
-          MIN(s."score")::real AS min_score,
-          COUNT(*)::int AS score_count
+          AVG(CASE
+            WHEN s."scorer_id" IN ('answerRelevancy', 'faithfulness') THEN s."score"
+            WHEN s."scorer_id" = 'hallucination' THEN 1 - s."score"
+          END)::real AS response_avg,
+          AVG(CASE
+            WHEN s."scorer_id" IN ('contextRelevance', 'contextPrecision') THEN s."score"
+          END)::real AS retrieval_avg,
+          COUNT(*) FILTER (WHERE s."scorer_id" != 'human-review')::int AS score_count
         FROM "scores" s
         JOIN "threads" t ON t."external_id" = s."thread_id"
         WHERE s."entity_type" = 'message'
           AND s."created_at" >= $1 AND s."created_at" <= $2
         GROUP BY s."thread_id", t."title", t."resource_id", t."created_at"
-        ORDER BY avg_score ASC
+        ORDER BY response_avg ASC NULLS LAST
         LIMIT $3`,
         [dateFrom, dateTo, limit],
       )) as Array<{
@@ -138,8 +143,8 @@ export const dashboardRoutes = [
         title: string;
         resource_id: string;
         thread_created_at: string;
-        avg_score: number;
-        min_score: number;
+        response_avg: number | null;
+        retrieval_avg: number | null;
         score_count: number;
       }>;
 
@@ -148,8 +153,8 @@ export const dashboardRoutes = [
           threadId: r.thread_id,
           title: r.title,
           resourceId: r.resource_id,
-          avgScore: r.avg_score,
-          minScore: r.min_score,
+          responseAvg: r.response_avg,
+          retrievalAvg: r.retrieval_avg,
           scoreCount: r.score_count,
           createdAt: r.thread_created_at,
         })),
@@ -176,9 +181,14 @@ export const dashboardRoutes = [
         `SELECT
           t."resource_id",
           u."email",
-          AVG(s."score")::real AS avg_score,
-          MIN(s."score")::real AS min_score,
-          COUNT(*)::int AS score_count,
+          AVG(CASE
+            WHEN s."scorer_id" IN ('answerRelevancy', 'faithfulness') THEN s."score"
+            WHEN s."scorer_id" = 'hallucination' THEN 1 - s."score"
+          END)::real AS response_avg,
+          AVG(CASE
+            WHEN s."scorer_id" IN ('contextRelevance', 'contextPrecision') THEN s."score"
+          END)::real AS retrieval_avg,
+          COUNT(*) FILTER (WHERE s."scorer_id" != 'human-review')::int AS score_count,
           COUNT(DISTINCT s."thread_id")::int AS thread_count
         FROM "scores" s
         JOIN "threads" t ON t."external_id" = s."thread_id"
@@ -187,14 +197,14 @@ export const dashboardRoutes = [
           AND s."scorer_id" != 'human-review'
           AND s."created_at" >= $1 AND s."created_at" <= $2
         GROUP BY t."resource_id", u."email"
-        ORDER BY avg_score ASC
+        ORDER BY response_avg ASC NULLS LAST
         LIMIT $3`,
         [dateFrom, dateTo, limit],
       )) as Array<{
         resource_id: string;
         email: string | null;
-        avg_score: number;
-        min_score: number;
+        response_avg: number | null;
+        retrieval_avg: number | null;
         score_count: number;
         thread_count: number;
       }>;
@@ -203,8 +213,8 @@ export const dashboardRoutes = [
         users: rows.map((r) => ({
           resourceId: r.resource_id,
           email: r.email,
-          avgScore: r.avg_score,
-          minScore: r.min_score,
+          responseAvg: r.response_avg,
+          retrievalAvg: r.retrieval_avg,
           scoreCount: r.score_count,
           threadCount: r.thread_count,
         })),

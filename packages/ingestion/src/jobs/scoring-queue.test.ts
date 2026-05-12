@@ -30,9 +30,9 @@ describe('createScoringQueue', () => {
     expect(getOpts(queue).defaultJobOptions.backoff).toEqual({ type: 'exponential', delay: 10_000 });
   });
 
-  it('removes completed jobs after 1 hour or 5000 count', () => {
+  it('removes completed jobs after 24 hours or 10000 count', () => {
     const queue = createScoringQueue({ url: 'redis://localhost:6379' });
-    expect(getOpts(queue).defaultJobOptions.removeOnComplete).toEqual({ age: 3600, count: 5000 });
+    expect(getOpts(queue).defaultJobOptions.removeOnComplete).toEqual({ age: 86400, count: 10000 });
   });
 
   it('keeps failed jobs for 3 days', () => {

@@ -5,7 +5,7 @@ import type { PgVector } from '@typhoon/db/drivers/pg';
 import { createAppLogger } from '@typhoon/logger';
 import { chunkSizeChars, embedRetryCount, embedTokenUsage, getTracer, SpanStatusCode } from '@typhoon/telemetry';
 import type { LanguageModel } from 'ai';
-import { embed, embedMany, generateText } from 'ai';
+import { embed, embedMany, generateObject, generateText } from 'ai';
 import { getMDocFormat, getParser, needsCustomParser } from './parsers/registry';
 import { createRateLimiter } from './util/rate-limiter';
 import { recordStageDuration } from './util/stage-metrics';
@@ -66,6 +66,8 @@ export interface ProcessFileInput {
    * Used by job handlers to support sync cancellation.
    */
   isCancelled?: () => Promise<boolean>;
+  /** User-defined metadata to include in vector chunk JSONB (propagated from document). */
+  customMetadata?: Record<string, unknown>;
 }
 
 export interface ProcessFileResult {
@@ -75,7 +77,7 @@ export interface ProcessFileResult {
 }
 
 export async function processFile(input: ProcessFileInput, vectorStore: PgVector): Promise<ProcessFileResult> {
-  const { content, filename, documentId, syncTargetId, sourceKey, title, onStage, isCancelled } = input;
+  const { content, filename, documentId, syncTargetId, sourceKey, title, onStage, isCancelled, customMetadata } = input;
   const tStart = Date.now();
   const announce = async (stage: string) => {
     if (onStage) await onStage(stage);
@@ -370,6 +372,7 @@ export async function processFile(input: ProcessFileInput, vectorStore: PgVector
                 section: (entry.metadata as Record<string, unknown>)?.section ?? '',
                 keywords: (entry.metadata as Record<string, unknown>)?.excerptKeywords ?? '',
                 startIndex: startIndices[i],
+                ...customMetadata,
               })),
             }),
             STAGE_TIMEOUTS.upsert,
@@ -694,4 +697,96 @@ export async function updateDocumentVectorSource(
      WHERE metadata->>'documentId' = $1`,
     [documentId, newSource],
   );
+}
+
+/** Merge custom metadata keys into existing chunk JSONB without touching embeddings. */
+export async function updateDocumentVectorMetadata(
+  sqlInstance: { unsafe: (...args: never[]) => unknown },
+  documentId: string,
+  customMetadata: Record<string, unknown>,
+): Promise<void> {
+  const fn = sqlInstance.unsafe as (query: string, params: (string | null)[]) => Promise<unknown>;
+  await fn(
+    `UPDATE "knowledge_base"
+     SET metadata = metadata || $2::jsonb
+     WHERE metadata->>'documentId' = $1`,
+    [documentId, JSON.stringify(customMetadata)],
+  );
+}
+
+/** Update the title field in chunk metadata when a document's title is edited. */
+export async function updateDocumentVectorTitle(
+  sqlInstance: { unsafe: (...args: never[]) => unknown },
+  documentId: string,
+  newTitle: string,
+): Promise<void> {
+  const fn = sqlInstance.unsafe as (query: string, params: string[]) => Promise<unknown>;
+  await fn(
+    `UPDATE "knowledge_base"
+     SET metadata = jsonb_set(metadata, '{title}', to_jsonb($2::text))
+     WHERE metadata->>'documentId' = $1`,
+    [documentId, newTitle],
+  );
+}
+
+/**
+ * Use an LLM to extract custom metadata values from document text based on a
+ * metadata schema. Uses structured output for reliable JSON generation.
+ * Returns only valid, extracted fields.
+ */
+export async function extractMetadataFromContent(
+  text: string,
+  schema: Record<string, { type: string; allowedValues?: unknown[]; description?: string }>,
+  llm: LanguageModel,
+): Promise<Record<string, unknown>> {
+  const { buildZodFromMetadataSchema } = await import('@typhoon/types');
+  // biome-ignore lint/suspicious/noExplicitAny: schema types are compatible at runtime
+  const zodSchema = buildZodFromMetadataSchema(schema as any);
+
+  const fieldDescriptions = Object.entries(schema)
+    .map(([key, field]) => {
+      let desc = `- ${key} (${field.type})`;
+      if (field.description) desc += `: ${field.description}`;
+      if (field.allowedValues?.length) desc += ` [allowed: ${field.allowedValues.join(', ')}]`;
+      return desc;
+    })
+    .join('\n');
+
+  const prompt = `Extract metadata from the following document text.
+
+Rules:
+- For fields with allowed values, choose the MOST SPECIFIC value that matches the document content. Do not default to generic or catch-all values when a more specific value applies.
+- If a field cannot be determined from the text, omit it.
+- Base your extraction on the actual content of the document, not assumptions.
+
+Fields to extract:
+${fieldDescriptions}
+
+Document text (first 4000 chars):
+${text.slice(0, 4000)}`;
+
+  try {
+    const { object } = await generateObject({
+      model: llm,
+      schema: zodSchema,
+      prompt,
+      temperature: 0,
+    });
+
+    const result: Record<string, unknown> = {};
+
+    // Validate extracted values against schema constraints (safety net)
+    for (const [key, value] of Object.entries(object)) {
+      if (value === undefined || value === null) continue;
+      if (!(key in schema)) continue;
+      const field = schema[key];
+      if (field.allowedValues?.length && !field.allowedValues.includes(value)) continue;
+      result[key] = value;
+    }
+
+    return result;
+  } catch (err) {
+    log.warn('LLM metadata extraction failed', { error: err instanceof Error ? err.message : String(err) });
+    return {};
+  }
 }

@@ -50,6 +50,23 @@ export function useQueueEvents() {
       }
     });
 
+    // On reconnect after a drop, invalidate all queue-related data to catch
+    // events missed while disconnected. The 'open' event also fires on
+    // initial connect, but invalidating freshly-fetched queries is a no-op.
+    es.addEventListener('open', () => {
+      queryClient.invalidateQueries({ queryKey: ['queues'] });
+      queryClient.invalidateQueries({ queryKey: ['documents'] });
+      queryClient.invalidateQueries({ queryKey: ['browse'] });
+      queryClient.invalidateQueries({ queryKey: ['sync-targets'] });
+    });
+
+    es.onerror = () => {
+      // EventSource fires 'error' on any connection issue. The browser will
+      // auto-reconnect (using the server's retry: interval). Debug-level
+      // only — SSE drops during deploys/restarts are expected and noisy.
+      console.debug('[useQueueEvents] SSE connection error — browser will auto-reconnect');
+    };
+
     return () => {
       es.close();
       for (const t of timers.values()) clearTimeout(t);

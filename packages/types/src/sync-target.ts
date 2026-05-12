@@ -34,6 +34,8 @@ export const syncTargetSchema = z.object({
   isActive: z.boolean().default(true),
   managedBy: z.enum(['config', 'manual']).nullable().default(null),
   source: z.string().nullable().default(null),
+  metadataTemplateId: z.string().uuid().nullable().default(null),
+  autoExtractMetadata: z.boolean().default(false),
   createdAt: z.date(),
   updatedAt: z.date(),
 });

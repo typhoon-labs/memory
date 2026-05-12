@@ -17,6 +17,7 @@ export const documentSchema = z.object({
   status: documentStatusEnum.default('pending'),
   errorMessage: z.string().nullable().default(null),
   chunkCount: z.number().int().default(0),
+  customMetadata: z.record(z.string(), z.unknown()).default({}),
   contentHash: z.string().nullable().default(null),
   lastSyncedAt: z.date().nullable().default(null),
   createdAt: z.date(),

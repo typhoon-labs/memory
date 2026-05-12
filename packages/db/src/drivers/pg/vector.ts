@@ -346,11 +346,12 @@ export class PgVector extends MastraVector<PGVectorFilter> {
     const table = this.tableName(params.indexName);
     const topK = params.topK ?? 10;
     const lang = params.language ?? 'english';
-    const vectorWeight = params.vectorWeight ?? 0.7;
-    const ftsWeight = params.ftsWeight ?? 0.3;
-    const candidateK = topK * 5;
+    const vectorWeight = params.vectorWeight ?? Number(process.env.RAG_HYBRID_VECTOR_WEIGHT ?? 0.7);
+    const ftsWeight = params.ftsWeight ?? Number(process.env.RAG_HYBRID_FTS_WEIGHT ?? 0.3);
+    const candidateMultiplier = Number(process.env.RAG_HYBRID_CANDIDATE_MULTIPLIER ?? 5);
+    const candidateK = topK * candidateMultiplier;
     const vecStr = `[${params.queryVector.join(',')}]`;
-    const rrfK = 60;
+    const rrfK = Number(process.env.RAG_HYBRID_RRF_K ?? 60);
 
     let filterClause = '';
     let filterValues: SqlParam[] = [];

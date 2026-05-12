@@ -84,7 +84,7 @@ services:
   # ==========================================================================
   bifrost:
     profiles: [all, infra]
-    image: maximhq/bifrost:v1.4.7
+    image: maximhq/bifrost:v1.5.0
     container_name: typhoon-bifrost
     restart: unless-stopped
     ports:
@@ -172,7 +172,8 @@ services:
       LLM_API_KEY: ${LLM_API_KEY:-changeme}
       LLM_CHAT_MODEL: ${LLM_CHAT_MODEL:-bedrock/us.anthropic.claude-sonnet-4-6}
       LLM_TITLE_MODEL: ${LLM_TITLE_MODEL:-bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0}
-      LLM_RERANKER_MODEL: ${LLM_RERANKER_MODEL:-bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0}
+      RERANKER_MODEL: ${RERANKER_MODEL:-bedrock/arn:aws:bedrock:us-east-1::foundation-model/cohere.rerank-v3-5:0}
+      RERANKER_BASE_URL: ${RERANKER_BASE_URL:-http://bifrost:8787/v1}
       LLM_EXTRACTION_MODEL: ${LLM_EXTRACTION_MODEL:-bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0}
       LLM_GUARDRAIL_MODEL: ${LLM_GUARDRAIL_MODEL:-bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0}
       LLM_KNOWLEDGE_MODEL: ${LLM_KNOWLEDGE_MODEL:-bedrock/us.anthropic.claude-sonnet-4-6}

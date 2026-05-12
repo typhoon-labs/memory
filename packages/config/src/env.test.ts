@@ -9,6 +9,8 @@ const validEnv = {
   S3_SECRET_KEY: 'minioadmin',
   LLM_BASE_URL: 'http://localhost:8787/v1',
   LLM_API_KEY: 'changeme',
+  RERANKER_BASE_URL: 'http://localhost:8787/v1',
+  RERANKER_MODEL: 'bedrock/amazon.rerank-v1:0',
   EMBEDDING_BASE_URL: 'http://localhost:11434/v1',
   AUTH_SECRET: 'test-secret',
   AUTH_URL: 'http://localhost:5172',
@@ -133,6 +135,52 @@ describe('validateEnv', () => {
 
   it('rejects SCORING_CONCURRENCY below 1', () => {
     expect(() => validateEnv({ ...validEnv, SCORING_CONCURRENCY: '0' })).toThrow('Environment validation failed');
+  });
+
+  // ── RAG tuning ──
+
+  it('applies RAG tuning defaults', () => {
+    const result = validateEnv(validEnv);
+    expect(result.RAG_RERANK_WEIGHT_SEMANTIC).toBe(1.0);
+    expect(result.RAG_RERANK_WEIGHT_VECTOR).toBe(0);
+    expect(result.RAG_RERANK_WEIGHT_POSITION).toBe(0);
+    expect(result.RAG_RERANK_MIN_SCORE).toBe(0.1);
+    expect(result.RAG_VECTOR_MIN_SCORE).toBe(0.6);
+    expect(result.RAG_VECTOR_MIN_SCORE_AGENT).toBe(0.5);
+    expect(result.RAG_GRAPH_THRESHOLD).toBe(0.7);
+    expect(result.RAG_KNOWLEDGE_MAX_RESULTS).toBe(10);
+    expect(result.RAG_HYBRID_RRF_K).toBe(60);
+    expect(result.RAG_HYBRID_VECTOR_WEIGHT).toBe(0.7);
+    expect(result.RAG_HYBRID_FTS_WEIGHT).toBe(0.3);
+    expect(result.RAG_HYBRID_CANDIDATE_MULTIPLIER).toBe(5);
+    expect(result.RAG_RERANK_CANDIDATES).toBe(100);
+    expect(result.RAG_RERANK_CANDIDATES_EXPANDED).toBe(200);
+  });
+
+  it('accepts custom RAG tuning values', () => {
+    const result = validateEnv({
+      ...validEnv,
+      RAG_RERANK_WEIGHT_SEMANTIC: '0.4',
+      RAG_RERANK_WEIGHT_VECTOR: '0.4',
+      RAG_RERANK_WEIGHT_POSITION: '0.2',
+      RAG_RERANK_MIN_SCORE: '0.05',
+      RAG_HYBRID_RRF_K: '30',
+    });
+    expect(result.RAG_RERANK_WEIGHT_SEMANTIC).toBe(0.4);
+    expect(result.RAG_RERANK_WEIGHT_VECTOR).toBe(0.4);
+    expect(result.RAG_RERANK_MIN_SCORE).toBe(0.05);
+    expect(result.RAG_HYBRID_RRF_K).toBe(30);
+  });
+
+  it('rejects reranker weights that do not sum to 1', () => {
+    expect(() =>
+      validateEnv({
+        ...validEnv,
+        RAG_RERANK_WEIGHT_SEMANTIC: '0.6',
+        RAG_RERANK_WEIGHT_VECTOR: '0.6',
+        RAG_RERANK_WEIGHT_POSITION: '0.2',
+      }),
+    ).toThrow('sum to 1.0');
   });
 });
 

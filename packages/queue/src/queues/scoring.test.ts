@@ -41,10 +41,10 @@ describe('createScoringQueue', () => {
     expect(opts.defaultJobOptions.backoff).toEqual({ type: 'exponential', delay: 10_000 });
   });
 
-  it('sets removeOnComplete age=3600 count=5000', () => {
+  it('sets removeOnComplete age=86400 count=10000', () => {
     createScoringQueue(connection);
     const opts = ctorCalls[0].opts as { defaultJobOptions: { removeOnComplete: { age: number; count: number } } };
-    expect(opts.defaultJobOptions.removeOnComplete).toEqual({ age: 3600, count: 5000 });
+    expect(opts.defaultJobOptions.removeOnComplete).toEqual({ age: 86400, count: 10000 });
   });
 
   it('sets removeOnFail age to 259200 (3 days)', () => {

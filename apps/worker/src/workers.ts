@@ -1,16 +1,21 @@
 import { Mastra } from '@mastra/core';
-import type { ExperimentDeps, ScorerDefinitionVersion, ScoringDeps } from '@typhoon/agents';
-import {
-  createExperimentAgent,
-  handleExperimentJob,
-  mapScorerRows,
-  PUBLISHED_SCORERS_QUERY,
-  scoreMessage,
-} from '@typhoon/agents';
+import { createExperimentAgent } from '@typhoon/agents';
 import { createScoringModel } from '@typhoon/ai';
 import { isScoringEnabled } from '@typhoon/config';
 import { createDb, messages, threads } from '@typhoon/db';
 import { DrizzleDatasetsStorage, DrizzleExperimentsStorage, PgVector } from '@typhoon/db/drivers/pg';
+import type { ScorerDefinitionVersion, ScoringDeps } from '@typhoon/evals';
+import {
+  BUILTIN_SCORER_DEFS,
+  completeExperiment,
+  mapScorerRows,
+  PUBLISHED_SCORERS_QUERY,
+  prepareScoring,
+  processExperimentItemStep1,
+  processExperimentItemStep2,
+  runSingleScorer,
+  setupExperiment,
+} from '@typhoon/evals';
 import {
   handleDeleteFileJob,
   handleProcessFileJob,
@@ -19,12 +24,19 @@ import {
   managePartitions,
 } from '@typhoon/ingestion';
 import { createAppLogger } from '@typhoon/logger';
-import type { ExperimentJobData, ScoringJobData } from '@typhoon/queue';
+import type {
+  ExperimentCompleteJobData,
+  ExperimentItemJobData,
+  ExperimentJobData,
+  ScoringAggregateJobData,
+  ScoringJobData,
+  ScoringRunJobData,
+} from '@typhoon/queue';
 import type { ConnectionOptions } from 'bullmq';
-import { UnrecoverableError, Worker } from 'bullmq';
-import { and, desc, eq } from 'drizzle-orm';
+import { FlowProducer, UnrecoverableError, WaitingChildrenError, Worker } from 'bullmq';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import postgres from 'postgres';
-import { getScoringQueue, getSyncQueue } from './queue';
+import { getReviewsQueue, getScoringQueue, getSyncQueue } from './queue';
 
 const log = createAppLogger('worker');
 
@@ -49,19 +61,11 @@ export function startWorkers(redisUrl: string, databaseUrl: string) {
   const syncQueue = getSyncQueue();
 
   const concurrency = Number(process.env.SYNC_WORKER_CONCURRENCY ?? '5');
-  // 2 minutes. BullMQ's standard worker auto-renews the lock at lockDuration/2
-  // (60s here), so as long as the event loop is responsive the lock is
-  // continuously refreshed. When the worker dies (SIGKILL, OOM), the lock
-  // expires within ~2 min and another worker claims the orphaned job —
-  // 5x faster than the previous 10 min ceiling. Application-level hangs are
-  // bounded separately by the per-stage withTimeout wrappers in the handlers.
   const lockDuration = Number(process.env.SYNC_WORKER_LOCK_DURATION_MS ?? String(2 * 60 * 1000));
   const stalledInterval = Number(process.env.SYNC_WORKER_STALLED_INTERVAL_MS ?? '60000');
   const maxStalledCount = Number(process.env.SYNC_WORKER_MAX_STALLED_COUNT ?? '3');
 
-  // Per-stage timeouts inside the handlers (see packages/ingestion/src/util/
-  // with-timeout.ts) are the real safety net. BullMQ's lockDuration provides
-  // the ultimate stalled-job backstop. No need for an outer Promise.race here.
+  // ── Sync worker ───────────────────────────────────────────────────
   const syncWorker = new Worker(
     'sync',
     async (job) => {
@@ -98,9 +102,6 @@ export function startWorkers(redisUrl: string, databaseUrl: string) {
 
   syncWorker.on('failed', (job, err) => {
     log.error('Job failed', { job: job?.name, jobId: job?.id, error: err.message });
-    // On terminal failure, increment the sync job completion counter so
-    // the parent sync job eventually resolves. The success path is handled
-    // inside the individual job handlers.
     const syncJobId = (job?.data as { syncJobId?: string } | undefined)?.syncJobId;
     if (syncJobId) {
       incrementSyncJobCompletion(db, syncJobId, true).catch((err: unknown) => {
@@ -129,116 +130,249 @@ export function startWorkers(redisUrl: string, databaseUrl: string) {
       log.error('Failed to refresh scorer definitions', {
         error: err instanceof Error ? err.message : String(err),
       });
-      // Keep using cached definitions on error
     }
   }
 
-  // ── Scoring worker ──────────────────────────────────────────────────
+  // ── Shared scoring dependencies ───────────────────────────────────
+  const scoringModel = createScoringModel();
+  const flowProducer = new FlowProducer({ connection });
+
+  const scoringDeps: ScoringDeps = {
+    fetchMessages: async (messageId: string) => {
+      const [assistantMsg] = await db.select().from(messages).where(eq(messages.externalId, messageId));
+      if (!assistantMsg) {
+        log.warn('Scoring: assistant message not found', { messageId });
+        return null;
+      }
+
+      const [userMsg] = await db
+        .select()
+        .from(messages)
+        .where(
+          and(
+            eq(messages.threadId, assistantMsg.threadId),
+            eq(messages.role, 'user'),
+            // Exclude PrefillErrorHandler retry messages (contain systemReminder metadata)
+            sql`${messages.content}->'metadata'->'systemReminder' IS NULL`,
+          ),
+        )
+        .orderBy(desc(messages.createdAt))
+        .limit(1);
+
+      if (!userMsg) {
+        log.warn('Scoring: no user message in thread', { messageId, threadId: assistantMsg.threadId });
+        return null;
+      }
+      return {
+        assistantContent: assistantMsg.content,
+        userContent: userMsg.content,
+        messageExternalId: assistantMsg.externalId,
+      };
+    },
+
+    resolveLatestAssistantMessage: async (threadExternalId: string) => {
+      const [thread] = await db
+        .select({ id: threads.id })
+        .from(threads)
+        .where(eq(threads.externalId, threadExternalId));
+      if (!thread) return null;
+
+      const [msg] = await db
+        .select({ externalId: messages.externalId })
+        .from(messages)
+        .where(and(eq(messages.threadId, thread.id), eq(messages.role, 'assistant')))
+        .orderBy(desc(messages.createdAt))
+        .limit(1);
+      return msg?.externalId ?? null;
+    },
+
+    hydrateChunks: async (chunkIds: string[]) => {
+      if (chunkIds.length === 0) return new Map();
+      const rows = await vectorStore.getChunksByIds('knowledge_base', chunkIds);
+      return new Map(rows.map((r) => [r.id, (r.metadata?.text as string) ?? '']));
+    },
+
+    hasExistingScore: async (entityId: string, scorerId: string) => {
+      const [row] = await workerSql`
+        SELECT 1 FROM "scores"
+        WHERE "entity_id" = ${entityId}
+          AND "entity_type" = 'message'
+          AND "scorer_id" = ${scorerId}
+        LIMIT 1
+      `;
+      return !!row;
+    },
+
+    saveScore: async (score: Record<string, unknown>) => {
+      const keys = Object.keys(score);
+      const cols = keys.map((k) => `"${k.replace(/[A-Z]/g, (m) => `_${m.toLowerCase()}`)}"`).join(', ');
+      const placeholders = keys.map((_, i) => `$${i + 1}`).join(', ');
+      const vals = keys.map((k) => {
+        const v = score[k];
+        return typeof v === 'object' && v !== null && !(v instanceof Date) ? JSON.stringify(v) : v;
+      });
+      await workerSql.unsafe(
+        `INSERT INTO "scores" (${cols}) VALUES (${placeholders}) ON CONFLICT (id) DO NOTHING`,
+        vals as (string | number | boolean | null)[],
+      );
+    },
+  };
+
+  // ── Reviews worker ────────────────────────────────────────────────
   if (isScoringEnabled()) {
-    const scoringConcurrency = Number(process.env.SCORING_CONCURRENCY ?? '5');
-    const scoringModel = createScoringModel();
+    const reviewsConcurrency = Number(process.env.SCORING_CONCURRENCY ?? '5');
 
-    // Build dependency functions for scoreMessage()
-    const scoringDeps: ScoringDeps = {
-      fetchMessages: async (messageId: string) => {
-        const [assistantMsg] = await db.select().from(messages).where(eq(messages.externalId, messageId));
-        if (!assistantMsg) {
-          log.warn('Scoring: assistant message not found', { messageId });
-          return null;
+    const reviewsWorker = new Worker(
+      'reviews',
+      async (job) => {
+        switch (job.name) {
+          case 'partition-management': {
+            const retDays = (job.data as { retentionDays?: number }).retentionDays ?? 90;
+            const result = await managePartitions(workerSql as never, { retentionDays: retDays });
+            log.info('Partition management complete', result);
+            return result;
+          }
+
+          case 'score-message': {
+            const data = job.data as ScoringJobData;
+            try {
+              await refreshScorerDefinitions();
+
+              const prepared = await prepareScoring(
+                {
+                  messageId: data.messageId,
+                  threadId: data.threadId,
+                  agentId: data.agentId,
+                  traceId: data.traceId,
+                },
+                scoringDeps,
+                scoringModel,
+                _cachedScorerDefs.length > 0 ? _cachedScorerDefs : undefined,
+              );
+
+              if (prepared.scorersToRun.length === 0) {
+                return { scored: 0, skipped: prepared.skippedCount, errors: [] };
+              }
+
+              await flowProducer.add({
+                name: 'score-aggregate',
+                queueName: 'reviews',
+                data: {
+                  messageId: prepared.messageId,
+                  threadId: data.threadId,
+                  totalScorers: prepared.scorersToRun.length + prepared.skippedCount,
+                  skippedScorers: prepared.skippedCount,
+                } satisfies ScoringAggregateJobData,
+                children: prepared.scorersToRun.map((def) => ({
+                  name: 'score-run',
+                  queueName: 'scoring',
+                  data: {
+                    scorerName: def.name,
+                    scorerDefinition: def,
+                    userQuestion: prepared.userQuestion,
+                    responseText: prepared.responseText,
+                    context: prepared.context,
+                    persist: {
+                      messageId: prepared.messageId,
+                      threadId: data.threadId,
+                      agentId: data.agentId,
+                      traceId: data.traceId,
+                    },
+                  } satisfies ScoringRunJobData,
+                  opts: { ignoreDependencyOnFailure: true, priority: 1 },
+                })),
+              });
+
+              return { prepared: prepared.scorersToRun.length, skipped: prepared.skippedCount };
+            } catch (err) {
+              if (err && typeof err === 'object' && 'unrecoverable' in err) {
+                throw new UnrecoverableError(err instanceof Error ? err.message : String(err));
+              }
+              throw err;
+            }
+          }
+
+          case 'score-aggregate': {
+            const aggData = job.data as ScoringAggregateJobData;
+            const childrenValues = await job.getChildrenValues();
+            const ignoredFailures = await job.getFailedChildrenValues();
+
+            const scored = Object.keys(childrenValues).length;
+            const failed = Object.keys(ignoredFailures).length;
+
+            log.info('Scoring complete', {
+              messageId: aggData.messageId,
+              scored,
+              skipped: aggData.skippedScorers,
+              failed,
+              total: aggData.totalScorers,
+            });
+
+            if (failed > 0) {
+              log.warn('Partial scoring failure', {
+                messageId: aggData.messageId,
+                failed,
+              });
+            }
+
+            return { scored, skipped: aggData.skippedScorers, failed };
+          }
+
+          default:
+            throw new Error(`Unknown reviews job type: ${job.name}`);
         }
-
-        // Find the preceding user message in the same thread
-        const [userMsg] = await db
-          .select()
-          .from(messages)
-          .where(and(eq(messages.threadId, assistantMsg.threadId), eq(messages.role, 'user')))
-          .orderBy(desc(messages.createdAt))
-          .limit(1);
-
-        if (!userMsg) {
-          log.warn('Scoring: no user message in thread', { messageId, threadId: assistantMsg.threadId });
-          return null;
-        }
-        return {
-          assistantContent: assistantMsg.content,
-          userContent: userMsg.content,
-          messageExternalId: assistantMsg.externalId,
-        };
       },
-
-      resolveLatestAssistantMessage: async (threadExternalId: string) => {
-        const [thread] = await db
-          .select({ id: threads.id })
-          .from(threads)
-          .where(eq(threads.externalId, threadExternalId));
-        if (!thread) return null;
-
-        const [msg] = await db
-          .select({ externalId: messages.externalId })
-          .from(messages)
-          .where(and(eq(messages.threadId, thread.id), eq(messages.role, 'assistant')))
-          .orderBy(desc(messages.createdAt))
-          .limit(1);
-        return msg?.externalId ?? null;
+      {
+        connection,
+        concurrency: reviewsConcurrency,
+        lockDuration: 5 * 60 * 1000,
+        stalledInterval: 150_000,
+        maxStalledCount: 2,
       },
+    );
+    _workers.set('reviews', reviewsWorker);
 
-      hydrateChunks: async (chunkIds: string[]) => {
-        if (chunkIds.length === 0) return new Map();
-        const rows = await vectorStore.getChunksByIds('knowledge_base', chunkIds);
-        return new Map(rows.map((r) => [r.id, (r.metadata?.text as string) ?? '']));
-      },
+    reviewsWorker.on('error', (err) => {
+      log.error('Reviews worker error', { error: err.message });
+    });
+    reviewsWorker.on('failed', (job, err) => {
+      log.error('Reviews job failed', { jobId: job?.id, name: job?.name, error: err.message });
+    });
+    reviewsWorker.on('completed', (job) => {
+      log.debug('Reviews job completed', { jobId: job.id, name: job.name, result: job.returnvalue });
+    });
 
-      hasExistingScore: async (entityId: string, scorerId: string) => {
-        const [row] = await workerSql`
-          SELECT 1 FROM "scores"
-          WHERE "entity_id" = ${entityId}
-            AND "entity_type" = 'message'
-            AND "scorer_id" = ${scorerId}
-          LIMIT 1
-        `;
-        return !!row;
-      },
+    // Register partition management as a repeatable job on the reviews queue
+    const reviewsQueue = getReviewsQueue();
+    const retentionDays = Number(process.env.SPAN_RETENTION_DAYS ?? '90');
+    reviewsQueue
+      .add('partition-management', { retentionDays }, { repeat: { pattern: '0 2 * * *' }, jobId: 'partition-mgmt' })
+      .catch((err: unknown) => log.error('Failed to register partition management job', { error: err }));
 
-      saveScore: async (score: Record<string, unknown>) => {
-        const keys = Object.keys(score);
-        const cols = keys.map((k) => `"${k.replace(/[A-Z]/g, (m) => `_${m.toLowerCase()}`)}"`).join(', ');
-        const placeholders = keys.map((_, i) => `$${i + 1}`).join(', ');
-        const vals = keys.map((k) => {
-          const v = score[k];
-          return typeof v === 'object' && v !== null && !(v instanceof Date) ? JSON.stringify(v) : v;
-        });
-        await workerSql.unsafe(
-          `INSERT INTO "scores" (${cols}) VALUES (${placeholders}) ON CONFLICT (id) DO NOTHING`,
-          vals as (string | number | boolean | null)[],
-        );
-      },
-    };
+    log.info('Reviews worker started', { concurrency: reviewsConcurrency });
+
+    // ── Scoring worker (generic scorer execution) ─────────────────────
+    const scoringConcurrency = Number(process.env.SCORING_RUN_CONCURRENCY ?? '10');
 
     const scoringWorker = new Worker(
       'scoring',
       async (job) => {
-        if (job.name === 'partition-management') {
-          const retDays = (job.data as { retentionDays?: number }).retentionDays ?? 90;
-          const result = await managePartitions(workerSql as never, { retentionDays: retDays });
-          log.info('Partition management complete', result);
-          return result;
+        if (job.name !== 'score-run') {
+          throw new Error(`Unknown scoring job type: ${job.name}`);
         }
 
-        const data = job.data as ScoringJobData;
+        const data = job.data as ScoringRunJobData;
         try {
-          // Refresh scorer definitions from DB (cached, refreshes every 5 min)
-          await refreshScorerDefinitions();
-
-          return await scoreMessage(
+          return await runSingleScorer(
             {
-              messageId: data.messageId,
-              threadId: data.threadId,
-              agentId: data.agentId,
-              traceId: data.traceId,
+              scorerDefinition: data.scorerDefinition,
+              userQuestion: data.userQuestion,
+              responseText: data.responseText,
+              context: data.context,
+              persist: data.persist,
             },
-            scoringDeps,
+            { hasExistingScore: scoringDeps.hasExistingScore, saveScore: scoringDeps.saveScore },
             scoringModel,
-            _cachedScorerDefs.length > 0 ? _cachedScorerDefs : undefined,
           );
         } catch (err) {
           if (err && typeof err === 'object' && 'unrecoverable' in err) {
@@ -250,9 +384,13 @@ export function startWorkers(redisUrl: string, databaseUrl: string) {
       {
         connection,
         concurrency: scoringConcurrency,
-        lockDuration: 5 * 60 * 1000, // 5 min — LLM calls can be slow
-        stalledInterval: 150_000, // 2.5 min
+        lockDuration: 5 * 60 * 1000,
+        stalledInterval: 150_000,
         maxStalledCount: 2,
+        limiter: {
+          max: Number(process.env.SCORING_RUN_RATE_MAX ?? '15'),
+          duration: 1000,
+        },
       },
     );
     _workers.set('scoring', scoringWorker);
@@ -267,37 +405,26 @@ export function startWorkers(redisUrl: string, databaseUrl: string) {
       log.debug('Scoring job completed', { jobId: job.id, result: job.returnvalue });
     });
 
-    // Register partition management as a repeatable job on the scoring queue
-    const scoringQueue = getScoringQueue();
-    const retentionDays = Number(process.env.SPAN_RETENTION_DAYS ?? '90');
-    scoringQueue
-      .add('partition-management', { retentionDays }, { repeat: { pattern: '0 2 * * *' }, jobId: 'partition-mgmt' })
-      .catch((err: unknown) => log.error('Failed to register partition management job', { error: err }));
-
     log.info('Scoring worker started', { concurrency: scoringConcurrency });
   } else {
-    log.info('Scoring worker disabled (SCORING_ENABLED)');
+    log.info('Reviews and scoring workers disabled (SCORING_ENABLED)');
   }
 
-  // ── Experiment worker ──────────────────────────────────────────────
+  // ── Experiments worker ──────────────────────────────────────────────
   const datasetsStorage = new DrizzleDatasetsStorage(db);
   const experimentsStorage = new DrizzleExperimentsStorage(db);
   const experimentAgent = createExperimentAgent();
-  const experimentModel = createScoringModel();
 
-  // Register the experiment agent with Mastra so its tools get access to
-  // the vector store (knowledge search needs context.mastra.getVector).
   const experimentMastra = new Mastra({
     agents: { 'typhoon-experiment': experimentAgent },
     vectors: { pgVector: vectorStore },
     logger: log,
   });
-  // Retrieve the Mastra-wrapped agent so tool context is injected.
   const registeredAgent = experimentMastra.getAgent('typhoon-experiment');
 
-  const experimentDeps: ExperimentDeps = {
+  const experimentDeps = {
     getExperiment: async (id: string) => {
-      const [row] = await workerSql.unsafe(`SELECT * FROM "experiments" WHERE id = $1`, [id]);
+      const [row] = await workerSql.unsafe('SELECT * FROM "experiments" WHERE id = $1', [id]);
       if (!row) return null;
       return row as unknown as {
         id: string;
@@ -319,24 +446,157 @@ export function startWorkers(redisUrl: string, databaseUrl: string) {
     },
   };
 
+  const experimentsConcurrency = Number(process.env.EXPERIMENTS_CONCURRENCY ?? '3');
+  const scoringQueue = getScoringQueue();
+
   const experimentWorker = new Worker(
     'experiments',
-    async (job) => {
-      const { experimentId } = job.data as ExperimentJobData;
-      const depsWithLock: ExperimentDeps = {
-        ...experimentDeps,
-        extendLock: async () => {
-          await job.extendLock(job.token!, 30 * 60 * 1000);
-        },
-      };
-      await refreshScorerDefinitions();
-      return handleExperimentJob(experimentId, registeredAgent, experimentModel, depsWithLock, _cachedScorerDefs);
+    async (job, token) => {
+      switch (job.name) {
+        case 'experiment-setup': {
+          const { experimentId } = job.data as ExperimentJobData;
+          await refreshScorerDefinitions();
+
+          const { items } = await setupExperiment(experimentId, experimentDeps);
+          if (items.length === 0) {
+            return { succeeded: 0, failed: 0, cancelled: false };
+          }
+
+          await flowProducer.add({
+            name: 'experiment-complete',
+            queueName: 'experiments',
+            data: {
+              experimentId,
+              totalItems: items.length,
+            } satisfies ExperimentCompleteJobData,
+            children: items.map((item) => ({
+              name: 'exp-item-process',
+              queueName: 'experiments',
+              data: {
+                experimentId,
+                itemId: item.id,
+                input: item.input,
+                groundTruth: item.groundTruth ?? null,
+                step: 1,
+              } satisfies ExperimentItemJobData,
+              opts: { ignoreDependencyOnFailure: true },
+            })),
+          });
+
+          return { itemsEnqueued: items.length };
+        }
+
+        case 'exp-item-process': {
+          const data = job.data as ExperimentItemJobData;
+          const step = data.step ?? 1;
+
+          if (step === 1) {
+            // Step 1: call agent, add score-run children, wait
+            await refreshScorerDefinitions();
+            const scorerDefs = _cachedScorerDefs.length > 0 ? _cachedScorerDefs : BUILTIN_SCORER_DEFS;
+
+            const result = await processExperimentItemStep1(
+              { id: data.itemId, input: data.input, groundTruth: data.groundTruth },
+              data.experimentId,
+              registeredAgent,
+              scoringModel,
+              scorerDefs,
+              { getExperiment: experimentDeps.getExperiment },
+            );
+
+            if (!result) {
+              // Cancelled
+              return { itemId: data.itemId, succeeded: false, scorersFailed: 0 };
+            }
+
+            // Add score-run children dynamically
+            for (const def of result.applicableScorers) {
+              await scoringQueue.add(
+                'score-run',
+                {
+                  scorerName: def.name,
+                  scorerDefinition: def,
+                  userQuestion: result.question,
+                  responseText: result.responseText,
+                  context: result.context,
+                } satisfies ScoringRunJobData,
+                {
+                  parent: { id: job.id ?? '', queue: job.queueQualifiedName },
+                  ignoreDependencyOnFailure: true,
+                  priority: 5,
+                },
+              );
+            }
+
+            // Persist state for step 2 (including skipped retrieval scorers)
+            await job.updateData({
+              ...data,
+              step: 2,
+              responseText: result.responseText,
+              contextSkippedScorerNames: result.contextSkippedScorers.map((d) => d.name),
+            });
+
+            // Wait for children
+            const shouldWait = await job.moveToWaitingChildren(token ?? '');
+            if (shouldWait) {
+              throw new WaitingChildrenError();
+            }
+            // Fall through to step 2 if no children to wait for
+          }
+
+          // Step 2: collect scores and save result
+          const updatedData = job.data as ExperimentItemJobData;
+          const childrenValues = await job.getChildrenValues();
+          const ignoredFailures = await job.getFailedChildrenValues();
+
+          const step2Result = await processExperimentItemStep2(
+            updatedData.experimentId,
+            updatedData.itemId,
+            updatedData.input,
+            updatedData.groundTruth,
+            updatedData.responseText ?? '',
+            childrenValues as Record<string, { scorerId: string; score: number; reason: string }>,
+            ignoredFailures as Record<string, string>,
+            updatedData.contextSkippedScorerNames ?? [],
+            {
+              addExperimentResult: experimentDeps.addExperimentResult,
+              updateExperiment: experimentDeps.updateExperiment,
+            },
+            new Date(),
+          );
+
+          // Atomic counter increment for progress tracking
+          if (step2Result.succeeded) {
+            await workerSql`UPDATE experiments SET succeeded_count = succeeded_count + 1 WHERE id = ${updatedData.experimentId}`;
+          } else {
+            await workerSql`UPDATE experiments SET failed_count = failed_count + 1 WHERE id = ${updatedData.experimentId}`;
+          }
+
+          return { itemId: updatedData.itemId, ...step2Result };
+        }
+
+        case 'experiment-complete': {
+          const data = job.data as ExperimentCompleteJobData;
+          const childrenValues = await job.getChildrenValues();
+          const ignoredFailures = await job.getFailedChildrenValues();
+
+          return await completeExperiment(
+            data.experimentId,
+            childrenValues as Record<string, { itemId: string; succeeded: boolean; scorersFailed: number }>,
+            ignoredFailures as Record<string, string>,
+            { updateExperiment: experimentDeps.updateExperiment },
+          );
+        }
+
+        default:
+          throw new Error(`Unknown experiments job type: ${job.name}`);
+      }
     },
     {
       connection,
-      concurrency: 1, // one experiment at a time
-      lockDuration: 30 * 60 * 1000, // 30 min
-      stalledInterval: 10 * 60 * 1000, // 10 min
+      concurrency: experimentsConcurrency,
+      lockDuration: 10 * 60 * 1000,
+      stalledInterval: 5 * 60 * 1000,
       maxStalledCount: 1,
     },
   );
@@ -346,13 +606,13 @@ export function startWorkers(redisUrl: string, databaseUrl: string) {
     log.error('Experiment worker error', { error: err.message });
   });
   experimentWorker.on('failed', (job, err) => {
-    log.error('Experiment job failed', { jobId: job?.id, error: err.message });
+    log.error('Experiment job failed', { jobId: job?.id, name: job?.name, error: err.message });
   });
   experimentWorker.on('completed', (job) => {
-    log.debug('Experiment job completed', { jobId: job.id, result: job.returnvalue });
+    log.debug('Experiment job completed', { jobId: job.id, name: job.name, result: job.returnvalue });
   });
 
-  log.info('Experiment worker started');
+  log.info('Experiment worker started', { concurrency: experimentsConcurrency });
 
   return { syncWorker, syncQueue };
 }

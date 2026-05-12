@@ -19,6 +19,14 @@ export function getScoringQueue(): Queue {
   return registry.get('scoring');
 }
 
+export function initReviewsQueue(redisUrl: string): Queue {
+  return registry.init('reviews', redisUrl);
+}
+
+export function getReviewsQueue(): Queue {
+  return registry.get('reviews');
+}
+
 export function initExperimentQueue(redisUrl: string): Queue {
   return registry.init('experiments', redisUrl);
 }

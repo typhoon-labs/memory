@@ -24,6 +24,7 @@ vi.mock('@mastra/rag', () => ({
 vi.mock('@typhoon/ai', () => ({
   createEmbeddingModel: mockCreateEmbeddingModel,
   EMBEDDING_DIMENSION: 1536,
+  RAG_GRAPH_THRESHOLD: 0.7,
 }));
 
 vi.mock('./with-progress', () => ({

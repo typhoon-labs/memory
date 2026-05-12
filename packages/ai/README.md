@@ -9,7 +9,8 @@ Centralized AI model factory. Creates task-specific LLM and embedding model inst
 | `createChatModel()` | Primary LLM for agent conversations |
 | `createTitleModel()` | Lightweight model for title/metadata extraction |
 | `createEmbeddingModel()` | Embedding generation for vector search |
-| `createRerankerModel()` | Reranking retrieval results |
+| `createRerankerScorer()` | Dedicated reranker via Cohere-compatible endpoint |
+| `RerankerScorer` | Scorer class implementing `RelevanceScoreProvider` |
 | `createExtractionModel()` | Metadata extraction during ingestion |
 | `createGuardrailModel()` | Guardrail/moderation checks |
 | `EMBEDDING_DIMENSION` | Vector dimension constant (default: 1024) |
@@ -24,8 +25,10 @@ Centralized AI model factory. Creates task-specific LLM and embedding model inst
 | `LLM_TITLE_MODEL` | Falls back to chat model | Title generation model |
 | `LLM_EXTRACTION_MODEL` | Falls back to chat model | Metadata extraction model |
 | `LLM_GUARDRAIL_MODEL` | Falls back to chat model | Guardrail model |
-| `LLM_RERANKER_MODEL` | Falls back to chat model | Reranker model |
 | `LLM_SCORING_MODEL` | Falls back to chat model | RAG scoring / evaluation model |
+| `RERANKER_BASE_URL` | — | Cohere-compatible rerank endpoint |
+| `RERANKER_MODEL` | — | Reranker model ID |
+| `RERANKER_API_KEY` | Falls back to `LLM_API_KEY` | Rerank API key |
 | `EMBEDDING_BASE_URL` | Falls back to `LLM_BASE_URL` | Embedding API endpoint |
 | `EMBEDDING_API_KEY` | Falls back to `LLM_API_KEY` | Embedding API key |
 | `EMBEDDING_MODEL` | `amazon.titan-embed-text-v2:0` | Embedding model |
@@ -33,4 +36,4 @@ Centralized AI model factory. Creates task-specific LLM and embedding model inst
 
 ## Dependencies
 
-`@ai-sdk/openai-compatible`, `ai`
+`@ai-sdk/openai-compatible`, `@mastra/core`, `ai`

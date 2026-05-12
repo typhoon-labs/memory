@@ -23,6 +23,7 @@ COPY packages/ai/package.json packages/ai/
 COPY packages/chat/package.json packages/chat/
 COPY packages/config/package.json packages/config/
 COPY packages/db/package.json packages/db/
+COPY packages/evals/package.json packages/evals/
 COPY packages/ingestion/package.json packages/ingestion/
 COPY packages/logger/package.json packages/logger/
 COPY packages/queue/package.json packages/queue/

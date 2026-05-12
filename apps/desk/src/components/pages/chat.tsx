@@ -1,11 +1,12 @@
 import { Chat, useChat } from '@ai-sdk/react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from '@tanstack/react-router';
-import { DocumentViewerPanel, TyphoonThread } from '@typhoon/chat';
+import { DocumentViewerPanel, TyphoonThread, useStreamStallDetection } from '@typhoon/chat';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup, useAuth } from '@typhoon/ui';
 import type { UIMessage } from 'ai';
 import { DefaultChatTransport } from 'ai';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { detailTitle, usePageTitle } from '../../hooks/use-page-title';
 import { ThreadSidebar } from '../chat/thread-sidebar';
 import { useFeedback } from '../chat/use-feedback';
 import { type ThreadListResponse, useThread } from '../chat/use-thread';
@@ -42,6 +43,7 @@ export function ChatPage() {
   const userId = user?.id;
 
   const { data: threadData } = useThread(threadId);
+  usePageTitle(detailTitle('Chat', threadId && threadData?.title ? threadData.title : undefined));
   const { feedbackState, handleFeedback } = useFeedback(threadId);
 
   const initialMessages = useMemo(
@@ -95,10 +97,12 @@ export function ChatPage() {
   const chat = chatMapRef.current.get(chatId)!;
 
   const { messages, sendMessage, status, stop, setMessages, error } = useChat({ chat });
+  const stallError = useStreamStallDetection({ messages, status, stop });
+  const chatError = error ?? stallError;
 
   useEffect(() => {
-    if (error) console.error('[useChat error]', error);
-  }, [error]);
+    if (chatError) console.error('[useChat error]', chatError);
+  }, [chatError]);
 
   // Update the thread title in the cache as soon as the setThreadTitle tool
   // result arrives in the stream — directly, without refetching.
@@ -282,6 +286,7 @@ export function ChatPage() {
             status={status}
             sendMessage={handleSendMessage}
             stop={stop}
+            error={chatError}
             config={{
               userName: user?.name ?? user?.email ?? 'You',
               onFeedback: handleFeedback,

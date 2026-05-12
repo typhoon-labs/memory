@@ -761,3 +761,79 @@ describe('DELETE /v1/queues/failed-jobs/:id', () => {
     expect(json).toEqual({ ok: true });
   });
 });
+
+// ── GET /v1/queues/events (SSE) ─────────────────────────────────────
+
+describe('GET /v1/queues/events', () => {
+  it('returns text/event-stream content type', async () => {
+    const res = await app.request('/v1/queues/events', {
+      method: 'GET',
+      headers: { Accept: 'text/event-stream' },
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toContain('text/event-stream');
+  });
+
+  it('sends initial ping with retry directive', async () => {
+    const res = await app.request('/v1/queues/events', {
+      method: 'GET',
+      headers: { Accept: 'text/event-stream' },
+    });
+
+    expect(res.body).not.toBeNull();
+    // biome-ignore lint/style/noNonNullAssertion: body existence asserted above
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+    const { value } = await reader.read();
+    const text = decoder.decode(value);
+
+    expect(text).toContain('event: ping');
+    expect(text).toContain('retry: 5000');
+    reader.cancel();
+  });
+
+  it('streams queue events to the client', async () => {
+    // Capture the event listener registered on the bus
+    let eventHandler: ((payload: { queue: string; type: string }) => void) | undefined;
+    mockQueueEventBus.on.mockImplementation((_event: string, handler: (...args: unknown[]) => void) => {
+      eventHandler = handler as typeof eventHandler;
+    });
+
+    const res = await app.request('/v1/queues/events', {
+      method: 'GET',
+      headers: { Accept: 'text/event-stream' },
+    });
+
+    expect(res.body).not.toBeNull();
+    // biome-ignore lint/style/noNonNullAssertion: body existence asserted above
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+
+    // Read initial ping
+    await reader.read();
+
+    // Emit a queue event
+    expect(eventHandler).toBeDefined();
+    // biome-ignore lint/style/noNonNullAssertion: handler existence asserted above
+    eventHandler!({ queue: 'sync', type: 'completed' });
+
+    // Read the event
+    const { value } = await reader.read();
+    const text = decoder.decode(value);
+
+    expect(text).toContain('event: queue-event');
+    expect(text).toContain('"queue":"sync"');
+    expect(text).toContain('"type":"completed"');
+    reader.cancel();
+  });
+
+  it('registers an event bus listener on connect', async () => {
+    await app.request('/v1/queues/events', {
+      method: 'GET',
+      headers: { Accept: 'text/event-stream' },
+    });
+
+    expect(mockQueueEventBus.on).toHaveBeenCalledWith('event', expect.any(Function));
+  });
+});

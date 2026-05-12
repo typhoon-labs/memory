@@ -175,12 +175,14 @@ describe('reviewRoutes', () => {
   // ==========================================================================
 
   describe('GET /v1/admin/reviews', () => {
-    it('returns paginated thread list with score aggregates and feedback counts', async () => {
+    it('returns thread list with category score averages and feedback counts', async () => {
       const threads = [
         { id: 'ext-1', resource_id: 'u1', title: 'Chat 1', created_at: now, updated_at: now, message_count: 3 },
         { id: 'ext-2', resource_id: 'u2', title: 'Chat 2', created_at: now, updated_at: now, message_count: 1 },
       ];
-      const aggregates = [{ thread_id: 'ext-1', avg_score: 0.8, min_score: 0.6, score_count: 5, annotation_count: 1 }];
+      const aggregates = [
+        { thread_id: 'ext-1', response_avg: 0.8, retrieval_avg: 0.6, score_count: 5, annotation_count: 1 },
+      ];
       const feedbackCounts = [{ thread_id: 'ext-1', feedback_count: 3, negative_feedback_count: 1 }];
 
       // Calls: thread list, score aggregates, feedback counts
@@ -189,16 +191,18 @@ describe('reviewRoutes', () => {
         .mockResolvedValueOnce(aggregates)
         .mockResolvedValueOnce(feedbackCounts);
 
-      const res = await app.request('/v1/admin/reviews?page=0&perPage=20');
+      const res = await app.request('/v1/admin/reviews');
       expect(res.status).toBe(200);
 
       const body = await res.json();
       expect(body.threads).toHaveLength(2);
       expect(body.total).toBe(2);
-      expect(body.threads[0].avgScore).toBe(0.8);
+      expect(body.threads[0].responseAvg).toBe(0.8);
+      expect(body.threads[0].retrievalAvg).toBe(0.6);
       expect(body.threads[0].feedbackCount).toBe(3);
       expect(body.threads[0].negativeFeedbackCount).toBe(1);
-      expect(body.threads[1].avgScore).toBeNull();
+      expect(body.threads[1].responseAvg).toBeNull();
+      expect(body.threads[1].retrievalAvg).toBeNull();
       expect(body.threads[1].feedbackCount).toBe(0);
     });
 
@@ -212,24 +216,24 @@ describe('reviewRoutes', () => {
       expect(body.total).toBe(0);
     });
 
-    it('sorts by worst score (lowest first, unscored last)', async () => {
+    it('sorts by response score (lowest first, unscored last)', async () => {
       const threads = [
         { id: 'ext-1', resource_id: 'u1', title: 'A', created_at: now, updated_at: now, message_count: 1 },
         { id: 'ext-2', resource_id: 'u1', title: 'B', created_at: now, updated_at: now, message_count: 1 },
         { id: 'ext-3', resource_id: 'u1', title: 'C', created_at: now, updated_at: now, message_count: 1 },
       ];
       const aggregates = [
-        { thread_id: 'ext-1', avg_score: 0.9, min_score: 0.8, score_count: 5, annotation_count: 0 },
-        { thread_id: 'ext-2', avg_score: 0.3, min_score: 0.1, score_count: 5, annotation_count: 0 },
+        { thread_id: 'ext-1', response_avg: 0.9, retrieval_avg: 0.8, score_count: 5, annotation_count: 0 },
+        { thread_id: 'ext-2', response_avg: 0.3, retrieval_avg: 0.5, score_count: 5, annotation_count: 0 },
       ];
 
-      mockSqlUnsafe.mockResolvedValueOnce(threads).mockResolvedValueOnce(aggregates).mockResolvedValueOnce([]); // feedback counts
+      mockSqlUnsafe.mockResolvedValueOnce(threads).mockResolvedValueOnce(aggregates).mockResolvedValueOnce([]);
 
-      const res = await app.request('/v1/admin/reviews?sortBy=worstScore');
+      const res = await app.request('/v1/admin/reviews?sortBy=responseScore');
       const body = await res.json();
 
-      expect(body.threads[0].id).toBe('ext-2'); // worst = 0.1
-      expect(body.threads[1].id).toBe('ext-1'); // worst = 0.8
+      expect(body.threads[0].id).toBe('ext-2'); // response = 0.3
+      expect(body.threads[1].id).toBe('ext-1'); // response = 0.9
       expect(body.threads[2].id).toBe('ext-3'); // unscored → last
     });
 
@@ -239,8 +243,8 @@ describe('reviewRoutes', () => {
         { id: 'ext-2', resource_id: 'u1', title: 'B', created_at: now, updated_at: now, message_count: 1 },
       ];
       const aggregates = [
-        { thread_id: 'ext-1', avg_score: 0.9, min_score: 0.8, score_count: 5, annotation_count: 2 },
-        { thread_id: 'ext-2', avg_score: 0.5, min_score: 0.3, score_count: 5, annotation_count: 0 },
+        { thread_id: 'ext-1', response_avg: 0.9, retrieval_avg: 0.8, score_count: 5, annotation_count: 2 },
+        { thread_id: 'ext-2', response_avg: 0.5, retrieval_avg: 0.3, score_count: 5, annotation_count: 0 },
       ];
 
       mockSqlUnsafe.mockResolvedValueOnce(threads).mockResolvedValueOnce(aggregates).mockResolvedValueOnce([]); // feedback counts

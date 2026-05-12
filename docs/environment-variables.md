@@ -34,7 +34,6 @@ The app connects to an OpenAI-compatible endpoint for chat. Locally this is Bifr
 | `LLM_API_KEY` | Yes | — | API key for the LLM gateway |
 | `LLM_CHAT_MODEL` | No | `anthropic.claude-sonnet-4-6` | Chat model ID (Bedrock format) |
 | `LLM_TITLE_MODEL` | No | Falls back to `LLM_CHAT_MODEL` | Lighter model for thread title generation |
-| `LLM_RERANKER_MODEL` | No | Falls back to `LLM_CHAT_MODEL` | Model for reranking retrieved chunks |
 | `LLM_EXTRACTION_MODEL` | No | Falls back to `LLM_CHAT_MODEL` | Model for metadata extraction during ingestion (title, keywords) |
 | `LLM_GUARDRAIL_MODEL` | No | Falls back to `LLM_CHAT_MODEL` | Model for guardrail processors (moderation, PII detection) |
 | `LLM_KNOWLEDGE_MODEL` | No | Falls back to `LLM_CHAT_MODEL` | Model for knowledge agent (search tool routing) |
@@ -54,6 +53,16 @@ The app connects to an OpenAI-compatible endpoint for embeddings.
 | `EMBEDDING_MAX_CHARS` | No | `50000` | Maximum input characters accepted by the embedding model. Also used as the chunk size ceiling |
 | `EMBEDDING_MAX_TOKENS` | No | `8192` | Maximum input tokens accepted by the embedding model. Used with adaptive ratio tracking to proactively split oversized chunks |
 | `EMBEDDING_BATCH_SIZE` | No | `1` | Texts per `embedMany` call. Set >1 for providers that support batch embedding (e.g. OpenAI). Falls back to per-chunk on failure |
+
+## Reranker
+
+The app connects to a Cohere-compatible rerank endpoint (e.g. Bifrost gateway proxying to Bedrock).
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `RERANKER_BASE_URL` | Yes | — | Cohere-compatible rerank endpoint (e.g., `http://bifrost:8787/v1`) |
+| `RERANKER_MODEL` | Yes | — | Reranker model ID (e.g., `bedrock/arn:aws:bedrock:us-east-1::foundation-model/cohere.rerank-v3-5:0`) |
+| `RERANKER_API_KEY` | No | Falls back to `LLM_API_KEY` | API key for the rerank endpoint |
 
 ## Auth
 
@@ -84,6 +93,25 @@ The app connects to an OpenAI-compatible endpoint for embeddings.
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `LOG_LEVEL` | No | — | Log level: `debug`, `info`, `warn`, `error`, or `silent` |
+
+## RAG Tuning
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `RAG_RERANK_CANDIDATES` | No | `100` | Fixed number of candidates to retrieve when reranking is enabled (two-stage retrieval) |
+| `RAG_RERANK_CANDIDATES_EXPANDED` | No | `200` | Expanded candidate pool for deep/thorough search mode |
+| `RAG_RERANK_WEIGHT_SEMANTIC` | No | `1.0` | Reranker weight for Cohere semantic relevance score |
+| `RAG_RERANK_WEIGHT_VECTOR` | No | `0` | Reranker weight for original vector/RRF score |
+| `RAG_RERANK_WEIGHT_POSITION` | No | `0` | Reranker weight for positional rank |
+| `RAG_RERANK_MIN_SCORE` | No | `0.1` | Minimum reranked score to keep a result |
+| `RAG_VECTOR_MIN_SCORE` | No | `0.6` | Minimum vector similarity for API search endpoint |
+| `RAG_VECTOR_MIN_SCORE_AGENT` | No | `0.5` | Minimum vector similarity for agent search tools |
+| `RAG_GRAPH_THRESHOLD` | No | `0.7` | Graph RAG similarity threshold for edge creation |
+| `RAG_KNOWLEDGE_MAX_RESULTS` | No | `10` | Maximum results returned by composite knowledge search |
+| `RAG_HYBRID_RRF_K` | No | `60` | RRF constant K for hybrid search merge |
+| `RAG_HYBRID_VECTOR_WEIGHT` | No | `0.7` | Vector score weight in RRF merge |
+| `RAG_HYBRID_FTS_WEIGHT` | No | `0.3` | Full-text search weight in RRF merge |
+| `RAG_HYBRID_CANDIDATE_MULTIPLIER` | No | `5` | Internal candidate multiplier for RRF merge (retrieves topK * N from each modality) |
 
 ## Server
 

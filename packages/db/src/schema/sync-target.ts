@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { boolean, index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { metadataTemplates } from './metadata-template';
 
 export const syncTargets = pgTable(
   'sync_targets',
@@ -12,6 +13,10 @@ export const syncTargets = pgTable(
     isActive: boolean('is_active').notNull().default(true),
     managedBy: text('managed_by'),
     source: text('source'),
+    metadataTemplateId: uuid('metadata_template_id').references(() => metadataTemplates.id, {
+      onDelete: 'set null',
+    }),
+    autoExtractMetadata: boolean('auto_extract_metadata').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true })
       .notNull()

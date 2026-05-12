@@ -18,9 +18,11 @@ import {
   FlaskConicalIcon,
   FolderSyncIcon,
   GaugeIcon,
+  LayersIcon,
   LayoutDashboardIcon,
   ListChecksIcon,
   LogOutIcon,
+  TagsIcon,
 } from 'lucide-react';
 import { useQueueEvents } from '../lib/use-queue-events';
 
@@ -34,6 +36,13 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: 'Sync Sources', href: '/sources', icon: <FolderSyncIcon /> },
       { label: 'Documents', href: '/documents', icon: <FileTextIcon /> },
+    ],
+  },
+  {
+    label: 'Metadata',
+    items: [
+      { label: 'Templates', href: '/metadata/templates', icon: <TagsIcon /> },
+      { label: 'Field Groups', href: '/metadata/field-groups', icon: <LayersIcon /> },
     ],
   },
   {

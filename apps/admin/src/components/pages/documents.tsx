@@ -25,8 +25,9 @@ import {
   SelectValue,
   StatusBadge,
 } from '@typhoon/ui';
-import { DatabaseIcon, FileTextIcon, Trash2Icon } from 'lucide-react';
+import { DatabaseIcon, FileTextIcon, SearchIcon, Trash2Icon } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { usePageTitle } from '../../hooks/use-page-title';
 import { DocumentDetailSheet } from './sync-source-detail/document-detail-sheet';
 import type { Document } from './sync-source-detail/shared';
 import { DOC_STATUS_MAP, formatBytes } from './sync-source-detail/shared';
@@ -47,6 +48,7 @@ const STATUS_FILTERS = [
 type StatusFilter = (typeof STATUS_FILTERS)[number]['value'];
 
 export function AdminDocumentsPage() {
+  usePageTitle('Documents');
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { syncTargetId, status: statusFilter } = useSearch({ strict: false }) as {
@@ -262,13 +264,16 @@ export function AdminDocumentsPage() {
                       </AlertDialogContent>
                     </AlertDialog>
                   )}
-                  <Input
-                    type="text"
-                    placeholder="Filter documents..."
-                    value={textFilter}
-                    onChange={(e) => setTextFilter(e.target.value)}
-                    className="h-8 w-[220px] text-sm"
-                  />
+                  <div className="relative">
+                    <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      type="text"
+                      placeholder="Search..."
+                      value={textFilter}
+                      onChange={(e) => setTextFilter(e.target.value)}
+                      className="h-8 w-[220px] pl-8 text-sm"
+                    />
+                  </div>
                 </div>
               </div>
             }

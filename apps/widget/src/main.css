@@ -130,6 +130,16 @@
   color: var(--typhoon-muted-fg);
 }
 
+.typhoon-error {
+  color: #dc2626;
+  background: #fef2f2;
+}
+
+.typhoon-dark .typhoon-error {
+  color: #fca5a5;
+  background: rgba(220, 38, 38, 0.1);
+}
+
 .typhoon-input-area {
   display: flex;
   align-items: center;

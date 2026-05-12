@@ -78,7 +78,7 @@ function SourceRow({
       type="button"
       onClick={handleClick}
       disabled={!citation.documentId || !onDocumentOpen}
-      className="flex w-full items-baseline gap-2 rounded px-1.5 py-1.5 text-left hover:bg-muted/50 disabled:pointer-events-none"
+      className="flex w-full items-baseline gap-2 rounded px-1.5 py-1.5 text-left hover:bg-muted disabled:pointer-events-none"
     >
       <span className="shrink-0 text-xs text-primary/70">{displayNum}.</span>
       <div className="min-w-0 flex-1">

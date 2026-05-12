@@ -1,3 +1,5 @@
+// Hooks
+
 // AI element primitives
 export {
   Conversation,
@@ -39,3 +41,4 @@ export type { DocumentContentResponse, DocumentParsedResponse } from './componen
 export { documentContentQuery, documentParsedQuery } from './components/document-viewer/document-queries';
 // Document viewer
 export { DocumentViewerPanel } from './components/document-viewer/document-viewer-panel';
+export { useStreamStallDetection } from './hooks/use-stream-stall-detection';

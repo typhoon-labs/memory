@@ -1,21 +1,37 @@
 import { registerApiRoute } from '@mastra/core/server';
-import { documents, syncTargets } from '@typhoon/db';
+import { documents, metadataFieldGroups, metadataTemplates, syncTargets } from '@typhoon/db';
 import { PgVector } from '@typhoon/db/drivers/pg';
 import {
   deleteDocumentVectors,
   getParser,
   getProvider,
   needsCustomParser,
+  updateDocumentVectorMetadata,
   updateDocumentVectorSource,
+  updateDocumentVectorTitle,
 } from '@typhoon/ingestion';
 import type { ProcessFileJobData } from '@typhoon/queue';
-import { eq, inArray } from 'drizzle-orm';
+import { resolveTemplateSchema, validateCustomMetadata } from '@typhoon/types';
+import { sql as drizzleSql, eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import { db, sql } from '../db';
 import { requireAuth } from '../middleware/require-auth';
 import { getSyncQueue } from '../queue';
 
 const vectorStore = new PgVector({ id: 'typhoon-vectors', sql });
+
+async function resolveEffectiveSchemaForTarget(templateId: string) {
+  const [template] = await db.select().from(metadataTemplates).where(eq(metadataTemplates.id, templateId));
+  if (!template) return null;
+
+  const groups =
+    template.fieldGroupIds.length > 0
+      ? await db.select().from(metadataFieldGroups).where(inArray(metadataFieldGroups.id, template.fieldGroupIds))
+      : [];
+
+  // biome-ignore lint/suspicious/noExplicitAny: JSONB types from Drizzle
+  return resolveTemplateSchema(template as any, groups as any);
+}
 
 export const documentRoutes = [
   registerApiRoute('/v1/documents', {
@@ -199,6 +215,155 @@ export const documentRoutes = [
       } satisfies ProcessFileJobData);
 
       return c.json(updated);
+    },
+  }),
+
+  // ── Update document metadata ──────────────────────────────────
+  registerApiRoute('/v1/documents/:id', {
+    method: 'PATCH',
+    middleware: [requireAuth],
+    handler: async (c) => {
+      const id = c.req.param('id');
+      const body = z
+        .object({
+          title: z.string().nullable().optional(),
+          description: z.string().nullable().optional(),
+          customMetadata: z.record(z.string(), z.unknown()).optional(),
+        })
+        .parse(await c.req.json());
+
+      const [doc] = await db.select().from(documents).where(eq(documents.id, id));
+      if (!doc) return c.json({ error: 'Not found' }, 404);
+
+      // Validate customMetadata against template schema if present
+      if (body.customMetadata) {
+        const [target] = await db.select().from(syncTargets).where(eq(syncTargets.id, doc.syncTargetId));
+        if (target?.metadataTemplateId) {
+          const schema = await resolveEffectiveSchemaForTarget(target.metadataTemplateId);
+          if (schema) {
+            const merged = { ...doc.customMetadata, ...body.customMetadata };
+            const result = validateCustomMetadata(merged, schema);
+            if (!result.valid) {
+              return c.json({ error: 'Metadata validation failed', details: result.errors }, 400);
+            }
+            body.customMetadata = result.normalized;
+          }
+        }
+      }
+
+      const updateData: Record<string, unknown> = { updatedAt: new Date() };
+      if (body.title !== undefined) updateData.title = body.title;
+      if (body.description !== undefined) updateData.description = body.description;
+      if (body.customMetadata !== undefined) updateData.customMetadata = body.customMetadata;
+
+      const [updated] = await db.update(documents).set(updateData).where(eq(documents.id, id)).returning();
+
+      // Propagate changes to vector chunk metadata
+      if (body.title !== undefined && body.title !== doc.title) {
+        await updateDocumentVectorTitle(sql, id, body.title ?? '');
+      }
+      if (body.customMetadata !== undefined) {
+        await updateDocumentVectorMetadata(sql, id, body.customMetadata);
+      }
+
+      return c.json(updated);
+    },
+  }),
+
+  // ── Bulk update metadata ─────────────────────────────────────
+  registerApiRoute('/v1/documents/bulk-metadata', {
+    method: 'POST',
+    middleware: [requireAuth],
+    handler: async (c) => {
+      const body = z
+        .object({
+          ids: z.array(z.string().uuid()).min(1).max(100),
+          customMetadata: z.record(z.string(), z.unknown()),
+          merge: z.boolean().default(true),
+        })
+        .parse(await c.req.json());
+
+      const docs = await db.select().from(documents).where(inArray(documents.id, body.ids));
+      if (docs.length === 0) return c.json({ ok: true, updated: 0 });
+
+      // Group documents by sync target to resolve schemas efficiently
+      const targetIds = [...new Set(docs.map((d) => d.syncTargetId))];
+      const targets = await db.select().from(syncTargets).where(inArray(syncTargets.id, targetIds));
+      const targetMap = new Map(targets.map((t) => [t.id, t]));
+
+      // Resolve effective schemas for all referenced templates
+      const templateIds = [...new Set(targets.map((t) => t.metadataTemplateId).filter(Boolean))] as string[];
+      const schemaMap = new Map<string, Awaited<ReturnType<typeof resolveEffectiveSchemaForTarget>>>();
+      for (const tid of templateIds) {
+        schemaMap.set(tid, await resolveEffectiveSchemaForTarget(tid));
+      }
+
+      let updatedCount = 0;
+      const errors: string[] = [];
+
+      for (const doc of docs) {
+        const target = targetMap.get(doc.syncTargetId);
+        const schema = target?.metadataTemplateId ? schemaMap.get(target.metadataTemplateId) : null;
+
+        let newMetadata: Record<string, unknown>;
+        if (schema) {
+          const merged = body.merge ? { ...doc.customMetadata, ...body.customMetadata } : body.customMetadata;
+          const result = validateCustomMetadata(merged, schema);
+          if (!result.valid) {
+            errors.push(`Document ${doc.id}: ${result.errors.join(', ')}`);
+            continue;
+          }
+          newMetadata = result.normalized;
+        } else {
+          // No template — strip all custom metadata
+          newMetadata = {};
+        }
+
+        await db
+          .update(documents)
+          .set({ customMetadata: newMetadata, updatedAt: new Date() })
+          .where(eq(documents.id, doc.id));
+
+        await updateDocumentVectorMetadata(sql, doc.id, newMetadata);
+        updatedCount++;
+      }
+
+      return c.json({ ok: true, updated: updatedCount, errors: errors.length > 0 ? errors : undefined });
+    },
+  }),
+
+  // ── Introspect metadata fields ───────────────────────────────
+  registerApiRoute('/v1/documents/metadata-fields', {
+    method: 'GET',
+    middleware: [requireAuth],
+    handler: async (c) => {
+      const syncTargetId = c.req.query('syncTargetId');
+
+      // Query distinct metadata keys and their value distributions
+      const whereClause = syncTargetId
+        ? drizzleSql`WHERE d.sync_target_id = ${syncTargetId} AND d.custom_metadata != '{}'::jsonb`
+        : drizzleSql`WHERE d.custom_metadata != '{}'::jsonb`;
+
+      const rows = await db.execute(drizzleSql`
+        SELECT
+          kv.key,
+          jsonb_agg(DISTINCT kv.value) FILTER (WHERE jsonb_typeof(kv.value) != 'null') AS "values",
+          COUNT(DISTINCT d.id)::int AS count
+        FROM documents d,
+             jsonb_each(d.custom_metadata) AS kv(key, value)
+        ${whereClause}
+          AND d.status != 'deleted'
+        GROUP BY kv.key
+        ORDER BY count DESC
+      `);
+
+      const fields = (rows as unknown as Array<{ key: string; values: unknown[]; count: number }>).map((row) => ({
+        key: row.key,
+        values: row.values ?? [],
+        count: row.count,
+      }));
+
+      return c.json({ fields });
     },
   }),
 

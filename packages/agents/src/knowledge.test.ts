@@ -32,7 +32,10 @@ const { mockKnowledgeModel, mockAiModule } = vi.hoisted(() => {
 // ---------------------------------------------------------------------------
 
 vi.mock('@mastra/core/agent', () => ({ Agent: MockAgent }));
-vi.mock('./tools/search-kb-hybrid', () => ({ searchKnowledgeBaseHybrid: mockHybridTool }));
+vi.mock('./tools/search-kb-hybrid', () => ({
+  searchKnowledgeBaseHybrid: mockHybridTool,
+  createHybridSearchTool: vi.fn().mockReturnValue(mockHybridTool),
+}));
 vi.mock('./tools/graph-kb', () => ({ searchKnowledgeBaseGraph: mockGraphTool }));
 vi.mock('@typhoon/ai', () => mockAiModule);
 
@@ -89,7 +92,7 @@ describe('createKnowledgeAgent', () => {
   });
 
   it('passes memory through to Agent constructor when provided', () => {
-    createKnowledgeAgent(fakeMemory);
+    createKnowledgeAgent({ memory: fakeMemory });
     expect(agentCtorCalls[0]?.memory).toBe(fakeMemory);
   });
 
@@ -102,5 +105,12 @@ describe('createKnowledgeAgent', () => {
     createKnowledgeAgent();
     expect(mockAiModule.createKnowledgeModel).toHaveBeenCalled();
     expect(agentCtorCalls[0]?.model).toBe(mockKnowledgeModel);
+  });
+
+  it('includes default value fallback guidance in instructions', () => {
+    createKnowledgeAgent();
+    const instructions = agentCtorCalls[0]?.instructions as string;
+    expect(instructions).toContain('default value');
+    expect(instructions).toContain('$in filter');
   });
 });

@@ -66,7 +66,7 @@ export function buildSpanTree(spans: Span[]): SpanNode[] {
   const roots: SpanNode[] = [];
   for (const node of bySpanId.values()) {
     if (node.span.parentSpanId && bySpanId.has(node.span.parentSpanId)) {
-      bySpanId.get(node.span.parentSpanId)!.children.push(node);
+      bySpanId.get(node.span.parentSpanId)?.children.push(node);
     } else {
       roots.push(node);
     }
@@ -87,7 +87,12 @@ export function buildSpanTree(spans: Span[]): SpanNode[] {
 
 /** Span type → CSS background color class for waterfall bars. */
 export function spanTypeColor(spanType: string): string {
-  if (spanType === 'agent_run' || spanType === 'agent') return 'bg-blue-400/60';
+  return SPAN_CATEGORY_COLORS[spanTypeCategory(spanType)] ?? 'bg-zinc-400/60';
+}
+
+/** Map raw span type to one of the legend categories. */
+export function spanTypeCategory(spanType: string): string {
+  if (spanType === 'agent_run' || spanType === 'agent') return 'agent';
   if (
     spanType === 'model_generation' ||
     spanType === 'model_step' ||
@@ -95,11 +100,52 @@ export function spanTypeColor(spanType: string): string {
     spanType === 'llm' ||
     spanType === 'model'
   )
-    return 'bg-purple-400/60';
-  if (spanType === 'tool_call' || spanType === 'mcp_tool_call') return 'bg-amber-400/60';
-  if (spanType === 'scorer_run' || spanType === 'scorer_step') return 'bg-emerald-400/60';
-  if (spanType.startsWith('workflow')) return 'bg-cyan-400/60';
-  return 'bg-zinc-400/60';
+    return 'model';
+  if (spanType === 'tool_call' || spanType === 'mcp_tool_call') return 'tool';
+  if (spanType === 'scorer_run' || spanType === 'scorer_step') return 'scorer';
+  if (spanType.startsWith('workflow')) return 'workflow';
+  if (spanType.startsWith('rag_')) return 'rag';
+  if (spanType === 'memory_operation') return 'memory';
+  return 'other';
+}
+
+/** Category → human label for filter badges. */
+export const SPAN_CATEGORY_LABELS: Record<string, string> = {
+  agent: 'Agent',
+  model: 'Model',
+  tool: 'Tool',
+  scorer: 'Scorer',
+  workflow: 'Workflow',
+  rag: 'RAG',
+  memory: 'Memory',
+  other: 'Other',
+};
+
+/** Category → CSS background color class. */
+export const SPAN_CATEGORY_COLORS: Record<string, string> = {
+  agent: 'bg-blue-400/60',
+  model: 'bg-purple-400/60',
+  tool: 'bg-amber-400/60',
+  scorer: 'bg-emerald-400/60',
+  workflow: 'bg-cyan-400/60',
+  rag: 'bg-rose-400/60',
+  memory: 'bg-teal-400/60',
+  other: 'bg-zinc-400/60',
+};
+
+/**
+ * Filter a span tree, keeping nodes that match the predicate
+ * plus all their ancestors (to preserve tree structure).
+ */
+export function filterTree(roots: SpanNode[], predicate: (span: Span) => boolean): SpanNode[] {
+  function walk(node: SpanNode): SpanNode | null {
+    const filteredChildren = node.children.map(walk).filter(Boolean) as SpanNode[];
+    if (predicate(node.span) || filteredChildren.length > 0) {
+      return { ...node, children: filteredChildren };
+    }
+    return null;
+  }
+  return roots.map(walk).filter(Boolean) as SpanNode[];
 }
 
 /** Span type → human label. */
@@ -115,6 +161,19 @@ export function spanTypeLabel(spanType: string): string {
     scorer_step: 'Scorer Step',
     workflow_run: 'Workflow',
     workflow_step: 'Workflow Step',
+    workflow_conditional: 'Conditional',
+    workflow_conditional_eval: 'Condition Eval',
+    workflow_parallel: 'Parallel',
+    workflow_loop: 'Loop',
+    workflow_sleep: 'Sleep',
+    workflow_wait_event: 'Wait Event',
+    memory_operation: 'Memory',
+    workspace_action: 'Workspace',
+    rag_ingestion: 'RAG Ingestion',
+    rag_embedding: 'RAG Embedding',
+    rag_vector_operation: 'Vector Op',
+    rag_action: 'RAG Action',
+    graph_action: 'Graph',
     generic: 'Generic',
     processor_run: 'Processor',
   };

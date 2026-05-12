@@ -1,5 +1,5 @@
 import { createGraphRAGTool } from '@mastra/rag';
-import { createEmbeddingModel, EMBEDDING_DIMENSION } from '@typhoon/ai';
+import { createEmbeddingModel, EMBEDDING_DIMENSION, RAG_GRAPH_THRESHOLD } from '@typhoon/ai';
 import { withProgress } from './with-progress';
 
 const inner = createGraphRAGTool({
@@ -11,7 +11,7 @@ const inner = createGraphRAGTool({
     'Search the knowledge base using graph-based retrieval to find relationships between documents. Use this tool when the question asks about connections, comparisons, or relationships across multiple topics or documents.',
   graphOptions: {
     dimension: EMBEDDING_DIMENSION,
-    threshold: 0.7,
+    threshold: RAG_GRAPH_THRESHOLD,
   },
 });
 

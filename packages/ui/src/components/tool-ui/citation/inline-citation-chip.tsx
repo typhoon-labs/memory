@@ -41,7 +41,7 @@ export function InlineCitationChip({ citation, onDocumentOpen }: InlineCitationC
       type="button"
       className={cn(
         'inline-flex items-center gap-0.5',
-        'rounded bg-muted/50 px-1 py-px',
+        'rounded bg-muted px-1 py-px',
         'text-[0.65em] font-medium text-primary/80',
         'relative -top-[0.35em] align-baseline',
         'cursor-pointer outline-none motion-safe:transition-colors',

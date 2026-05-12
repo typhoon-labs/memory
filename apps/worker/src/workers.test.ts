@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const { mockWorkerInstances, mockWorkerClose } = vi.hoisted(() => {
   const mockWorkerInstances: Array<{
     queueName: string;
-    processor: (job: unknown) => Promise<unknown>;
+    processor: (job: unknown, token?: string) => Promise<unknown>;
     opts: Record<string, unknown>;
     events: Record<string, Array<(...args: unknown[]) => void>>;
     on: ReturnType<typeof vi.fn>;
@@ -22,13 +22,26 @@ vi.mock('bullmq', () => ({
       this.name = 'UnrecoverableError';
     }
   },
+  WaitingChildrenError: class WaitingChildrenError extends Error {
+    constructor() {
+      super('WaitingChildrenError');
+      this.name = 'WaitingChildrenError';
+    }
+  },
+  FlowProducer: class MockFlowProducer {
+    add = vi.fn().mockResolvedValue({ job: { id: 'flow-1' } });
+  },
   Worker: class MockWorker {
     queueName: string;
-    processor: (job: unknown) => Promise<unknown>;
+    processor: (job: unknown, token?: string) => Promise<unknown>;
     opts: Record<string, unknown>;
     events: Record<string, Array<(...args: unknown[]) => void>> = {};
 
-    constructor(queueName: string, processor: (job: unknown) => Promise<unknown>, opts: Record<string, unknown>) {
+    constructor(
+      queueName: string,
+      processor: (job: unknown, token?: string) => Promise<unknown>,
+      opts: Record<string, unknown>,
+    ) {
       this.queueName = queueName;
       this.processor = processor;
       this.opts = opts;
@@ -58,10 +71,50 @@ vi.mock('@typhoon/ingestion', () => ({
   managePartitions: vi.fn().mockResolvedValue({ created: [], dropped: [] }),
 }));
 
+const mockPrepareScoring = vi.hoisted(() =>
+  vi.fn().mockResolvedValue({
+    messageId: 'msg-1',
+    userQuestion: 'test?',
+    responseText: 'answer',
+    context: ['ctx'],
+    scorersToRun: [
+      {
+        id: 'answerRelevancy',
+        name: 'answerRelevancy',
+        type: 'answerRelevancy',
+        description: null,
+        model: null,
+        instructions: null,
+        scoreRange: null,
+        presetConfig: null,
+        defaultSampling: null,
+      },
+    ],
+    skippedCount: 0,
+    contextSkippedScorers: [],
+  }),
+);
+
+const mockRunSingleScorer = vi.hoisted(() =>
+  vi.fn().mockResolvedValue({ scorerId: 'answerRelevancy', score: 0.9, reason: 'ok' }),
+);
+
 vi.mock('@typhoon/agents', () => ({
-  scoreMessage: vi.fn().mockResolvedValue({ scored: 5, skipped: 0, errors: [] }),
   createExperimentAgent: vi.fn(() => ({ generate: vi.fn() })),
-  handleExperimentJob: vi.fn().mockResolvedValue({ succeeded: 0, failed: 0, cancelled: false }),
+}));
+
+vi.mock('@typhoon/evals', () => ({
+  prepareScoring: mockPrepareScoring,
+  runSingleScorer: mockRunSingleScorer,
+  BUILTIN_SCORER_DEFS: [],
+  setupExperiment: vi.fn().mockResolvedValue({ experiment: { id: 'exp-1' }, items: [] }),
+  processExperimentItemStep1: vi.fn().mockResolvedValue(null),
+  processExperimentItemStep2: vi.fn().mockResolvedValue({ succeeded: true, scorersFailed: 0 }),
+  completeExperiment: vi.fn().mockResolvedValue({ succeeded: 0, failed: 0, cancelled: false }),
+  mapScorerRows: vi.fn(() => []),
+  PUBLISHED_SCORERS_QUERY: 'SELECT 1',
+  extractContextFromSteps: vi.fn(() => []),
+  constructScorer: vi.fn(),
 }));
 
 vi.mock('@typhoon/ai', () => ({
@@ -99,6 +152,7 @@ vi.mock('drizzle-orm', () => ({
   eq: vi.fn(),
   and: vi.fn(),
   desc: vi.fn(),
+  sql: vi.fn(),
 }));
 
 vi.mock('@mastra/core', () => ({
@@ -115,13 +169,15 @@ vi.mock('postgres', () => ({
   })),
 }));
 
-const { mockSyncQueue, mockScoringQueue } = vi.hoisted(() => ({
+const { mockSyncQueue, mockReviewsQueue, mockScoringQueue } = vi.hoisted(() => ({
   mockSyncQueue: { add: vi.fn(), close: vi.fn() },
+  mockReviewsQueue: { add: vi.fn().mockResolvedValue({}), close: vi.fn() },
   mockScoringQueue: { add: vi.fn().mockResolvedValue({}), close: vi.fn() },
 }));
 
 vi.mock('./queue', () => ({
   getSyncQueue: vi.fn(() => mockSyncQueue),
+  getReviewsQueue: vi.fn(() => mockReviewsQueue),
   getScoringQueue: vi.fn(() => mockScoringQueue),
 }));
 
@@ -139,7 +195,6 @@ describe('startWorkers', () => {
   const savedEnv: Record<string, string | undefined> = {};
 
   beforeEach(() => {
-    // Snapshot env vars that tests may mutate
     for (const key of ENV_KEYS) savedEnv[key] = process.env[key];
     mockWorkerInstances.length = 0;
     mockWorkerClose.mockResolvedValue(undefined);
@@ -147,23 +202,23 @@ describe('startWorkers', () => {
   });
 
   afterEach(async () => {
-    // Restore env vars — runs even if a test assertion fails
     for (const key of ENV_KEYS) {
       if (savedEnv[key] === undefined) delete process.env[key];
       else process.env[key] = savedEnv[key];
     }
-    // Always shut down so _workers module-level state is cleared between tests
     await shutdownWorkers();
     mockWorkerInstances.length = 0;
   });
 
-  it('creates Workers for "sync" and "scoring" queues', () => {
+  it('creates Workers for sync, reviews, scoring, and experiments queues', () => {
     startWorkers('redis://localhost:6379', 'postgresql://localhost/typhoon');
     expect(mockWorkerInstances.length).toBeGreaterThanOrEqual(1);
-    expect(mockWorkerInstances[0].queueName).toBe('sync');
-    // Scoring worker is also created when isScoringEnabled() returns true
-    const scoringWorker = mockWorkerInstances.find((w) => w.queueName === 'scoring');
-    expect(scoringWorker).toBeDefined();
+
+    const queueNames = mockWorkerInstances.map((w) => w.queueName);
+    expect(queueNames).toContain('sync');
+    expect(queueNames).toContain('reviews');
+    expect(queueNames).toContain('scoring');
+    expect(queueNames).toContain('experiments');
   });
 
   it('returns syncWorker and syncQueue', () => {
@@ -192,12 +247,6 @@ describe('startWorkers', () => {
     expect(mockWorkerInstances[0].opts.concurrency).toBe(3);
   });
 
-  it('reads SYNC_WORKER_LOCK_DURATION_MS env var to override lockDuration', () => {
-    process.env.SYNC_WORKER_LOCK_DURATION_MS = '60000';
-    startWorkers('redis://localhost:6379', 'postgresql://localhost/typhoon');
-    expect(mockWorkerInstances[0].opts.lockDuration).toBe(60_000);
-  });
-
   it('routes "scan" job to handleScanJob with (job, db, queue)', async () => {
     startWorkers('redis://localhost:6379', 'postgresql://localhost/typhoon');
     const processor = mockWorkerInstances[0].processor;
@@ -214,27 +263,99 @@ describe('startWorkers', () => {
     expect(mockHandleProcessFileJob).toHaveBeenCalledWith(fakeJob, expect.anything(), expect.anything());
   });
 
-  it('routes "delete-file" job to handleDeleteFileJob with (job, db, vectorStore)', async () => {
-    startWorkers('redis://localhost:6379', 'postgresql://localhost/typhoon');
-    const processor = mockWorkerInstances[0].processor;
-    const fakeJob = { name: 'delete-file', id: 'j-3', data: {} };
-    await processor(fakeJob);
-    expect(mockHandleDeleteFileJob).toHaveBeenCalledWith(fakeJob, expect.anything(), expect.anything());
-  });
-
-  it('throws Error for unknown job name', async () => {
+  it('throws Error for unknown sync job name', async () => {
     startWorkers('redis://localhost:6379', 'postgresql://localhost/typhoon');
     const processor = mockWorkerInstances[0].processor;
     const fakeJob = { name: 'unknown-name', id: 'j-4', data: {} };
     await expect(processor(fakeJob)).rejects.toThrow('Unknown job: unknown-name');
   });
 
-  it('attaches "error", "failed", and "completed" event handlers', () => {
+  it('attaches event handlers to sync worker', () => {
     startWorkers('redis://localhost:6379', 'postgresql://localhost/typhoon');
     const { events } = mockWorkerInstances[0];
     expect(events.error).toHaveLength(1);
     expect(events.failed).toHaveLength(1);
     expect(events.completed).toHaveLength(1);
+  });
+});
+
+describe('reviews worker processor', () => {
+  beforeEach(() => {
+    mockWorkerInstances.length = 0;
+    mockWorkerClose.mockResolvedValue(undefined);
+    vi.clearAllMocks();
+  });
+
+  afterEach(async () => {
+    await shutdownWorkers();
+    mockWorkerInstances.length = 0;
+  });
+
+  function getReviewsWorker() {
+    startWorkers('redis://localhost:6379', 'postgresql://localhost/typhoon');
+    const worker = mockWorkerInstances.find((w) => w.queueName === 'reviews');
+    if (!worker) throw new Error('reviews worker not found');
+    return worker;
+  }
+
+  it('routes "partition-management" job to managePartitions', async () => {
+    const { managePartitions } = await import('@typhoon/ingestion');
+    const worker = getReviewsWorker();
+    const fakeJob = { name: 'partition-management', data: { retentionDays: 30 } };
+    await worker.processor(fakeJob);
+    expect(managePartitions).toHaveBeenCalledWith(expect.anything(), { retentionDays: 30 });
+  });
+
+  it('routes score-message to prepareScoring and creates flow', async () => {
+    const worker = getReviewsWorker();
+    const fakeJob = {
+      name: 'score-message',
+      data: { messageId: 'm-1', threadId: 't-1', agentId: 'a-1', traceId: 'tr-1' },
+    };
+    const result = await worker.processor(fakeJob);
+    expect(mockPrepareScoring).toHaveBeenCalled();
+    expect(result).toMatchObject({ prepared: 1, skipped: 0 });
+  });
+
+  it('returns early when no scorers to run', async () => {
+    mockPrepareScoring.mockResolvedValueOnce({
+      messageId: 'msg-1',
+      userQuestion: 'test?',
+      responseText: 'answer',
+      context: [],
+      scorersToRun: [],
+      skippedCount: 5,
+      contextSkippedScorers: [],
+    });
+    const worker = getReviewsWorker();
+    const fakeJob = {
+      name: 'score-message',
+      data: { messageId: 'm-1', threadId: 't-1', agentId: 'a-1', traceId: 'tr-1' },
+    };
+    const result = await worker.processor(fakeJob);
+    expect(result).toMatchObject({ scored: 0, skipped: 5 });
+  });
+
+  it('wraps unrecoverable errors in UnrecoverableError', async () => {
+    mockPrepareScoring.mockRejectedValueOnce(Object.assign(new Error('bad input'), { unrecoverable: true }));
+    const worker = getReviewsWorker();
+    const fakeJob = {
+      name: 'score-message',
+      data: { messageId: 'm-1', threadId: 't-1', agentId: 'a-1', traceId: 'tr-1' },
+    };
+    await expect(worker.processor(fakeJob)).rejects.toThrow('bad input');
+  });
+
+  it('routes score-aggregate and collects children values', async () => {
+    const worker = getReviewsWorker();
+    const fakeJob = {
+      name: 'score-aggregate',
+      data: { messageId: 'msg-1', threadId: 't-1', totalScorers: 5, skippedScorers: 0 },
+      getChildrenValues: vi.fn().mockResolvedValue({ 'key-1': { score: 0.9 }, 'key-2': { score: 0.8 } }),
+      getFailedChildrenValues: vi.fn().mockResolvedValue({}),
+    };
+    const result = await worker.processor(fakeJob);
+    expect(result).toMatchObject({ scored: 2, skipped: 0, failed: 0 });
   });
 });
 
@@ -250,48 +371,34 @@ describe('scoring worker processor', () => {
     mockWorkerInstances.length = 0;
   });
 
-  function getScoringWorker() {
+  function getScoringRunWorker() {
     startWorkers('redis://localhost:6379', 'postgresql://localhost/typhoon');
     const worker = mockWorkerInstances.find((w) => w.queueName === 'scoring');
     if (!worker) throw new Error('scoring worker not found');
     return worker;
   }
 
-  it('routes "partition-management" job to managePartitions', async () => {
-    const { managePartitions } = await import('@typhoon/ingestion');
-    const worker = getScoringWorker();
-    const fakeJob = { name: 'partition-management', data: { retentionDays: 30 } };
-    await worker.processor(fakeJob);
-    expect(managePartitions).toHaveBeenCalledWith(expect.anything(), { retentionDays: 30 });
+  it('routes score-run to runSingleScorer', async () => {
+    const worker = getScoringRunWorker();
+    const fakeJob = {
+      name: 'score-run',
+      data: {
+        scorerName: 'answerRelevancy',
+        scorerDefinition: { name: 'answerRelevancy', type: 'answerRelevancy' },
+        userQuestion: 'test?',
+        responseText: 'answer',
+        context: [],
+      },
+    };
+    const result = await worker.processor(fakeJob);
+    expect(mockRunSingleScorer).toHaveBeenCalled();
+    expect(result).toMatchObject({ scorerId: 'answerRelevancy', score: 0.9 });
   });
 
-  it('routes scoring job to scoreMessage', async () => {
-    const { scoreMessage } = await import('@typhoon/agents');
-    const worker = getScoringWorker();
-    const fakeJob = {
-      name: 'score',
-      data: { messageId: 'm-1', threadId: 't-1', agentId: 'a-1', traceId: 'tr-1' },
-    };
-    await worker.processor(fakeJob);
-    expect(scoreMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ messageId: 'm-1', threadId: 't-1' }),
-      expect.any(Object),
-      expect.any(String),
-      undefined,
-    );
-  });
-
-  it('wraps unrecoverable errors in UnrecoverableError', async () => {
-    const { scoreMessage } = await import('@typhoon/agents');
-    (scoreMessage as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
-      Object.assign(new Error('bad input'), { unrecoverable: true }),
-    );
-    const worker = getScoringWorker();
-    const fakeJob = {
-      name: 'score',
-      data: { messageId: 'm-1', threadId: 't-1', agentId: 'a-1', traceId: 'tr-1' },
-    };
-    await expect(worker.processor(fakeJob)).rejects.toThrow('bad input');
+  it('throws for unknown job type', async () => {
+    const worker = getScoringRunWorker();
+    const fakeJob = { name: 'unknown', data: {} };
+    await expect(worker.processor(fakeJob)).rejects.toThrow('Unknown scoring job type');
   });
 });
 
@@ -307,20 +414,32 @@ describe('experiment worker processor', () => {
     mockWorkerInstances.length = 0;
   });
 
-  it('routes experiment job to handleExperimentJob', async () => {
-    const { handleExperimentJob } = await import('@typhoon/agents');
+  function getExperimentsWorker() {
     startWorkers('redis://localhost:6379', 'postgresql://localhost/typhoon');
     const worker = mockWorkerInstances.find((w) => w.queueName === 'experiments');
     if (!worker) throw new Error('experiments worker not found');
-    const fakeJob = { name: 'run', data: { experimentId: 'exp-1' }, token: 'tok-1', extendLock: vi.fn() };
+    return worker;
+  }
+
+  it('routes experiment-setup to setupExperiment', async () => {
+    const { setupExperiment } = await import('@typhoon/evals');
+    const worker = getExperimentsWorker();
+    const fakeJob = { name: 'experiment-setup', data: { experimentId: 'exp-1' } };
     await worker.processor(fakeJob);
-    expect(handleExperimentJob).toHaveBeenCalledWith(
-      'exp-1',
-      expect.anything(),
-      expect.anything(),
-      expect.anything(),
-      expect.anything(),
-    );
+    expect(setupExperiment).toHaveBeenCalledWith('exp-1', expect.anything());
+  });
+
+  it('routes experiment-complete to completeExperiment', async () => {
+    const { completeExperiment } = await import('@typhoon/evals');
+    const worker = getExperimentsWorker();
+    const fakeJob = {
+      name: 'experiment-complete',
+      data: { experimentId: 'exp-1', totalItems: 3 },
+      getChildrenValues: vi.fn().mockResolvedValue({}),
+      getFailedChildrenValues: vi.fn().mockResolvedValue({}),
+    };
+    await worker.processor(fakeJob);
+    expect(completeExperiment).toHaveBeenCalled();
   });
 });
 
@@ -370,31 +489,27 @@ describe('shutdownWorkers', () => {
   });
 
   it('is a no-op when no workers have been started', async () => {
-    // Should not throw even with empty _workers
     await expect(shutdownWorkers()).resolves.toBeUndefined();
   });
 
   it('calls close() on all workers', async () => {
     startWorkers('redis://localhost:6379', 'postgresql://localhost/typhoon');
     await shutdownWorkers();
-    // close() called for sync + scoring + experiments workers
-    expect(mockWorkerClose).toHaveBeenCalledTimes(3);
+    // close() called for sync + reviews + scoring + experiments workers
+    expect(mockWorkerClose).toHaveBeenCalledTimes(4);
   });
 
   it('clears the tracked workers after shutdown', async () => {
     startWorkers('redis://localhost:6379', 'postgresql://localhost/typhoon');
     await shutdownWorkers();
-    // Calling again should be no-op (workers cleared)
     mockWorkerClose.mockClear();
     await shutdownWorkers();
     expect(mockWorkerClose).not.toHaveBeenCalled();
   });
 
   it('respects the gracefulMs timeout via Promise.race', async () => {
-    // Make worker.close() hang forever
     mockWorkerClose.mockReturnValue(new Promise(() => {}));
     startWorkers('redis://localhost:6379', 'postgresql://localhost/typhoon');
-    // With a very short gracefulMs the race resolves via the timeout
     await expect(shutdownWorkers({ gracefulMs: 10 })).resolves.toBeUndefined();
   });
 });

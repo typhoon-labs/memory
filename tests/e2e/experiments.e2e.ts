@@ -1,5 +1,5 @@
 /**
- * Experiments E2E tests — verifies experiment listing and UI flows in the Admin app.
+ * Experiments E2E tests — verifies experiment listing and creation flows in the Admin app.
  *
  * Requires a live stack: bun run docker:up
  * Usage: bun run test:e2e
@@ -41,12 +41,39 @@ describe('Experiments E2E', () => {
     expect(tableCount + emptyCount).toBeGreaterThan(0);
   });
 
-  it('shows the "Run Experiment" button', async () => {
-    const btn = page.locator('button:has-text("Run Experiment")');
-    expect(await btn.count()).toBe(1);
+  it('shows the "Run Experiment" link', async () => {
+    const link = page.locator('a:has-text("Run Experiment")');
+    expect(await link.count()).toBe(1);
   });
 
-  it('has a status filter dropdown', async () => {
+  it('navigates to the create experiment page', async () => {
+    await page.click('a:has-text("Run Experiment")');
+    await page.waitForURL('**/experiments/create', { timeout: 5_000 });
+    const headingText = await page.textContent('h1');
+    expect(headingText).toContain('Run Experiment');
+  });
+
+  it('create page has name field and dataset selector', async () => {
+    const nameInput = page.locator('#experiment-name');
+    expect(await nameInput.count()).toBe(1);
+
+    const combobox = page.locator('[role="combobox"]');
+    expect(await combobox.count()).toBeGreaterThan(0);
+  });
+
+  it('cancel returns to experiments list', async () => {
+    await page.click('button:has-text("Cancel")');
+    await page.waitForURL('**/experiments**', { timeout: 5_000 });
+    const headingText = await page.textContent('h1');
+    expect(headingText).toContain('Experiments');
+  });
+
+  it('has a status filter dropdown when experiments exist', async () => {
+    // The toolbar (with combobox) only renders when there are experiments — skip in empty state
+    const emptyState = await page.locator(':text("No experiments")').count();
+    if (emptyState > 0) return;
+
+    await page.waitForSelector('[role="combobox"]', { timeout: 5_000 });
     const select = page.locator('[role="combobox"]').first();
     expect(await select.count()).toBeGreaterThan(0);
   });

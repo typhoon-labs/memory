@@ -198,7 +198,9 @@ export {
   TooltipTrigger,
 } from './components/ui/tooltip';
 // === Hooks ===
+export { useDocumentTitle } from './hooks/use-document-title';
 export { useIsMobile } from './hooks/use-mobile';
+export { useUrlSearchInput } from './hooks/use-url-search-input';
 export { ApiError, apiFetch } from './lib/api-fetch';
 export type { FormatAbsoluteTimeOptions } from './lib/format-time';
 export { formatAbsoluteTime, formatRelativeTime } from './lib/format-time';

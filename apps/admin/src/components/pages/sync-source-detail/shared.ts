@@ -9,6 +9,8 @@ export interface SyncTarget {
   cronSchedule: string;
   managedBy: string | null;
   source: string | null;
+  metadataTemplateId: string | null;
+  autoExtractMetadata: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -43,6 +45,7 @@ export interface Document {
   status: 'pending' | 'processing' | 'ready' | 'parse_error' | 'embed_error' | 'deleted';
   errorMessage: string | null;
   chunkCount: number;
+  customMetadata: Record<string, unknown>;
   contentHash: string | null;
   lastSyncedAt: string | null;
   createdAt: string;

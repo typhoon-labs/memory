@@ -59,10 +59,11 @@ describe('Auth E2E', () => {
     expect(page.url()).toContain('/login');
   });
 
-  it('signs in as rep via SSO', async () => {
+  it('signs in as rep via SSO and sees access denied', async () => {
     await oidcLogin(page, 'rep@typhoon.local', 'password', ADMIN_URL);
-    await page.waitForSelector('nav', { timeout: 15_000 });
-    const navText = await page.locator('nav').textContent();
-    expect(navText).toContain('rep@typhoon.local');
+    // Rep users lack the admin role — they see the Access Denied page
+    await page.waitForSelector('h1:has-text("Access Denied")', { timeout: 15_000 });
+    const bodyText = await page.textContent('body');
+    expect(bodyText).toContain('rep@typhoon.local');
   });
 });

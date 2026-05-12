@@ -1,6 +1,6 @@
 import { registerApiRoute } from '@mastra/core/server';
-import { constructScorer, type ScorerDefinitionVersion } from '@typhoon/agents';
 import { DrizzleScorerDefinitionsStorage } from '@typhoon/db/drivers/pg';
+import { constructScorer, type ScorerDefinitionVersion } from '@typhoon/evals';
 import { db, sql } from '../db';
 import { requireAdmin } from '../middleware/require-admin';
 import { requireAuth } from '../middleware/require-auth';
@@ -384,9 +384,7 @@ export const scorerRoutes = [
 
       const entry = constructScorer(definition, model, context ?? []);
       if (!entry) {
-        const needsContext = ['faithfulness', 'hallucination', 'contextRelevance', 'contextPrecision'].includes(
-          definition.type,
-        );
+        const needsContext = ['contextRelevance', 'contextPrecision'].includes(definition.type);
         return c.json(
           {
             error: needsContext

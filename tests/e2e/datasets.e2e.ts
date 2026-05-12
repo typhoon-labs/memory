@@ -50,23 +50,26 @@ describe('Datasets E2E', () => {
     expect(tableCount + emptyCount).toBeGreaterThan(0);
   });
 
-  it('opens the "Create Dataset" dialog', async () => {
-    await page.click('button:has-text("Create Dataset")');
-    await page.waitForSelector('[role="dialog"]', { timeout: 5_000 });
-    const dialogText = await page.textContent('[role="dialog"]');
-    expect(dialogText).toContain('Create Dataset');
+  it('navigates to the create dataset page', async () => {
+    await page.click('a:has-text("Create Dataset")');
+    await page.waitForURL('**/datasets/create', { timeout: 5_000 });
+    const headingText = await page.textContent('h1');
+    expect(headingText).toContain('Create');
   });
 
   it('fills the form and creates a dataset', async () => {
     await page.fill('#dataset-name', datasetName);
     await page.fill('#dataset-description', 'E2E test dataset');
 
-    const createBtn = page.locator('[role="dialog"] button:has-text("Create")');
+    const createBtn = page.locator('button:has-text("Create"):not([disabled])');
+    await createBtn.waitFor({ state: 'visible', timeout: 5_000 });
     await createBtn.click();
-    await page.waitForSelector('[role="dialog"]', { state: 'hidden', timeout: 10_000 });
+    await page.waitForFunction(() => !window.location.pathname.includes('create'), { timeout: 10_000 });
   });
 
   it('new dataset appears in the table', async () => {
+    // Navigate to the datasets list so the table is visible
+    await page.goto(`${ADMIN_URL}/datasets`);
     await page.waitForFunction((name) => document.body.textContent?.includes(name), datasetName, { timeout: 10_000 });
     const bodyText = await page.textContent('body');
     expect(bodyText).toContain(datasetName);
@@ -75,7 +78,7 @@ describe('Datasets E2E', () => {
   it('can navigate to dataset detail', async () => {
     const row = page.locator(`tr:has-text("${datasetName}")`).first();
     await row.click();
-    await page.waitForURL('**/datasets/**', { timeout: 10_000 });
+    await page.waitForFunction(() => !window.location.pathname.endsWith('/datasets'), { timeout: 10_000 });
     expect(page.url()).toMatch(/\/datasets\/.+/);
 
     createdDatasetId = page.url().split('/datasets/')[1]?.split('?')[0];

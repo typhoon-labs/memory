@@ -9,6 +9,7 @@ vi.mock('@typhoon/ai', () => ({
 vi.mock('ai', () => ({
   embed: vi.fn(async () => ({ embedding: [0.1, 0.2] })),
   generateText: vi.fn(async () => ({ text: 'Title\nDescription' })),
+  generateObject: vi.fn(async () => ({ object: {} })),
 }));
 vi.mock('@typhoon/telemetry', () => ({
   SpanStatusCode: { OK: 0, ERROR: 2 },
@@ -42,17 +43,20 @@ vi.mock('@mastra/rag', () => {
   return { MDocument: MockMDocument };
 });
 
-import { embed, generateText } from 'ai';
+import { embed, generateObject, generateText } from 'ai';
 import {
   buildChunkOptions,
   deleteDocumentVectors,
   EMBEDDING_MAX_CHARS,
   enforceChunkSizeLimit,
+  extractMetadataFromContent,
   generateDocumentMetadata,
   makeChunkId,
   processFile,
   TokenRatioTracker,
+  updateDocumentVectorMetadata,
   updateDocumentVectorSource,
+  updateDocumentVectorTitle,
 } from './pipeline';
 
 describe('buildChunkOptions', () => {
@@ -129,6 +133,34 @@ describe('updateDocumentVectorSource', () => {
   });
 });
 
+describe('updateDocumentVectorMetadata', () => {
+  it('calls sqlInstance.unsafe with correct SQL and params (merges via ||)', async () => {
+    const unsafeFn = vi.fn(async () => {});
+    const sqlInstance = { unsafe: unsafeFn };
+    const meta = { department: 'sales', priority: 'high' };
+    await updateDocumentVectorMetadata(sqlInstance as never, 'doc-123', meta);
+    expect(unsafeFn).toHaveBeenCalledTimes(1);
+    const [sql, params] = unsafeFn.mock.calls[0];
+    expect(sql).toContain('UPDATE "knowledge_base"');
+    expect(sql).toContain('||');
+    expect(params).toEqual(['doc-123', JSON.stringify(meta)]);
+  });
+});
+
+describe('updateDocumentVectorTitle', () => {
+  it('calls sqlInstance.unsafe with correct SQL and params (jsonb_set for title)', async () => {
+    const unsafeFn = vi.fn(async () => {});
+    const sqlInstance = { unsafe: unsafeFn };
+    await updateDocumentVectorTitle(sqlInstance as never, 'doc-123', 'New Title');
+    expect(unsafeFn).toHaveBeenCalledTimes(1);
+    const [sql, params] = unsafeFn.mock.calls[0];
+    expect(sql).toContain('UPDATE "knowledge_base"');
+    expect(sql).toContain('jsonb_set');
+    expect(sql).toContain('{title}');
+    expect(params).toEqual(['doc-123', 'New Title']);
+  });
+});
+
 describe('generateDocumentMetadata', () => {
   it('extracts title and description from two-line response', async () => {
     vi.mocked(generateText).mockResolvedValueOnce({
@@ -166,6 +198,45 @@ describe('generateDocumentMetadata', () => {
     await generateDocumentMetadata(longText, {} as never);
     const callArgs = vi.mocked(generateText).mock.calls[0][0] as { prompt: string };
     expect(callArgs.prompt).toHaveLength(2000);
+  });
+});
+
+describe('extractMetadataFromContent', () => {
+  const schema = {
+    country: {
+      type: 'string',
+      allowedValues: ['us', 'de', 'global'],
+      description: 'Country code',
+    },
+    department: {
+      type: 'string',
+      allowedValues: ['sales', 'engineering', 'support'],
+      description: 'Department',
+    },
+  };
+
+  it('uses generateObject and returns extracted values', async () => {
+    vi.mocked(generateObject).mockResolvedValueOnce({
+      object: { country: 'us', department: 'sales' },
+    } as never);
+    const result = await extractMetadataFromContent('Some document text', schema, {} as never);
+    expect(result).toEqual({ country: 'us', department: 'sales' });
+  });
+
+  it('filters out values not in allowedValues', async () => {
+    vi.mocked(generateObject).mockResolvedValueOnce({
+      object: { country: 'fr', department: 'sales' },
+    } as never);
+    const result = await extractMetadataFromContent('Some document text', schema, {} as never);
+    // "fr" is not in allowedValues for country, so it should be excluded
+    expect(result).toEqual({ department: 'sales' });
+    expect(result).not.toHaveProperty('country');
+  });
+
+  it('returns empty object when generateObject throws', async () => {
+    vi.mocked(generateObject).mockRejectedValueOnce(new Error('LLM error'));
+    const result = await extractMetadataFromContent('Some document text', schema, {} as never);
+    expect(result).toEqual({});
   });
 });
 
@@ -256,6 +327,24 @@ describe('processFile', () => {
     expect(call.ids[0]).toHaveLength(32); // sha256 hex truncated to 32 chars
     // Metadata should include section field
     expect(call.metadata[0]).toHaveProperty('section');
+  });
+
+  it('spreads customMetadata into chunk metadata at upsert', async () => {
+    vectorStore.upsert.mockClear();
+    await processFile(
+      {
+        content: Buffer.from('Content for custom metadata test.'),
+        filename: 'meta.txt',
+        documentId: 'doc-1',
+        syncTargetId: 'st-1',
+        sourceKey: 'meta.txt',
+        customMetadata: { department: 'engineering', priority: 'high' },
+      },
+      vectorStore as never,
+    );
+    const call = vectorStore.upsert.mock.calls[0][0];
+    expect(call.metadata[0]).toHaveProperty('department', 'engineering');
+    expect(call.metadata[0]).toHaveProperty('priority', 'high');
   });
 });
 

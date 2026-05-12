@@ -12,7 +12,7 @@ import { initVectorIndex, reconcileConfigSyncTargets } from './init';
 import { mastra } from './mastra/index';
 import { requestLogger } from './middleware/request-logger';
 import { getQueue, initQueue, initSyncQueue, shutdownQueues, trackQueueEvents } from './queue';
-import { setScoringQueue } from './routes/chat';
+import { setReviewsQueue } from './routes/chat';
 
 const log = createAppLogger('api');
 
@@ -73,10 +73,11 @@ async function bootstrap() {
   const syncQueue = initSyncQueue(redisUrl);
   initQueue('reports', redisUrl);
   initQueue('scoring', redisUrl);
+  initQueue('reviews', redisUrl);
   initQueue('experiments', redisUrl);
   const archiverEvents = initFailedJobArchiver(syncQueue, redisUrl, db);
   trackQueueEvents('archiver', archiverEvents);
-  setScoringQueue(getQueue('scoring'));
+  setReviewsQueue(getQueue('reviews'));
 }
 
 const port = Number(process.env.PORT ?? 5172);

@@ -42,17 +42,20 @@ describe('Reviews E2E', () => {
   });
 
   it('has sort and filter controls', async () => {
+    await page.waitForSelector('[role="combobox"]', { timeout: 5_000 });
     const selectCount = await page.locator('[role="combobox"]').count();
     expect(selectCount).toBeGreaterThan(0);
   });
 
   it('has a search input', async () => {
+    await page.waitForSelector('input[placeholder*="Search"]', { timeout: 5_000 });
     const search = page.locator('input[placeholder*="Search"]');
     expect(await search.count()).toBeGreaterThan(0);
   });
 
   it('can navigate to review detail when threads exist', async () => {
-    const rows = page.locator('tbody tr');
+    // Exclude the "No results found." row — only count real data rows
+    const rows = page.locator('tbody tr:not(:has-text("No results"))');
     if ((await rows.count()) === 0) return;
 
     await rows.first().click();

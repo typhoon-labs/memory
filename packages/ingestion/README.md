@@ -19,6 +19,9 @@ Supported formats: PDF, DOCX, Markdown, HTML, CSV, Excel, JSON, plain text.
 | `processFile()` | Full ingestion pipeline for a single file |
 | `deleteDocumentVectors()` | Remove vectors for a document |
 | `updateDocumentVectorSource()` | Update vector metadata when source changes |
+| `updateDocumentVectorMetadata()` | Merge custom metadata into chunk JSONB |
+| `updateDocumentVectorTitle()` | Update title in chunk metadata |
+| `extractMetadataFromContent()` | LLM-based metadata extraction from document text (handles markdown-fenced responses, validates against allowedValues) |
 | `buildChunkOptions()` | Format-specific chunking configuration |
 
 **Job Handlers:**

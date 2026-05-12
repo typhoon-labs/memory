@@ -53,10 +53,40 @@ function TyphoonWidget() {
     [],
   );
 
-  const { messages, sendMessage, status, stop, setMessages } = useChat({
+  const { messages, sendMessage, status, stop, setMessages, error } = useChat({
     id: threadId,
     transport,
   });
+
+  // Detect stalled streams (server dies mid-stream, AI SDK hangs forever)
+  const lastActivityRef = useRef(Date.now());
+  const messagesSnapshotRef = useRef(messages.length);
+  const [stallError, setStallError] = useState<Error | null>(null);
+  useEffect(() => {
+    const snap = messages.at(-1)?.parts?.length ?? 0;
+    if (messages.length !== messagesSnapshotRef.current || snap !== messagesSnapshotRef.current) {
+      messagesSnapshotRef.current = messages.length;
+      lastActivityRef.current = Date.now();
+    }
+  }, [messages]);
+  useEffect(() => {
+    if (status === 'submitted') {
+      setStallError(null);
+      lastActivityRef.current = Date.now();
+    }
+  }, [status]);
+  useEffect(() => {
+    if (status !== 'streaming' && status !== 'submitted') return;
+    const interval = setInterval(() => {
+      if (Date.now() - lastActivityRef.current > 15_000) {
+        stop();
+        setStallError(new Error('Connection lost'));
+        clearInterval(interval);
+      }
+    }, 5_000);
+    return () => clearInterval(interval);
+  }, [status, stop]);
+  const chatError = error ?? stallError;
 
   const isLoading = status === 'submitted' || status === 'streaming';
 
@@ -119,6 +149,9 @@ function TyphoonWidget() {
             ))}
             {isLoading && messages.at(-1)?.role !== 'assistant' && (
               <div className="typhoon-msg typhoon-msg-assistant typhoon-thinking">Thinking…</div>
+            )}
+            {chatError && !isLoading && (
+              <div className="typhoon-msg typhoon-msg-assistant typhoon-error">Something went wrong. Please try again.</div>
             )}
           </div>
 

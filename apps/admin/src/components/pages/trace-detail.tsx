@@ -1,20 +1,23 @@
 import { useQuery } from '@tanstack/react-query';
-import { useParams } from '@tanstack/react-router';
+import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import {
   apiFetch,
+  Badge,
   Button,
   EmptyState,
   formatAbsoluteTime,
+  Input,
   LoadingSpinner,
   PageHeader,
   StatCard,
   StatusBadge,
   type StatusBadgeVariant,
 } from '@typhoon/ui';
-import { ActivityIcon, ChevronRightIcon, ClipboardCheckIcon } from 'lucide-react';
+import { ActivityIcon, ChevronRightIcon, ClipboardCheckIcon, SearchIcon } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { detailTitle, usePageTitle } from '../../hooks/use-page-title';
 import type { Span, TraceDetailResponse } from './trace-detail/shared';
-import { buildSpanTree, formatDurationMs } from './trace-detail/shared';
+import { buildSpanTree, formatDurationMs, SPAN_CATEGORY_COLORS, SPAN_CATEGORY_LABELS } from './trace-detail/shared';
 import { SpanDetailSheet } from './trace-detail/span-detail-sheet';
 import { SpanTree } from './trace-detail/span-tree';
 
@@ -26,7 +29,10 @@ const STATUS_VARIANT: Record<string, StatusBadgeVariant> = {
 
 export function TraceDetailPage() {
   const { traceId } = useParams({ strict: false }) as { traceId: string };
-  const [selectedSpan, setSelectedSpan] = useState<Span | null>(null);
+  const navigate = useNavigate();
+  const { span: spanParam } = useSearch({ strict: false }) as { span: string | undefined };
+
+  usePageTitle(detailTitle('Traces', traceId.slice(0, 8)));
 
   const { data, isLoading, error } = useQuery<TraceDetailResponse>({
     queryKey: ['admin-trace', traceId],
@@ -46,7 +52,7 @@ export function TraceDetailPage() {
   const traceDurationMs = useMemo(() => {
     if (!data || data.spans.length === 0) return 0;
     const starts = data.spans.map((s) => new Date(s.startedAt).getTime());
-    const ends = data.spans.filter((s) => s.endedAt).map((s) => new Date(s.endedAt!).getTime());
+    const ends = data.spans.filter((s) => s.endedAt).map((s) => new Date(s.endedAt as string).getTime());
     if (ends.length === 0) return 0;
     return Math.max(...ends) - Math.min(...starts);
   }, [data]);
@@ -62,6 +68,19 @@ export function TraceDetailPage() {
       { prompt: 0, completion: 0 },
     );
   }, [data]);
+
+  // Derive selected span from URL param
+  const selectedSpan: Span | null = useMemo(
+    () => (spanParam && data ? (data.spans.find((s) => s.spanId === spanParam) ?? null) : null),
+    [spanParam, data],
+  );
+
+  // Filter state (lives here so toolbar is outside the span tree card)
+  const [nameFilter, setNameFilter] = useState('');
+  const [typeFilter, setTypeFilter] = useState<string | null>(null);
+
+  // All span type categories (always show all six as legend + filter)
+  const allCategories = ['agent', 'model', 'tool', 'scorer', 'workflow', 'rag', 'memory', 'other'] as const;
 
   return (
     <div className="overflow-y-auto p-4 sm:p-6 md:p-8">
@@ -85,9 +104,9 @@ export function TraceDetailPage() {
             <PageHeader
               title={
                 <span className="flex items-center gap-1.5">
-                  <a href="/traces" className="text-muted-foreground transition-colors hover:text-foreground">
+                  <Link to="/traces" className="text-muted-foreground transition-colors hover:text-foreground">
                     Traces
-                  </a>
+                  </Link>
                   <ChevronRightIcon className="size-3.5 text-muted-foreground/50" />
                   {traceId}
                   <StatusBadge variant={STATUS_VARIANT[data.summary.status] ?? 'pending'}>
@@ -99,10 +118,10 @@ export function TraceDetailPage() {
               actions={
                 data.summary.threadId ? (
                   <Button variant="outline" size="sm" asChild>
-                    <a href={`/reviews/${data.summary.threadId}`}>
+                    <Link to={`/reviews/${data.summary.threadId}`}>
                       <ClipboardCheckIcon className="mr-1.5 size-3.5" />
                       View Review
-                    </a>
+                    </Link>
                   </Button>
                 ) : undefined
               }
@@ -128,14 +147,30 @@ export function TraceDetailPage() {
               />
             </div>
 
-            {/* Span type legend */}
-            <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-              <LegendDot color="bg-blue-400/60" label="Agent" />
-              <LegendDot color="bg-purple-400/60" label="Model" />
-              <LegendDot color="bg-amber-400/60" label="Tool" />
-              <LegendDot color="bg-emerald-400/60" label="Scorer" />
-              <LegendDot color="bg-cyan-400/60" label="Workflow" />
-              <LegendDot color="bg-zinc-400/60" label="Other" />
+            {/* Filter toolbar */}
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              {allCategories.map((cat) => (
+                <Badge
+                  key={cat}
+                  asChild
+                  variant={typeFilter === cat ? 'default' : 'outline'}
+                  className="cursor-pointer gap-1.5 text-xs transition-colors hover:bg-accent"
+                >
+                  <button type="button" onClick={() => setTypeFilter(typeFilter === cat ? null : cat)}>
+                    <span className={`size-1.5 rounded-full ${SPAN_CATEGORY_COLORS[cat]}`} />
+                    {SPAN_CATEGORY_LABELS[cat]}
+                  </button>
+                </Badge>
+              ))}
+              <div className="relative ml-auto">
+                <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={nameFilter}
+                  onChange={(e) => setNameFilter(e.target.value)}
+                  placeholder="Search..."
+                  className="h-8 w-[220px] pl-8 text-sm"
+                />
+              </div>
             </div>
 
             {/* Waterfall span tree */}
@@ -145,7 +180,9 @@ export function TraceDetailPage() {
                   roots={tree}
                   traceStartMs={traceStartMs}
                   traceDurationMs={traceDurationMs}
-                  onSelectSpan={setSelectedSpan}
+                  nameFilter={nameFilter}
+                  typeFilter={typeFilter}
+                  onSelectSpan={(s: Span) => navigate({ search: { span: s.spanId }, replace: true })}
                 />
               ) : (
                 <EmptyState
@@ -161,21 +198,12 @@ export function TraceDetailPage() {
               span={selectedSpan}
               open={selectedSpan !== null}
               onOpenChange={(open) => {
-                if (!open) setSelectedSpan(null);
+                if (!open) navigate({ search: { span: undefined }, replace: true });
               }}
             />
           </>
         )}
       </div>
     </div>
-  );
-}
-
-function LegendDot({ color, label }: { color: string; label: string }) {
-  return (
-    <span className="inline-flex items-center gap-1">
-      <span className={`size-2 rounded-full ${color}`} />
-      {label}
-    </span>
   );
 }

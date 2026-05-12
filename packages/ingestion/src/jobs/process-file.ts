@@ -1,11 +1,12 @@
 import type { Db } from '@typhoon/db';
-import { documents, syncTargets } from '@typhoon/db';
+import { documents, metadataFieldGroups, metadataTemplates, syncTargets } from '@typhoon/db';
 import type { PgVector } from '@typhoon/db/drivers/pg';
 import { createAppLogger } from '@typhoon/logger';
+import { applySchemaDefaults, resolveTemplateSchema } from '@typhoon/types';
 import type { Job } from 'bullmq';
 import { UnrecoverableError } from 'bullmq';
-import { eq } from 'drizzle-orm';
-import { deleteDocumentVectors, processFile } from '../pipeline';
+import { eq, inArray } from 'drizzle-orm';
+import { deleteDocumentVectors, extractMetadataFromContent, processFile } from '../pipeline';
 import { getProvider } from '../providers/index';
 import { asUnrecoverable, isUnrecoverable } from '../util/classify-error';
 import { withTimeout } from '../util/with-timeout';
@@ -59,6 +60,51 @@ export async function handleProcessFileJob(job: Job<ProcessFileJobData>, db: Db,
       log.info('Deleted old vectors', { documentId, ms: Date.now() - tDel });
     }
 
+    // Resolve custom metadata from template defaults + existing document metadata
+    const [doc] = await db.select().from(documents).where(eq(documents.id, documentId));
+    let customMetadata: Record<string, unknown> = doc?.customMetadata ?? {};
+
+    if (target.metadataTemplateId) {
+      const [tmpl] = await db
+        .select()
+        .from(metadataTemplates)
+        .where(eq(metadataTemplates.id, target.metadataTemplateId));
+
+      if (tmpl) {
+        const groups =
+          tmpl.fieldGroupIds.length > 0
+            ? await db.select().from(metadataFieldGroups).where(inArray(metadataFieldGroups.id, tmpl.fieldGroupIds))
+            : [];
+
+        // biome-ignore lint/suspicious/noExplicitAny: JSONB types
+        const schema = resolveTemplateSchema(tmpl as any, groups as any);
+        const defaults = applySchemaDefaults(schema);
+        // Merge: defaults < existing < (LLM-extracted later)
+        customMetadata = { ...defaults, ...customMetadata };
+
+        // LLM extraction (optional, runs after we have the text content)
+        if (target.autoExtractMetadata && Object.keys(schema).length > 0) {
+          try {
+            const { createExtractionModel } = await import('@typhoon/ai');
+            const extracted = await extractMetadataFromContent(
+              Buffer.from(content).toString('utf-8').slice(0, 8000),
+              schema,
+              createExtractionModel(),
+            );
+            customMetadata = { ...customMetadata, ...extracted };
+          } catch (err) {
+            log.warn('LLM metadata extraction failed, continuing with defaults', {
+              documentId,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        }
+
+        // Save computed custom metadata to document
+        await db.update(documents).set({ customMetadata, updatedAt: new Date() }).where(eq(documents.id, documentId));
+      }
+    }
+
     const result = await processFile(
       {
         content,
@@ -68,6 +114,7 @@ export async function handleProcessFileJob(job: Job<ProcessFileJobData>, db: Db,
         sourceKey,
         onStage: setStage,
         isCancelled: () => isSyncJobCancelled(db, job.data.syncJobId),
+        customMetadata,
       },
       vectorStore,
     );
@@ -79,6 +126,7 @@ export async function handleProcessFileJob(job: Job<ProcessFileJobData>, db: Db,
         title: result.title,
         description: result.description,
         chunkCount: result.chunkCount,
+        customMetadata,
         mimeType: guessMimeType(sourceKey),
         updatedAt: new Date(),
       })

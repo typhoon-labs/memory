@@ -144,7 +144,37 @@ describe('createSupervisor', () => {
 
   it('creates the knowledge agent and passes it to the search tool factory', () => {
     createSupervisor(fakeMemory);
-    expect(mockKnowledgeModule.createKnowledgeAgent).toHaveBeenCalled();
-    expect(mockKnowledgeSearchModule.createKnowledgeSearchTool).toHaveBeenCalledWith(mockKnowledgeAgent);
+    expect(mockKnowledgeModule.createKnowledgeAgent).toHaveBeenCalledWith({ rerank: false });
+    expect(mockKnowledgeSearchModule.createKnowledgeSearchTool).toHaveBeenCalledWith(mockKnowledgeAgent, {
+      getMetadataContext: undefined,
+    });
+  });
+
+  it('accepts GuardrailsConfig directly as second parameter for backward compatibility', () => {
+    const guardrails = { promptInjection: true, moderation: false };
+    createSupervisor(fakeMemory, guardrails);
+    expect(mockGuardrailsModule.createInputGuardrails).toHaveBeenCalledWith(mockGuardrailModel, guardrails);
+    expect(mockGuardrailsModule.createOutputGuardrails).toHaveBeenCalledWith(mockGuardrailModel, guardrails);
+    expect(mockKnowledgeModule.createKnowledgeAgent).toHaveBeenCalledWith({ rerank: false });
+  });
+
+  it('passes getMetadataContext to createKnowledgeSearchTool', () => {
+    const getMetadataContext = async () => 'field: val1, val2';
+    createSupervisor(fakeMemory, { getMetadataContext });
+    expect(mockKnowledgeSearchModule.createKnowledgeSearchTool).toHaveBeenCalledWith(mockKnowledgeAgent, {
+      getMetadataContext,
+    });
+  });
+
+  it('accepts SupervisorOptions with both guardrails and getMetadataContext', () => {
+    const getMetadataContext = async () => 'field: val1';
+    const opts = {
+      guardrails: { promptInjection: true, moderation: true },
+      getMetadataContext,
+    };
+    createSupervisor(fakeMemory, opts);
+    expect(mockKnowledgeModule.createKnowledgeAgent).toHaveBeenCalledWith({ rerank: false });
+    expect(mockGuardrailsModule.createInputGuardrails).toHaveBeenCalledWith(mockGuardrailModel, opts.guardrails);
+    expect(mockGuardrailsModule.createOutputGuardrails).toHaveBeenCalledWith(mockGuardrailModel, opts.guardrails);
   });
 });

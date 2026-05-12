@@ -20,6 +20,38 @@ Default: `http://localhost:5173`
 | `/search` | Hybrid/semantic document search |
 | `/login` | Authentication page |
 
+## Deep Linking (URL State)
+
+All meaningful UI state is persisted in URL search parameters so views are shareable and survive page refresh.
+
+**`/search`**
+| Param | Type | Description |
+|-------|------|-------------|
+| `q` | string | Search query (auto-executes on page load) |
+| `expanded` | boolean | Deep/expanded search mode |
+| `doc` | string | Selected document ID (opens viewer panel) |
+| `chunk` | number | Selected chunk index within expanded results |
+
+**`/documents`**
+| Param | Type | Description |
+|-------|------|-------------|
+| `source` | string | Filter by sync source ID |
+| `type` | string | Filter by document type (PDF, Word, etc.) |
+| `filter` | string | Text filter (committed on Enter/blur) |
+| `doc` | string | Selected document ID (opens viewer panel) |
+
+Example shareable URLs:
+- `/search?q=refund+policy&expanded=true` — expanded search for "refund policy"
+- `/documents?source=abc123&type=PDF` — PDFs from a specific source
+
+## Browser Tab Titles
+
+Each page sets a dynamic `document.title` via `usePageTitle` and `detailTitle` from `src/hooks/use-page-title.ts`. The app suffix ("Typhoon Desk") and hierarchy separator (`:`) are defined as constants there.
+
+- Static pages: "Dashboard - Typhoon Desk", "Documents - Typhoon Desk"
+- Search with query: "Search: refund policy - Typhoon Desk"
+- Chat with thread: "Chat: Refund request - Typhoon Desk"
+
 ## Key Features
 
 - Streaming chat responses via SSE (Vercel AI SDK)

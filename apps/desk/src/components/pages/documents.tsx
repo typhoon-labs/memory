@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate, useSearch } from '@tanstack/react-router';
 import { DocumentViewerPanel, documentContentQuery, documentParsedQuery } from '@typhoon/chat';
 import type { ColumnDef } from '@typhoon/ui';
 import {
@@ -19,9 +20,11 @@ import {
   SelectTrigger,
   SelectValue,
   StatusBadge,
+  useUrlSearchInput,
 } from '@typhoon/ui';
-import { DatabaseIcon, FileTextIcon } from 'lucide-react';
-import { useCallback, useMemo, useState } from 'react';
+import { DatabaseIcon, FileTextIcon, SearchIcon } from 'lucide-react';
+import { useCallback, useMemo } from 'react';
+import { usePageTitle } from '../../hooks/use-page-title';
 
 interface Document {
   id: string;
@@ -75,10 +78,35 @@ function classifyMime(mimeType: string | null): string | null {
 // ── Component ──────────────────────────────────────────────────
 
 export function DocumentsPage() {
-  const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
-  const [sourceFilter, setSourceFilter] = useState<string>('__all__');
-  const [typeFilter, setTypeFilter] = useState<string>('__all__');
-  const [textFilter, setTextFilter] = useState<string>('');
+  const navigate = useNavigate();
+  const { source, type, filter, doc } = useSearch({ strict: false }) as {
+    source: string | undefined;
+    type: string | undefined;
+    filter: string | undefined;
+    doc: string | undefined;
+  };
+
+  const sourceFilter = source ?? '__all__';
+  const typeFilter = type ?? '__all__';
+  const selectedDocId = doc ?? null;
+
+  usePageTitle('Documents');
+
+  const setSourceFilter = (v: string) =>
+    navigate({ search: (prev) => ({ ...prev, source: v === '__all__' ? undefined : v }), replace: true });
+  const setTypeFilter = (v: string) =>
+    navigate({ search: (prev) => ({ ...prev, type: v === '__all__' ? undefined : v }), replace: true });
+
+  const {
+    inputValue: textFilter,
+    setInputValue: setTextFilter,
+    handleKeyDown: textFilterKeyDown,
+    handleBlur: textFilterBlur,
+  } = useUrlSearchInput({
+    urlValue: filter,
+    onCommit: (val) => navigate({ search: (prev) => ({ ...prev, filter: val }), replace: true }),
+  });
+
   const queryClient = useQueryClient();
 
   const prefetchDocument = useCallback(
@@ -216,7 +244,7 @@ export function DocumentsPage() {
               pageSize={20}
               enableSorting
               getRowId={(row) => row.id}
-              onRowClick={(doc) => setSelectedDocId(doc.id)}
+              onRowClick={(row) => navigate({ search: (prev) => ({ ...prev, doc: row.id }), replace: true })}
               onRowHover={prefetchDocument}
               showRowCount
               toolbar={
@@ -248,13 +276,18 @@ export function DocumentsPage() {
                       <SelectItem value="Other">Other</SelectItem>
                     </SelectContent>
                   </Select>
-                  <Input
-                    type="text"
-                    placeholder="Filter documents..."
-                    value={textFilter}
-                    onChange={(e) => setTextFilter(e.target.value)}
-                    className="ml-auto h-8 w-[220px] text-sm"
-                  />
+                  <div className="relative ml-auto">
+                    <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      type="text"
+                      placeholder="Search..."
+                      value={textFilter}
+                      onChange={(e) => setTextFilter(e.target.value)}
+                      onKeyDown={textFilterKeyDown}
+                      onBlur={textFilterBlur}
+                      className="h-8 w-[220px] pl-8 text-sm"
+                    />
+                  </div>
                 </div>
               }
             />
@@ -297,7 +330,7 @@ export function DocumentsPage() {
           key={selectedDocId}
           documentId={selectedDocId}
           searchTerms={[]}
-          onClose={() => setSelectedDocId(null)}
+          onClose={() => navigate({ search: (prev) => ({ ...prev, doc: undefined }), replace: true })}
         />
       </ResizablePanel>
     </ResizablePanelGroup>

@@ -16,9 +16,12 @@ import {
   SelectValue,
   StatusBadge,
   type StatusBadgeVariant,
+  useUrlSearchInput,
 } from '@typhoon/ui';
-import { ActivityIcon } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { ActivityIcon, SearchIcon } from 'lucide-react';
+import { useMemo } from 'react';
+import { usePageTitle } from '../../hooks/use-page-title';
+import { formatDurationMs } from './trace-detail/shared';
 
 // ---------- Types ----------
 
@@ -49,30 +52,10 @@ type StatusFilter = 'all' | 'success' | 'error' | 'partial';
 
 // ---------- Helpers ----------
 
-function formatDurationMs(ms: number | null): string {
-  if (ms == null) return '\u2014';
-  if (ms < 1000) return `${Math.round(ms)}ms`;
-  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
-  const min = Math.floor(ms / 60_000);
-  const sec = Math.floor((ms % 60_000) / 1000);
-  return `${min}m ${sec}s`;
-}
-
 const STATUS_VARIANT: Record<string, StatusBadgeVariant> = {
   success: 'success',
   error: 'error',
   partial: 'warning',
-};
-
-const SPAN_TYPE_LABELS: Record<string, string> = {
-  agent_run: 'Agent',
-  model_generation: 'Model',
-  model_step: 'Model Step',
-  tool_call: 'Tool',
-  mcp_tool_call: 'MCP Tool',
-  scorer_run: 'Scorer',
-  workflow_run: 'Workflow',
-  generic: 'Generic',
 };
 
 const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
@@ -92,11 +75,21 @@ export function TracesPage() {
     search?: string;
     threadId?: string;
   };
+  usePageTitle('Traces');
 
   const statusFilter = searchParams.status ?? 'all';
   const searchFilter = searchParams.search ?? '';
   const threadIdFilter = searchParams.threadId;
-  const [searchInput, setSearchInput] = useState(searchFilter);
+
+  const {
+    inputValue: searchInput,
+    setInputValue: setSearchInput,
+    handleKeyDown: searchKeyDown,
+    handleBlur: searchBlur,
+  } = useUrlSearchInput({
+    urlValue: searchParams.search,
+    onCommit: (val) => navigate({ to: '/traces', search: { ...searchParams, search: val }, replace: true }),
+  });
 
   const queryKey = useMemo(
     () => ['admin-traces', { status: statusFilter, search: searchFilter, threadId: threadIdFilter }] as const,
@@ -122,14 +115,6 @@ export function TracesPage() {
     });
   }
 
-  function handleSearchSubmit() {
-    navigate({
-      to: '/traces',
-      search: { ...searchParams, search: searchInput || undefined },
-      replace: true,
-    });
-  }
-
   const columns: ColumnDef<TraceListItem, unknown>[] = useMemo(
     () => [
       {
@@ -141,15 +126,6 @@ export function TracesPage() {
         id: 'trace',
         header: 'Trace ID',
         cell: ({ row }) => <span className="font-medium">{row.original.traceId}</span>,
-      },
-      {
-        id: 'type',
-        header: 'Type',
-        cell: ({ row }) => (
-          <span className="text-muted-foreground">
-            {SPAN_TYPE_LABELS[row.original.rootSpanType] ?? row.original.rootSpanType}
-          </span>
-        ),
       },
       {
         id: 'status',
@@ -219,13 +195,15 @@ export function TracesPage() {
                       ))}
                     </SelectContent>
                   </Select>
-                  <div className="ml-auto">
+                  <div className="relative ml-auto">
+                    <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
                     <Input
-                      placeholder="Search traces..."
-                      className="h-8 w-[220px] text-sm"
+                      placeholder="Search..."
+                      className="h-8 w-[220px] pl-8 text-sm"
                       value={searchInput}
                       onChange={(e) => setSearchInput(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && handleSearchSubmit()}
+                      onKeyDown={searchKeyDown}
+                      onBlur={searchBlur}
                     />
                   </div>
                 </div>

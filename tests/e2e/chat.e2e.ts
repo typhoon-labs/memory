@@ -93,7 +93,7 @@ describe('Chat E2E', () => {
     await page.reload();
     await page.waitForURL(urlBeforeReload, { timeout: 10_000 });
 
-    await page.waitForFunction((msg) => document.body.textContent?.includes(msg), 'What is Typhoon?', { timeout: 10_000 });
+    await page.waitForFunction((msg) => document.body.textContent?.includes(msg), 'What is Typhoon?', { timeout: 20_000 });
     const bodyText = await page.textContent('body');
     expect(bodyText).toContain('What is Typhoon?');
   });

@@ -7,6 +7,7 @@ import {
   createHallucinationScorer,
 } from '@mastra/evals/scorers/prebuilt';
 import { createAppLogger } from '@typhoon/logger';
+import { RETRIEVAL_SCORERS } from './scorer-categories';
 
 const log = createAppLogger('scorer-loader');
 
@@ -44,16 +45,13 @@ const PREBUILT_TYPES = new Set([
   'contextPrecision',
 ]);
 
-/** Context-dependent prebuilt scorers that require non-empty context. */
-const CONTEXT_DEPENDENT = new Set(['faithfulness', 'hallucination', 'contextRelevance', 'contextPrecision']);
+/** Scorers that require non-empty context — only retrieval quality scorers. */
+const CONTEXT_DEPENDENT = RETRIEVAL_SCORERS;
 
 /**
  * Construct a Mastra scorer from a database definition version.
  *
  * For prebuilt types, delegates to the corresponding factory from `@mastra/evals/scorers/prebuilt`.
- * Context-dependent scorers return `null` when context is empty (same behavior as the
- * original hardcoded `createScorerEntries()`).
- *
  * For custom types, creates an LLM-as-judge scorer using `createScorer()` from Mastra.
  *
  * @returns `{ id, scorer }` or `null` if the scorer cannot be constructed.

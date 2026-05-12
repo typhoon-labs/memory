@@ -22,4 +22,15 @@ describe('AppShell', () => {
     );
     expect(container.querySelector('nav, aside, [role="navigation"]')).toBeTruthy();
   });
+
+  it('applies h-full to direct children of main for scroll containment', () => {
+    const { container } = render(
+      <AppShell navGroups={[]}>
+        <div data-testid="page">Page content</div>
+      </AppShell>,
+    );
+    const main = container.querySelector('main');
+    expect(main).toBeTruthy();
+    expect(main?.className).toContain('[&>*]:h-full');
+  });
 });

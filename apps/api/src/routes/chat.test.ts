@@ -33,7 +33,7 @@ vi.mock('../middleware/require-auth', async () => {
   };
 });
 
-import { chatRoutes, setScoringQueue } from './chat';
+import { chatRoutes, setReviewsQueue } from './chat';
 
 /**
  * Build a Hono app that injects context variables via middleware
@@ -162,7 +162,7 @@ describe('chatRoutes', () => {
   describe('scoring integration', () => {
     it('enqueues scoring job when enabled and threadId present', async () => {
       const mockAdd = vi.fn().mockResolvedValue({});
-      setScoringQueue({ add: mockAdd } as never);
+      setReviewsQueue({ add: mockAdd } as never);
 
       mockHandleChatStream.mockResolvedValue(Symbol('stream'));
       mockCreateUIMessageStreamResponse.mockReturnValue(new Response('ok'));
@@ -197,7 +197,7 @@ describe('chatRoutes', () => {
 
     it('does not enqueue when no threadId', async () => {
       const mockAdd = vi.fn().mockResolvedValue({});
-      setScoringQueue({ add: mockAdd } as never);
+      setReviewsQueue({ add: mockAdd } as never);
 
       mockHandleChatStream.mockResolvedValue(Symbol('stream'));
       mockCreateUIMessageStreamResponse.mockReturnValue(new Response('ok'));
@@ -219,7 +219,7 @@ describe('chatRoutes', () => {
 
     it('handles scoring queue add failure gracefully', async () => {
       const mockAdd = vi.fn().mockRejectedValue(new Error('Redis down'));
-      setScoringQueue({ add: mockAdd } as never);
+      setReviewsQueue({ add: mockAdd } as never);
 
       mockHandleChatStream.mockResolvedValue(Symbol('stream'));
       mockCreateUIMessageStreamResponse.mockReturnValue(new Response('ok'));

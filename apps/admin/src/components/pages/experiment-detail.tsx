@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
+import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
+import { computeCategoryAverages, normalizeScoreForAvg, SCORER_CATEGORIES } from '@typhoon/evals/scorer-categories';
 import type { ColumnDef } from '@typhoon/ui';
 import {
   apiFetch,
@@ -28,6 +29,7 @@ import {
 } from '@typhoon/ui';
 import { ChevronRightIcon, FlaskConicalIcon, GitCompareArrowsIcon, InfoIcon, SquareIcon } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+import { detailTitle, usePageTitle } from '../../hooks/use-page-title';
 
 // ---------- Types ----------
 
@@ -47,8 +49,9 @@ interface Experiment {
 interface ScoreEntry {
   scorerId: string;
   name?: string;
-  score: number;
+  score: number | null;
   reason?: string;
+  status?: 'skipped';
 }
 
 interface ExperimentResult {
@@ -121,10 +124,14 @@ function scoreDotClass(score: number): string {
   return 'bg-red-400/60';
 }
 
-function avgScore(result: ExperimentResult): number | null {
+function normalizedDotClass(scorerId: string, rawScore: number): string {
+  return scoreDotClass(normalizeScoreForAvg(scorerId, rawScore));
+}
+
+function categoryAvgs(result: ExperimentResult): { responseAvg: number | null; retrievalAvg: number | null } {
   const scores = result.output?.scores;
-  if (!scores || scores.length === 0) return null;
-  return scores.reduce((sum, s) => sum + s.score, 0) / scores.length;
+  if (!scores || scores.length === 0) return { responseAvg: null, retrievalAvg: null };
+  return computeCategoryAverages(scores.map((s) => ({ scorerId: s.scorerId, score: s.score })));
 }
 
 function formatDuration(startedAt: string, completedAt: string): string {
@@ -172,14 +179,56 @@ function ResultDetailSheet({
     setSelectedScorer(undefined);
   }, [result?.id]);
 
+  // Group by category
+  const responseScores = scores.filter((s) => SCORER_CATEGORIES[s.scorerId]?.category === 'response');
+  const retrievalScores = scores.filter((s) => SCORER_CATEGORIES[s.scorerId]?.category === 'retrieval');
+  const otherScores = scores.filter((s) => !SCORER_CATEGORIES[s.scorerId]);
+  const avgs = result ? categoryAvgs(result) : { responseAvg: null, retrievalAvg: null };
+
   const effectiveScorer =
     selectedScorer ??
-    scores.reduce((lowest: ScoreEntry | undefined, s) => (!lowest || s.score < lowest.score ? s : lowest), undefined)
-      ?.scorerId;
+    scores
+      .filter((s) => s.score !== null && s.status !== 'skipped')
+      .reduce((lowest: ScoreEntry | undefined, s) => {
+        const norm = normalizeScoreForAvg(s.scorerId, s.score as number);
+        const lowestNorm = lowest ? normalizeScoreForAvg(lowest.scorerId, lowest.score as number) : 1;
+        return norm < lowestNorm ? s : lowest;
+      }, undefined)?.scorerId ??
+    scores[0]?.scorerId;
 
   const activeScore = scores.find((s) => s.scorerId === effectiveScorer);
 
   if (!result) return null;
+
+  function renderScoreRow(s: ScoreEntry) {
+    return (
+      <button
+        key={s.scorerId}
+        type="button"
+        onClick={() => setSelectedScorer(s.scorerId)}
+        className={cn(
+          'flex w-full items-center justify-between gap-2 rounded px-1.5 py-1.5 text-xs transition-colors',
+          effectiveScorer === s.scorerId ? 'bg-muted' : 'hover:bg-muted',
+        )}
+      >
+        <span className="flex items-center gap-1.5">
+          <span
+            className={cn(
+              'size-2 shrink-0 rounded-full',
+              s.score !== null && s.status !== 'skipped'
+                ? normalizedDotClass(s.scorerId, s.score)
+                : 'bg-muted-foreground/30',
+            )}
+          />
+          <span>{formatScorerId(s.scorerId)}</span>
+          {scorerDescriptions[s.scorerId] && <ScorerTooltip description={scorerDescriptions[s.scorerId]} />}
+        </span>
+        <span className="tabular-nums">
+          {s.status === 'skipped' ? 'N/A' : s.score !== null ? s.score.toFixed(2) : '\u2014'}
+        </span>
+      </button>
+    );
+  }
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -242,33 +291,65 @@ function ResultDetailSheet({
 
           <TabsContent value="scores" className="mt-4">
             <TooltipProvider delayDuration={200}>
-              <div className="flex flex-col">
-                {scores.map((s) => (
-                  <button
-                    key={s.scorerId}
-                    type="button"
-                    onClick={() => setSelectedScorer(s.scorerId)}
-                    className={cn(
-                      'flex w-full items-center justify-between gap-2 rounded px-1.5 py-1.5 text-xs transition-colors',
-                      effectiveScorer === s.scorerId ? 'bg-muted/50' : 'hover:bg-muted/30',
-                    )}
-                  >
-                    <span className="flex items-center gap-1.5">
-                      <span className={cn('size-2 shrink-0 rounded-full', scoreDotClass(s.score))} />
-                      <span className={cn(effectiveScorer === s.scorerId && 'font-semibold')}>
-                        {formatScorerId(s.scorerId)}
+              {/* Response Quality */}
+              {responseScores.length > 0 && (
+                <div className="mb-3">
+                  <div className="mb-1 flex items-center justify-between">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                      Response Quality
+                    </span>
+                    {avgs.responseAvg !== null && (
+                      <span className="flex items-center gap-1 text-[10px] font-bold tabular-nums text-muted-foreground">
+                        <span className={cn('size-1.5 rounded-full', scoreDotClass(avgs.responseAvg))} />
+                        {avgs.responseAvg.toFixed(2)}
                       </span>
-                      {scorerDescriptions[s.scorerId] && <ScorerTooltip description={scorerDescriptions[s.scorerId]} />}
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-px">{responseScores.map(renderScoreRow)}</div>
+                </div>
+              )}
+
+              {/* Retrieval Quality */}
+              <div className="mb-3">
+                <div className="mb-1 flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                    Retrieval Quality
+                  </span>
+                  {avgs.retrievalAvg !== null ? (
+                    <span className="flex items-center gap-1 text-[10px] font-bold tabular-nums text-muted-foreground">
+                      <span className={cn('size-1.5 rounded-full', scoreDotClass(avgs.retrievalAvg))} />
+                      {avgs.retrievalAvg.toFixed(2)}
                     </span>
-                    <span className={cn('tabular-nums', effectiveScorer === s.scorerId && 'font-semibold')}>
-                      {s.score.toFixed(2)}
-                    </span>
-                  </button>
-                ))}
+                  ) : (
+                    <span className="text-[10px] text-muted-foreground/60">N/A</span>
+                  )}
+                </div>
+                {retrievalScores.filter((s) => s.status !== 'skipped').length > 0 ? (
+                  <div className="flex flex-col gap-px">{retrievalScores.map(renderScoreRow)}</div>
+                ) : (
+                  <p className="text-[11px] text-muted-foreground/60">No retrieval context</p>
+                )}
               </div>
+
+              {/* Other (custom scorers) */}
+              {otherScores.length > 0 && (
+                <div className="mb-3">
+                  <div className="mb-1">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Other</span>
+                  </div>
+                  <div className="flex flex-col gap-px">{otherScores.map(renderScoreRow)}</div>
+                </div>
+              )}
             </TooltipProvider>
 
-            {activeScore?.reason ? (
+            {activeScore?.status === 'skipped' ? (
+              <>
+                <hr className="my-3 border-border" />
+                <p className="text-sm text-muted-foreground">
+                  This scorer was skipped because no retrieval context was available.
+                </p>
+              </>
+            ) : activeScore?.reason ? (
               <>
                 <hr className="my-3 border-border" />
                 <div className="text-sm leading-relaxed">
@@ -298,13 +379,15 @@ export function ExperimentDetailPage() {
   const queryClient = useQueryClient();
   const { result: resultId } = useSearch({ strict: false }) as { result?: string };
 
-  const [selectedResult, setSelectedResult] = useState<ExperimentResult | null>(null);
-
   const { data: experiment, isLoading: experimentLoading } = useQuery<Experiment>({
     queryKey: ['admin-experiment', experimentId],
     queryFn: () => apiFetch(`/api/v1/admin/experiments/${experimentId}`),
     refetchInterval: (query) => (query.state.data?.status === 'running' ? 3000 : false),
   });
+
+  usePageTitle(
+    detailTitle('Experiments', experiment ? experiment.name || `Experiment ${experimentId.slice(0, 8)}` : undefined),
+  );
 
   const { data: resultsData, isLoading: resultsLoading } = useQuery<ExperimentResultsResponse>({
     queryKey: ['admin-experiment-results', experimentId],
@@ -336,13 +419,11 @@ export function ExperimentDetailPage() {
     return map;
   }, [scorersData]);
 
-  // Deep link: open result from URL param
-  useEffect(() => {
-    if (resultId && results.length > 0 && !selectedResult) {
-      const match = results.find((r) => r.id === resultId);
-      if (match) setSelectedResult(match);
-    }
-  }, [resultId, results, selectedResult]);
+  // Derive selected result from URL param
+  const selectedResult = useMemo(
+    () => (resultId ? (results.find((r) => r.id === resultId) ?? null) : null),
+    [resultId, results],
+  );
 
   const columns: ColumnDef<ExperimentResult, unknown>[] = useMemo(
     () => [
@@ -351,10 +432,10 @@ export function ExperimentDetailPage() {
         accessorFn: (row) => truncateValue(row.input, 9999),
         header: 'Input',
         cell: ({ row }) => {
-          const avg = avgScore(row.original);
+          const avgs = categoryAvgs(row.original);
           return (
             <div className="flex items-center gap-2">
-              <span className={cn('size-2 shrink-0 rounded-full', scoreDotClass(avg ?? -1))} />
+              <span className={cn('size-2 shrink-0 rounded-full', scoreDotClass(avgs.responseAvg ?? -1))} />
               <span className="truncate text-sm">{truncateValue(row.original.input, 120)}</span>
             </div>
           );
@@ -371,12 +452,23 @@ export function ExperimentDetailPage() {
         ),
       },
       {
-        id: 'avg',
-        accessorFn: (row) => avgScore(row) ?? -1,
-        header: 'Average',
+        id: 'responseAvg',
+        accessorFn: (row) => categoryAvgs(row).responseAvg ?? -1,
+        header: 'Response',
         cell: ({ row }) => {
-          const avg = avgScore(row.original);
+          const avg = categoryAvgs(row.original).responseAvg;
           return <span className="tabular-nums text-sm">{avg != null ? avg.toFixed(2) : '\u2014'}</span>;
+        },
+      },
+      {
+        id: 'retrievalAvg',
+        accessorFn: (row) => categoryAvgs(row).retrievalAvg ?? -1,
+        header: 'Retrieval',
+        cell: ({ row }) => {
+          const avg = categoryAvgs(row.original).retrievalAvg;
+          return (
+            <span className="tabular-nums text-sm text-muted-foreground">{avg != null ? avg.toFixed(2) : 'N/A'}</span>
+          );
         },
       },
     ],
@@ -431,16 +523,9 @@ export function ExperimentDetailPage() {
         <PageHeader
           title={
             <span className="flex items-center gap-1.5">
-              <a
-                href="/experiments"
-                onClick={(e) => {
-                  e.preventDefault();
-                  navigate({ to: '/experiments' });
-                }}
-                className="text-muted-foreground transition-colors hover:text-foreground"
-              >
+              <Link to="/experiments" className="text-muted-foreground transition-colors hover:text-foreground">
                 Experiments
-              </a>
+              </Link>
               <ChevronRightIcon className="size-3.5 text-muted-foreground/50" />
               {experiment.name || `Experiment ${experiment.id.slice(0, 8)}`}
               <StatusBadge variant={STATUS_VARIANT[experiment.status]} className="ml-1.5">
@@ -498,7 +583,7 @@ export function ExperimentDetailPage() {
               showRowCount
               pageSize={25}
               getRowId={(row) => row.id}
-              onRowClick={setSelectedResult}
+              onRowClick={(row) => navigate({ search: (prev) => ({ ...prev, result: row.id }), replace: true })}
             />
           )}
 
@@ -521,7 +606,7 @@ export function ExperimentDetailPage() {
           result={selectedResult}
           open={selectedResult !== null}
           onOpenChange={(open) => {
-            if (!open) setSelectedResult(null);
+            if (!open) navigate({ search: (prev) => ({ ...prev, result: undefined }), replace: true });
           }}
           scorerDescriptions={scorerDescriptions}
         />

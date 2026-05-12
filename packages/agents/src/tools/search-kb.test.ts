@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 const {
   mockCreateVectorQueryTool,
   mockCreateEmbeddingModel,
-  mockCreateRerankerModel,
+  mockCreateRerankerScorer,
   mockWithProgress,
   capturedLabels,
 } = vi.hoisted(() => {
@@ -14,7 +14,7 @@ const {
   return {
     mockCreateVectorQueryTool: vi.fn().mockReturnValue({ id: 'mock-inner-tool', execute: vi.fn() }),
     mockCreateEmbeddingModel: vi.fn().mockReturnValue('mock-embedding-model'),
-    mockCreateRerankerModel: vi.fn().mockReturnValue('mock-reranker-model'),
+    mockCreateRerankerScorer: vi.fn().mockReturnValue({ getRelevanceScore: vi.fn().mockResolvedValue(0.9) }),
     mockWithProgress: vi.fn().mockImplementation((tool, labels) => {
       capturedLabels.start = labels.start;
       capturedLabels.done = labels.done;
@@ -30,7 +30,10 @@ vi.mock('@mastra/rag', () => ({
 
 vi.mock('@typhoon/ai', () => ({
   createEmbeddingModel: mockCreateEmbeddingModel,
-  createRerankerModel: mockCreateRerankerModel,
+  createRerankerScorer: mockCreateRerankerScorer,
+  RAG_RERANK_CANDIDATES: 100,
+  RAG_RERANK_WEIGHTS: { semantic: 1.0, vector: 0, position: 0 },
+  RAG_VECTOR_MIN_SCORE_AGENT: 0.5,
 }));
 
 vi.mock('./with-progress', () => ({
@@ -59,8 +62,8 @@ describe('searchKnowledgeBase', () => {
         reranker: expect.objectContaining({
           model: expect.anything(),
           options: expect.objectContaining({
-            weights: { semantic: 0.5, vector: 0.3, position: 0.2 },
-            topK: 10,
+            weights: { semantic: 1.0, vector: 0, position: 0 },
+            topK: 100,
           }),
         }),
         databaseConfig: {
@@ -83,9 +86,9 @@ describe('searchKnowledgeBase', () => {
   it('done label returns count message for non-empty arrays', () => {
     expect(capturedLabels.done).toBeDefined();
     const done = capturedLabels.done as (output: unknown) => string;
-    expect(done([1, 2, 3])).toBe('Returned 3 reranked chunks.');
-    expect(done([1])).toBe('Returned 1 reranked chunks.');
-    expect(done(Array.from({ length: 10 }))).toBe('Returned 10 reranked chunks.');
+    expect(done([1, 2, 3])).toBe('Returned 3 chunks.');
+    expect(done([1])).toBe('Returned 1 chunks.');
+    expect(done(Array.from({ length: 10 }))).toBe('Returned 10 chunks.');
   });
 
   it('done label returns "No matching chunks found." for empty array', () => {

@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useParams } from '@tanstack/react-router';
+import { Link, useParams } from '@tanstack/react-router';
 import type { ChatMessage } from '@typhoon/chat';
 import { DocumentViewerPanel } from '@typhoon/chat';
 import {
@@ -15,6 +15,7 @@ import {
 } from '@typhoon/ui';
 import { ActivityIcon, ChevronRightIcon, MessageSquareIcon } from 'lucide-react';
 import { useCallback, useMemo, useRef, useState } from 'react';
+import { detailTitle, usePageTitle } from '../../hooks/use-page-title';
 import { MessageTimeline } from './review-detail/message-timeline';
 import type { ReviewDetailResponse } from './review-detail/shared';
 
@@ -32,9 +33,9 @@ function Header({ data, messageCount }: { data: ReviewDetailResponse; messageCou
         <PageHeader
           title={
             <span className="flex items-center gap-1.5">
-              <a href="/reviews" className="text-muted-foreground transition-colors hover:text-foreground">
+              <Link to="/reviews" className="text-muted-foreground transition-colors hover:text-foreground">
                 Reviews
-              </a>
+              </Link>
               <ChevronRightIcon className="size-3.5 text-muted-foreground/50" />
               {data.title || `Thread ${data.id.slice(0, 12)}`}
             </span>
@@ -42,10 +43,10 @@ function Header({ data, messageCount }: { data: ReviewDetailResponse; messageCou
           description={`${messageCount} messages · Created ${formatAbsoluteTime(data.createdAt)}`}
           actions={
             <Button variant="outline" size="sm" asChild>
-              <a href={`/traces?threadId=${data.id}`}>
+              <Link to="/traces" search={{ threadId: data.id }}>
                 <ActivityIcon className="mr-1.5 size-3.5" />
                 View Traces
-              </a>
+              </Link>
             </Button>
           }
         />
@@ -64,6 +65,8 @@ export function ReviewDetailPage() {
     queryFn: () => apiFetch(`/api/v1/admin/reviews/${threadId}`),
     enabled: !!threadId,
   });
+
+  usePageTitle(detailTitle('Reviews', data ? data.title || `Thread ${threadId.slice(0, 8)}` : undefined));
 
   const messages = useMemo(() => (data?.messages ?? []) as unknown as ChatMessage[], [data?.messages]);
   const feedbackByMessage = data?.feedbackByMessage ?? {};

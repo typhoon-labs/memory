@@ -14,9 +14,11 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  useUrlSearchInput,
 } from '@typhoon/ui';
-import { ClipboardCheckIcon, ThumbsDownIcon, ThumbsUpIcon } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { ClipboardCheckIcon, SearchIcon, ThumbsDownIcon, ThumbsUpIcon } from 'lucide-react';
+import { useMemo } from 'react';
+import { usePageTitle } from '../../hooks/use-page-title';
 
 interface ReviewThread {
   id: string;
@@ -25,8 +27,8 @@ interface ReviewThread {
   created_at: string;
   updated_at: string;
   message_count: number;
-  avgScore: number | null;
-  minScore: number | null;
+  responseAvg: number | null;
+  retrievalAvg: number | null;
   scoreCount: number;
   annotationCount: number;
   feedbackCount: number;
@@ -36,17 +38,15 @@ interface ReviewThread {
 interface ReviewListResponse {
   threads: ReviewThread[];
   total: number;
-  page: number;
-  perPage: number;
-  hasMore: boolean;
 }
 
-type SortBy = 'worstScore' | 'newest' | 'unscored';
+type SortBy = 'responseScore' | 'retrievalScore' | 'newest' | 'unscored';
 type AnnotationFilter = 'all' | 'annotated' | 'unannotated';
 type FeedbackFilter = 'all' | 'has-feedback' | 'has-negative' | 'no-feedback';
 
 const SORT_OPTIONS: { value: SortBy; label: string }[] = [
-  { value: 'worstScore', label: 'Worst Score' },
+  { value: 'responseScore', label: 'Response Quality' },
+  { value: 'retrievalScore', label: 'Retrieval Quality' },
   { value: 'newest', label: 'Newest' },
   { value: 'unscored', label: 'Unscored First' },
 ];
@@ -72,23 +72,29 @@ export function ReviewsPage() {
     feedbackStatus: FeedbackFilter;
     search: string | undefined;
   };
-  const [page, setPage] = useState(0);
-  const [searchInput, setSearchInput] = useState(search ?? '');
+  usePageTitle('Reviews');
 
-  const queryKey = useMemo(
-    () => ['admin-reviews', { page, sortBy, annotationStatus }] as const,
-    [page, sortBy, annotationStatus],
-  );
+  const {
+    inputValue: searchInput,
+    setInputValue: setSearchInput,
+    handleKeyDown: searchKeyDown,
+    handleBlur: searchBlur,
+  } = useUrlSearchInput({
+    urlValue: search,
+    onCommit: (val) =>
+      navigate({
+        to: '/reviews',
+        search: { sortBy, annotationStatus, feedbackStatus, search: val },
+        replace: true,
+      }),
+  });
+
+  const queryKey = useMemo(() => ['admin-reviews', { sortBy, annotationStatus }] as const, [sortBy, annotationStatus]);
 
   const { data, isLoading } = useQuery<ReviewListResponse>({
     queryKey,
     queryFn: () => {
-      const params = new URLSearchParams({
-        page: String(page),
-        perPage: '20',
-        sortBy,
-        annotationStatus,
-      });
+      const params = new URLSearchParams({ sortBy, annotationStatus });
       return apiFetch(`/api/v1/admin/reviews?${params}`);
     },
   });
@@ -96,13 +102,7 @@ export function ReviewsPage() {
   const searchParams = { sortBy, annotationStatus, feedbackStatus, search };
 
   function updateFilter(updates: Partial<typeof searchParams>) {
-    setPage(0);
     navigate({ to: '/reviews', search: { ...searchParams, ...updates }, replace: true });
-  }
-
-  function handleSearchSubmit(e: React.KeyboardEvent) {
-    if (e.key !== 'Enter') return;
-    updateFilter({ search: searchInput.trim() || undefined });
   }
 
   // Client-side filtering for feedback + search (API handles sort + annotation)
@@ -149,23 +149,23 @@ export function ReviewsPage() {
         cell: ({ row }) => <span className="tabular-nums">{row.original.message_count}</span>,
       },
       {
-        id: 'avgScore',
-        accessorFn: (row) => row.avgScore ?? -1,
-        header: 'Avg Score',
+        id: 'responseAvg',
+        accessorFn: (row) => row.responseAvg ?? -1,
+        header: 'Response',
         cell: ({ row }) =>
-          row.original.avgScore !== null ? (
-            <span className="tabular-nums">{row.original.avgScore.toFixed(2)}</span>
+          row.original.responseAvg !== null ? (
+            <span className="tabular-nums">{row.original.responseAvg.toFixed(2)}</span>
           ) : (
             <span className="text-muted-foreground">&mdash;</span>
           ),
       },
       {
-        id: 'minScore',
-        accessorFn: (row) => row.minScore ?? -1,
-        header: 'Worst Score',
+        id: 'retrievalAvg',
+        accessorFn: (row) => row.retrievalAvg ?? -1,
+        header: 'Retrieval',
         cell: ({ row }) =>
-          row.original.minScore !== null ? (
-            <span className="tabular-nums">{row.original.minScore.toFixed(2)}</span>
+          row.original.retrievalAvg !== null ? (
+            <span className="tabular-nums">{row.original.retrievalAvg.toFixed(2)}</span>
           ) : (
             <span className="text-muted-foreground">&mdash;</span>
           ),
@@ -227,7 +227,7 @@ export function ReviewsPage() {
             <DataTable
               data={filteredThreads}
               columns={columns}
-              pageSize={20}
+              pageSize={25}
               enableSorting
               getRowId={(row) => row.id}
               onRowClick={(row) => navigate({ to: '/reviews/$threadId', params: { threadId: row.id } })}
@@ -276,13 +276,17 @@ export function ReviewsPage() {
                       ))}
                     </SelectContent>
                   </Select>
-                  <Input
-                    className="ml-auto h-8 w-[220px] text-sm"
-                    placeholder="Search threads..."
-                    value={searchInput}
-                    onChange={(e) => setSearchInput(e.target.value)}
-                    onKeyDown={handleSearchSubmit}
-                  />
+                  <div className="relative ml-auto">
+                    <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      className="h-8 w-[220px] pl-8 text-sm"
+                      placeholder="Search..."
+                      value={searchInput}
+                      onChange={(e) => setSearchInput(e.target.value)}
+                      onKeyDown={searchKeyDown}
+                      onBlur={searchBlur}
+                    />
+                  </div>
                 </div>
               }
             />

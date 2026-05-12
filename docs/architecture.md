@@ -24,8 +24,8 @@ Built with **Bun workspaces** for dependency management and **Turborepo** for ta
 ## 3-Layer Dependency Model
 
 ```
-Layer 2:  agents, ingestion, chat, ui    Domain logic & UI
-Layer 1:  db, ai, storage, logger, telemetry  Infrastructure clients
+Layer 2:  agents, ingestion, evals, chat, ui  Domain logic & UI
+Layer 1:  db, ai, storage, logger, telemetry, queue  Infrastructure clients
 Layer 0:  config, types                  Foundations
 ```
 
@@ -42,8 +42,9 @@ Higher layers import from lower layers. No circular dependencies. Turborepo enfo
 | `@typhoon/storage` | 1 | S3/MinIO client (list, download, delete) |
 | `@typhoon/logger` | 1 | Structured logging via Mastra logger |
 | `@typhoon/telemetry` | 1 | OpenTelemetry SDK, custom metrics, Hono middleware |
-| `@typhoon/queue` | 1 | BullMQ job queue wrapper (sync, scoring, experiments) |
+| `@typhoon/queue` | 1 | BullMQ job queue wrapper (sync, reviews, scoring, experiments, reports) |
 | `@typhoon/agents` | 2 | Mastra supervisor + knowledge agent with RAG tools |
+| `@typhoon/evals` | 2 | Scorer categories, scorer construction, scoring/experiment job handlers |
 | `@typhoon/ingestion` | 2 | Document parsers, MDocument pipeline, BullMQ sync jobs |
 | `@typhoon/chat` | 2 | React chat UI components (streaming, markdown rendering) |
 | `@typhoon/ui` | 2 | Shared React component library (Radix UI, shadcn-style) |
@@ -76,8 +77,11 @@ The backend is split into three independently scalable processes:
 
 ### Worker (`apps/worker`)
 
-- **Headless BullMQ consumer** — processes scan, process-file, and delete-file jobs
-- Downloads files from S3/MinIO, parses, chunks, embeds, and upserts vectors
+- **Headless BullMQ consumer** with four worker pools:
+  - **Sync** — processes scan, process-file, and delete-file jobs (downloads from S3/MinIO, parses, chunks, embeds, upserts vectors)
+  - **Reviews** — scoring preparation (`score-message`) and aggregation (`score-aggregate`); creates BullMQ Flows that fan out scorer execution to the scoring queue
+  - **Scoring** — generic scorer execution (`score-run`); runs a single LLM-based scorer per job, shared by reviews and experiments with priority scheduling
+  - **Experiments** — experiment lifecycle (`experiment-setup`, `exp-item-process`, `experiment-complete`); uses BullMQ Flow with multi-step jobs (`moveToWaitingChildren`) for agent call → scoring → result collection
 - Scales horizontally (multiple replicas via K8s HPA/KEDA)
 - Minimal `/healthz` HTTP endpoint for K8s probes (port 5170)
 
@@ -90,14 +94,16 @@ The backend is split into three independently scalable processes:
 ### Rep Workspace (`apps/desk`)
 
 - **Build:** Vite + React 19
-- **Routing:** TanStack Router
+- **Routing:** TanStack Router (code-based routes with `validateSearch` for URL state)
 - **Server state:** TanStack Query
 - **Chat:** AI SDK React (`@ai-sdk/react` useChat) + Mastra `chatRoute` (SSE)
+- **Deep linking:** All filters, selections, and search queries persisted in URL search params via `useSearch`/`useNavigate`
 - **Pages:** Dashboard, Chat, Search, Documents
 
 ### Admin Dashboard (`apps/admin`)
 
 - Same stack as desk (without chat components)
+- **Deep linking:** Filters, pagination, tabs, and detail selections all URL-backed for shareability
 - **Pages:** Dashboard, Sources, Source Detail, Documents, Reviews, Datasets, Experiments, Scorers, Traces, Queues
 
 ### Customer Widget (`apps/widget`)
@@ -135,11 +141,11 @@ Routes all interactions via a single `searchKnowledge` tool call per message. Pa
 
 ### Knowledge Agent
 
-RAG-powered agent with two search tools:
-- **searchKnowledgeBaseHybrid** — keyword (BM25) + vector similarity via weighted RRF (vector 0.7, FTS 0.3), followed by LLM reranking
+RAG-powered agent with two search tools, orchestrated by a composite tool using two-stage retrieve-then-rerank:
+- **searchKnowledgeBaseHybrid** — keyword (BM25) + vector similarity via weighted RRF. Supports toggling reranking via `createHybridSearchTool({ rerank })`. When used inside the composite tool, individual reranking is disabled.
 - **searchKnowledgeBaseGraph** — graph-based retrieval for relationship/comparison queries
 
-Called via `searchKnowledge` wrapper tool (two-phase): Phase 1 searches the knowledge base (`toolChoice: auto`, up to 7 steps), Phase 2 generates a cited response with `[Source: N]` references. Results are deduped, filtered (score >= 0.25), and capped at 10 chunks.
+Called via `searchKnowledge` composite tool: Phase 1 searches the knowledge base with sub-tools returning broad, un-reranked candidates (`rerank: false`). The composite tool merges results, deduplicates by chunk ID, reranks the combined set with Cohere Rerank cross-encoder, filters (score >= `RAG_RERANK_MIN_SCORE`), and caps at `RAG_KNOWLEDGE_MAX_RESULTS`. Phase 2 generates a cited response with `[Source: N]` references.
 
 ### Memory System (Mastra built-in)
 
@@ -148,6 +154,38 @@ Called via `searchKnowledge` wrapper tool (two-phase): Phase 1 searches the know
 | Message history | Last N messages in the current conversation |
 | Semantic recall | Vector search over past conversations for relevant context |
 | Working memory | Persistent structured data (user preferences, known facts) |
+
+## Evaluation System
+
+Automated scoring evaluates agent responses across two categories:
+
+### Response Quality (always runs)
+
+| Scorer | Measures | Scale |
+|--------|----------|-------|
+| Answer Relevancy | Is the answer relevant to the question? | 0–1 (higher = better) |
+| Faithfulness | Is the answer grounded in retrieved context? | 0–1 (higher = better) |
+| Hallucination | Does the answer contain unsupported claims? | 0–1 (higher = worse, inverted for averaging) |
+
+These scorers run on every message, even when the agent answers without retrieving documents. Low faithfulness / high hallucination with empty context is a meaningful quality signal: the agent didn't ground its response.
+
+### Retrieval Quality (runs only when context exists)
+
+| Scorer | Measures | Scale |
+|--------|----------|-------|
+| Context Relevance | Are the retrieved documents relevant? | 0–1 (higher = better) |
+| Context Precision | Are relevant documents ranked higher? | 0–1 (higher = better) |
+
+These scorers evaluate the retrieval pipeline and require non-empty context. When no documents are retrieved, they appear as "N/A" in the UI.
+
+### Averaging
+
+Each category has an independent average. Hallucination is inverted (`1 - score`) before being included in the Response Quality average. Custom scorers (LLM-as-judge) are displayed separately and excluded from category averages.
+
+### Pipelines
+
+- **Reviews** — triggered after each chat message via BullMQ Flow; scores fan out as independent `score-run` jobs on the scoring queue
+- **Experiments** — triggered manually; dataset items processed via `exp-item-process` multi-step jobs with the same scoring queue fan-out
 
 ## Authentication
 

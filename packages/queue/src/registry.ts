@@ -1,6 +1,8 @@
 import type { ConnectionOptions, Queue } from 'bullmq';
 import { createExperimentQueue } from './queues/experiments';
+import { createReviewsQueue } from './queues/reviews';
 import { createScoringQueue } from './queues/scoring';
+
 import { createReportsQueue, createSyncQueue } from './queues/sync';
 
 type QueueFactory = (connection: ConnectionOptions) => Queue;
@@ -9,6 +11,7 @@ const BUILTIN_FACTORIES: Record<string, QueueFactory> = {
   sync: createSyncQueue,
   reports: createReportsQueue,
   scoring: createScoringQueue,
+  reviews: createReviewsQueue,
   experiments: createExperimentQueue,
 };
 

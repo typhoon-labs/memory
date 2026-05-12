@@ -42,26 +42,27 @@ describe('Traces E2E', () => {
   });
 
   it('has a status filter', async () => {
+    await page.waitForSelector('[role="combobox"]', { timeout: 5_000 });
     const selectCount = await page.locator('[role="combobox"]').count();
     expect(selectCount).toBeGreaterThan(0);
   });
 
   it('has a search input', async () => {
+    await page.waitForSelector('input[placeholder*="Search"]', { timeout: 5_000 });
     const search = page.locator('input[placeholder*="Search"]');
     expect(await search.count()).toBeGreaterThan(0);
   });
 
   it('can navigate to trace detail when traces exist', async () => {
-    const rows = page.locator('tbody tr');
+    // Exclude the "No results" row
+    const rows = page.locator('tbody tr:not(:has-text("No results"))');
     if ((await rows.count()) === 0) return;
 
     await rows.first().click();
     await page.waitForURL('**/traces/**', { timeout: 10_000 });
     expect(page.url()).toMatch(/\/traces\/.+/);
 
-    // Verify span tree renders
-    await page.waitForSelector('main', { timeout: 5_000 });
-    const mainText = await page.textContent('main');
-    expect(mainText).toBeTruthy();
+    // Wait for trace detail content to load
+    await page.waitForSelector('h1, h2', { timeout: 10_000 });
   });
 });

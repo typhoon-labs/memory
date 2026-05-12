@@ -46,7 +46,7 @@ All services require a profile. Use `--profile <name>` to select which services 
 | `redis` | `redis:8-alpine` | 6379 | infra | Cache and BullMQ job queue |
 | `minio` | `minio/minio:latest` | 9000 (API), 9001 (console) | infra | S3-compatible object storage |
 | `minio-init` | `minio/mc:latest` | — | infra | Creates the `typhoon-documents` bucket on startup |
-| `bifrost` | `maximhq/bifrost:v1.4.7` | 8787 | infra | LLM gateway proxy (Anthropic, OpenAI, Bedrock) |
+| `bifrost` | `maximhq/bifrost:v1.5.0` | 8787 | infra | LLM gateway proxy (Anthropic, OpenAI, Bedrock) |
 | `dex` | `dexidp/dex:v2.45.1` | 5556 | infra | OIDC provider for local SSO testing |
 | `migrate` | (local build) | — | app | Database migrations (one-shot) |
 | `worker` | (local build) | 5170 (health) | app | BullMQ job consumer (ingestion) |

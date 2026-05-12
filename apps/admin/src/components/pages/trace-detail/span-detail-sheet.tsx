@@ -1,3 +1,4 @@
+import { Link } from '@tanstack/react-router';
 import {
   Badge,
   Button,
@@ -116,10 +117,10 @@ export function SpanDetailSheet({ span, open, onOpenChange }: SpanDetailSheetPro
               <SectionLabel>Conversation</SectionLabel>
               <div className="mt-2">
                 <Button variant="outline" size="sm" asChild>
-                  <a href={`/reviews/${span.threadId}`}>
+                  <Link to={`/reviews/${span.threadId}`}>
                     <ClipboardCheckIcon className="mr-1.5 size-3.5" />
                     View Review
-                  </a>
+                  </Link>
                 </Button>
               </div>
             </div>

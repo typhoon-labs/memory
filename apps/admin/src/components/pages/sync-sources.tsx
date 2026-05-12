@@ -1,31 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
+import { useQuery } from '@tanstack/react-query';
+import { Link, useNavigate } from '@tanstack/react-router';
 import type { ColumnDef } from '@typhoon/ui';
-import {
-  apiFetch,
-  Button,
-  DataTable,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  EmptyState,
-  Input,
-  Label,
-  LoadingSpinner,
-  PageHeader,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-  StatusBadge,
-} from '@typhoon/ui';
+import { apiFetch, Button, DataTable, EmptyState, LoadingSpinner, PageHeader, StatusBadge } from '@typhoon/ui';
 import { FolderSyncIcon, PlusIcon } from 'lucide-react';
-import { useState } from 'react';
+import { usePageTitle } from '../../hooks/use-page-title';
 import type { SyncTarget } from './sync-source-detail/shared';
 import { formatConfig } from './sync-source-detail/shared';
 
@@ -71,8 +49,8 @@ const columns: ColumnDef<SyncTarget, unknown>[] = [
 ];
 
 export function SyncSourcesPage() {
+  usePageTitle('Sources');
   const navigate = useNavigate();
-  const [dialogOpen, setDialogOpen] = useState(false);
 
   const { data: targets, isLoading } = useQuery<SyncTarget[]>({
     queryKey: ['sync-targets'],
@@ -86,17 +64,12 @@ export function SyncSourcesPage() {
           title="Sync Sources"
           description="Manage document ingestion sources"
           actions={
-            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-              <DialogTrigger asChild>
-                <Button>
-                  <PlusIcon className="mr-2 size-4" />
-                  Add Source
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <AddSourceForm onDone={() => setDialogOpen(false)} />
-              </DialogContent>
-            </Dialog>
+            <Button asChild>
+              <Link to="/sources/create">
+                <PlusIcon className="mr-2 size-4" />
+                Add Source
+              </Link>
+            </Button>
           }
         />
 
@@ -129,112 +102,5 @@ export function SyncSourcesPage() {
         )}
       </div>
     </div>
-  );
-}
-
-function AddSourceForm({ onDone }: { onDone: () => void }) {
-  const queryClient = useQueryClient();
-  const { data: sources } = useQuery<{ name: string; sourceType: string }[]>({
-    queryKey: ['sources'],
-    queryFn: () => apiFetch('/api/v1/sources'),
-  });
-  const [form, setForm] = useState({
-    name: '',
-    source: '',
-    config: {} as Record<string, string>,
-  });
-
-  const selectedSource = sources?.find((s) => s.name === form.source);
-  const sourceType = selectedSource?.sourceType;
-
-  const handleSourceChange = (value: string) => {
-    setForm({ ...form, source: value, config: {} });
-  };
-
-  const setConfig = (key: string, value: string) => {
-    setForm({ ...form, config: { ...form.config, [key]: value } });
-  };
-
-  const isValid = form.name && form.source && sourceType && (sourceType !== 's3' || form.config.bucket);
-
-  const create = useMutation({
-    mutationFn: () =>
-      apiFetch('/api/v1/sync-targets', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: form.name,
-          sourceType,
-          source: form.source,
-          config: sourceType === 's3' ? { bucket: form.config.bucket, prefix: form.config.prefix ?? '' } : form.config,
-        }),
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['sync-targets'] });
-      onDone();
-    },
-  });
-
-  return (
-    <>
-      <DialogHeader>
-        <DialogTitle>Add Sync Source</DialogTitle>
-        <DialogDescription>Configure a new source for document ingestion.</DialogDescription>
-      </DialogHeader>
-      <div className="flex flex-col gap-4 py-4">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="source-name">Name</Label>
-          <Input
-            id="source-name"
-            placeholder="e.g. Product Docs"
-            value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-          />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label>Source</Label>
-          <Select value={form.source} onValueChange={handleSourceChange}>
-            <SelectTrigger>
-              <SelectValue placeholder="Select a source" />
-            </SelectTrigger>
-            <SelectContent>
-              {sources?.map((s) => (
-                <SelectItem key={s.name} value={s.name}>
-                  {s.name} <span className="text-muted-foreground">({s.sourceType})</span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        {sourceType === 's3' && (
-          <>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="source-bucket">Bucket</Label>
-              <Input
-                id="source-bucket"
-                placeholder="e.g. my-docs-bucket"
-                value={form.config.bucket ?? ''}
-                onChange={(e) => setConfig('bucket', e.target.value)}
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="source-prefix">Prefix (optional)</Label>
-              <Input
-                id="source-prefix"
-                placeholder="e.g. docs/"
-                value={form.config.prefix ?? ''}
-                onChange={(e) => setConfig('prefix', e.target.value)}
-              />
-            </div>
-          </>
-        )}
-      </div>
-      <DialogFooter>
-        <Button onClick={() => create.mutate()} disabled={!isValid || create.isPending}>
-          {create.isPending ? 'Creating...' : 'Create'}
-        </Button>
-      </DialogFooter>
-    </>
   );
 }

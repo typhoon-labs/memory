@@ -80,7 +80,7 @@ typhoon/
 │
 ├── infra/docker/        Docker Compose + Bifrost/Dex configs
 ├── fixtures/            Seed data (fixtures/seed/) and sample docs (fixtures/docs/)
-├── scripts/             dev-setup.sh, reset-dev.sh, docker.sh, seed.sh
+├── scripts/             dev-setup.sh, docker.sh, seed-data.sh, doctor.sh, clean.sh, …
 └── docs/                Project documentation
 ```
 

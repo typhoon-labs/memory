@@ -4,12 +4,37 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // Hoisted mocks — must be declared before any `vi.mock()` factories that
 // reference them, per Vitest's hoisting rules.
 // ---------------------------------------------------------------------------
-const { mockEmitToolProgress, mockGenerateText } = vi.hoisted(() => {
-  return {
-    mockEmitToolProgress: vi.fn().mockResolvedValue(undefined),
-    mockGenerateText: vi.fn().mockResolvedValue({ text: 'The answer [Source: 1].' }),
-  };
-});
+const { mockEmitToolProgress, mockGenerateText, mockGetRelevanceScore, mockRerankWithScorer, mockRefineResults } =
+  vi.hoisted(() => {
+    const mockGetRelevanceScore = vi.fn().mockResolvedValue(0.9);
+    return {
+      mockEmitToolProgress: vi.fn().mockResolvedValue(undefined),
+      mockGenerateText: vi
+        .fn()
+        .mockResolvedValue({ text: 'The answer [Source: 1].', usage: { promptTokens: 100, completionTokens: 50 } }),
+      mockGetRelevanceScore,
+      mockRerankWithScorer: vi.fn().mockResolvedValue([]),
+      mockRefineResults: vi
+        .fn()
+        .mockImplementation(
+          async (
+            results: Array<{ id: string; metadata: Record<string, unknown>; score: number }>,
+            _query: string,
+            opts?: { reranker?: (r: unknown[], q: string) => Promise<unknown[]>; minScore?: number },
+          ) => {
+            // Simulate reranking: replace scores with mock scorer values
+            let processed = results;
+            if (opts?.reranker) {
+              const scores = await Promise.all(results.map(() => mockGetRelevanceScore()));
+              processed = results.map((r, i) => ({ ...r, score: scores[i] as number }));
+            }
+            // Apply minScore filter like the real implementation
+            const minScore = opts?.minScore ?? 0;
+            return processed.filter((r) => r.score >= minScore);
+          },
+        ),
+    };
+  });
 
 vi.mock('ai', () => ({
   generateText: mockGenerateText,
@@ -17,6 +42,20 @@ vi.mock('ai', () => ({
 
 vi.mock('@typhoon/ai', () => ({
   createCitationModel: () => 'mock-citation-model',
+  createRerankerScorer: () => ({
+    getRelevanceScore: mockGetRelevanceScore,
+    getMetrics: vi.fn().mockReturnValue(null),
+  }),
+  RAG_RERANK_MIN_SCORE: 0.1,
+  RAG_KNOWLEDGE_MAX_RESULTS: 10,
+}));
+
+vi.mock('@mastra/rag', () => ({
+  rerankWithScorer: mockRerankWithScorer,
+}));
+
+vi.mock('@typhoon/db/drivers/pg', () => ({
+  refineResults: mockRefineResults,
 }));
 
 vi.mock('./with-progress', () => ({
@@ -140,7 +179,12 @@ describe('createKnowledgeSearchTool', () => {
     vi.clearAllMocks();
     mockAgent = makeMockAgent();
     // Default: generateText returns a single-source citation
-    mockGenerateText.mockResolvedValue({ text: 'The answer [Source: 1].' });
+    mockGenerateText.mockResolvedValue({
+      text: 'The answer [Source: 1].',
+      usage: { promptTokens: 100, completionTokens: 50 },
+    });
+    // Default: reranker returns high relevance
+    mockGetRelevanceScore.mockResolvedValue(0.9);
   });
 
   // -------------------------------------------------------------------------
@@ -298,8 +342,9 @@ describe('createKnowledgeSearchTool', () => {
   // -------------------------------------------------------------------------
 
   describe('score filtering', () => {
-    it('removes results with score below 0.25', async () => {
-      const low = makeRawSource({ id: 'chunk-low', score: 0.24 });
+    it('removes results when reranker scores below 0.1', async () => {
+      mockGetRelevanceScore.mockResolvedValue(0.05);
+      const low = makeRawSource({ id: 'chunk-low', score: 0.09 });
       mockAgent.generate.mockResolvedValue(makeSearchResult([low]));
 
       const tool = createKnowledgeSearchTool(mockAgent as never);
@@ -309,8 +354,9 @@ describe('createKnowledgeSearchTool', () => {
       expect(result._chunkSources).toBeUndefined();
     });
 
-    it('keeps results at exactly 0.25 (boundary)', async () => {
-      const boundary = makeRawSource({ id: 'chunk-boundary', score: 0.25 });
+    it('keeps results when reranker scores at exactly 0.1 (boundary)', async () => {
+      mockGetRelevanceScore.mockResolvedValue(0.1);
+      const boundary = makeRawSource({ id: 'chunk-boundary', score: 0.1 });
       mockAgent.generate.mockResolvedValue(makeSearchResult([boundary]));
       mockGenerateText.mockResolvedValue({ text: 'Answer [Source: 1].' });
 
@@ -352,8 +398,9 @@ describe('createKnowledgeSearchTool', () => {
       expect(result._chunkSources).toBeUndefined();
     });
 
-    it('returns fallback when all sources are below threshold', async () => {
-      const sources = [makeRawSource({ id: 'chunk-1', score: 0.1 }), makeRawSource({ id: 'chunk-2', score: 0.24 })];
+    it('returns fallback when all reranker scores are below threshold', async () => {
+      mockGetRelevanceScore.mockResolvedValue(0.05);
+      const sources = [makeRawSource({ id: 'chunk-1', score: 0.05 }), makeRawSource({ id: 'chunk-2', score: 0.09 })];
       mockAgent.generate.mockResolvedValue(makeSearchResult(sources));
 
       const tool = createKnowledgeSearchTool(mockAgent as never);
@@ -580,6 +627,30 @@ describe('createKnowledgeSearchTool', () => {
   });
 
   // -------------------------------------------------------------------------
+  // Telemetry
+  // -------------------------------------------------------------------------
+
+  describe('telemetry', () => {
+    it('passes experimental_telemetry to generateText', async () => {
+      const raw = makeRawSource({ id: 'chunk-a', score: 0.9 });
+      mockAgent.generate.mockResolvedValue(makeSearchResult([raw]));
+      mockGenerateText.mockResolvedValue({ text: 'Answer [Source: 1].' });
+
+      const tool = createKnowledgeSearchTool(mockAgent as never);
+      await runTool(tool, 'test', makeMockContext());
+
+      expect(mockGenerateText).toHaveBeenCalledWith(
+        expect.objectContaining({
+          experimental_telemetry: {
+            isEnabled: true,
+            functionId: 'citation-generation',
+          },
+        }),
+      );
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // Mastra registration
   // -------------------------------------------------------------------------
 
@@ -733,6 +804,58 @@ describe('createKnowledgeSearchTool', () => {
       const result = await runTool(tool, 'test', {});
 
       expect(result._chunkSources?.[0].chunkId).toBe('5');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Metadata context enrichment
+  // -------------------------------------------------------------------------
+
+  describe('metadata context enrichment', () => {
+    it('prepends metadata context to prompt when getMetadataContext returns a string', async () => {
+      mockAgent.generate.mockResolvedValue(makeSearchResult([]));
+      const getMetadataContext = vi.fn().mockResolvedValue('country: us, eu | product: Pro, Basic');
+
+      const tool = createKnowledgeSearchTool(mockAgent as never, { getMetadataContext });
+      await runTool(tool, 'What is the return policy?', makeMockContext());
+
+      expect(getMetadataContext).toHaveBeenCalled();
+      const callArgs = mockAgent.generate.mock.calls[0][0] as string;
+      expect(callArgs).toContain('What is the return policy?');
+      expect(callArgs).toContain('Available metadata fields and values:');
+      expect(callArgs).toContain('country: us, eu | product: Pro, Basic');
+    });
+
+    it('does not modify prompt when getMetadataContext returns undefined', async () => {
+      mockAgent.generate.mockResolvedValue(makeSearchResult([]));
+      const getMetadataContext = vi.fn().mockResolvedValue(undefined);
+
+      const tool = createKnowledgeSearchTool(mockAgent as never, { getMetadataContext });
+      await runTool(tool, 'test question', makeMockContext());
+
+      const callArgs = mockAgent.generate.mock.calls[0][0] as string;
+      expect(callArgs).toBe('test question');
+    });
+
+    it('silently continues with original prompt when getMetadataContext throws', async () => {
+      mockAgent.generate.mockResolvedValue(makeSearchResult([]));
+      const getMetadataContext = vi.fn().mockRejectedValue(new Error('DB connection failed'));
+
+      const tool = createKnowledgeSearchTool(mockAgent as never, { getMetadataContext });
+      await runTool(tool, 'test question', makeMockContext());
+
+      const callArgs = mockAgent.generate.mock.calls[0][0] as string;
+      expect(callArgs).toBe('test question');
+    });
+
+    it('does not call getMetadataContext when option is not provided', async () => {
+      mockAgent.generate.mockResolvedValue(makeSearchResult([]));
+
+      const tool = createKnowledgeSearchTool(mockAgent as never);
+      await runTool(tool, 'test question', makeMockContext());
+
+      const callArgs = mockAgent.generate.mock.calls[0][0] as string;
+      expect(callArgs).toBe('test question');
     });
   });
 

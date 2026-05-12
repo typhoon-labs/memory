@@ -28,6 +28,8 @@ export {
   conversationStarted,
   embedRetryCount,
   embedTokenUsage,
+  scorerDuration,
+  scoringPartialFailure,
   syncJobCompleted,
   syncJobDuration,
   syncJobFailed,

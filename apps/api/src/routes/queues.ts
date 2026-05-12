@@ -53,23 +53,30 @@ export const queueRoutes = [
         };
         queueEventBus.on('event', onEvent);
 
+        // Tell the browser to reconnect after 5s if the connection drops.
+        // Sent once on the initial event; the browser caches it.
+        await stream.writeSSE({ event: 'ping', data: '', retry: 5000 });
+
         // Bun's per-connection idleTimeout is disabled for this stream by
         // the /api/v1/* rewrite in index.ts (server.timeout(req, 0)), so
         // the heartbeat exists purely to keep reverse proxies happy
         // (nginx defaults to 60s read timeout; ours is 300s — see
         // infra/docker/nginx). 30s leaves comfortable margin.
         const heartbeat = setInterval(() => {
+          if (stream.aborted) {
+            clearInterval(heartbeat);
+            return;
+          }
           stream.writeSSE({ event: 'ping', data: '' }).catch(() => {});
         }, 30_000);
 
-        stream.onAbort(() => {
-          queueEventBus.off('event', onEvent);
-          clearInterval(heartbeat);
-        });
-
-        // Block until the client disconnects
+        // Block until the client disconnects; single handler for cleanup + resolve
         await new Promise<void>((resolve) => {
-          stream.onAbort(() => resolve());
+          stream.onAbort(() => {
+            queueEventBus.off('event', onEvent);
+            clearInterval(heartbeat);
+            resolve();
+          });
         });
       });
     },

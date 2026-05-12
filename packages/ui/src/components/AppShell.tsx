@@ -67,9 +67,9 @@ interface NavContentProps {
 
 function NavContent({ navGroups, renderLink }: NavContentProps): React.JSX.Element {
   return (
-    <div className="flex flex-col gap-0.5 px-2 py-1.5">
+    <div className="flex flex-col gap-px px-2 py-1.5">
       {navGroups.map((group: NavGroup, groupIdx: number) => (
-        <div key={group.label ?? `group-${String(groupIdx)}`}>
+        <div key={group.label ?? `group-${String(groupIdx)}`} className="flex flex-col gap-px">
           {group.label != null && (
             <p className="mb-1 mt-2.5 px-2 text-2xs font-semibold uppercase tracking-widest text-foreground/50 first:mt-1">
               {group.label}
@@ -256,7 +256,9 @@ export function AppShell({
         </nav>
 
         {/* -- Main content -- */}
-        <main className="grid grid-rows-[minmax(0,1fr)] flex-1 overflow-hidden bg-background">{children}</main>
+        <main className="grid grid-rows-[minmax(0,1fr)] flex-1 overflow-hidden bg-background [&>*]:h-full">
+          {children}
+        </main>
       </div>
     </div>
   );

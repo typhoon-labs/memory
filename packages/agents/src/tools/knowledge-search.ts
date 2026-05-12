@@ -1,8 +1,16 @@
 import type { Agent } from '@mastra/core/agent';
+import { createObservabilityContext, SpanType } from '@mastra/core/observability';
 import type { ToolExecutionContext } from '@mastra/core/tools';
 import { createTool } from '@mastra/core/tools';
-import { createCitationModel } from '@typhoon/ai';
-import type { PgVector } from '@typhoon/db/drivers/pg';
+import { rerankWithScorer } from '@mastra/rag';
+import {
+  createCitationModel,
+  createRerankerScorer,
+  RAG_KNOWLEDGE_MAX_RESULTS,
+  RAG_RERANK_MIN_SCORE,
+  RAG_RERANK_WEIGHTS,
+} from '@typhoon/ai';
+import { type PgVector, refineResults } from '@typhoon/db/drivers/pg';
 import { createAppLogger } from '@typhoon/logger';
 import { generateText } from 'ai';
 import { z } from 'zod';
@@ -37,7 +45,14 @@ Rules:
  * Returns `{ text, _chunkSources }` — the text answer with inline citations
  * and ordered chunk sources for the citation extraction pipeline.
  */
-export function createKnowledgeSearchTool(knowledgeAgent: Agent) {
+export interface KnowledgeSearchToolOptions {
+  /** Async function returning current metadata field names and values for filter context. */
+  getMetadataContext?: () => Promise<string | undefined>;
+}
+
+export function createKnowledgeSearchTool(knowledgeAgent: Agent, options?: KnowledgeSearchToolOptions) {
+  const rerankerScorer = createRerankerScorer();
+
   return createTool({
     id: 'searchKnowledge',
     description:
@@ -79,9 +94,20 @@ export function createKnowledgeSearchTool(knowledgeAgent: Agent) {
       // Phase 1: Search the knowledge base
       await emitToolProgress(context as ToolExecutionContext, 'Searching the knowledge base…');
 
+      // Prepend dynamic metadata context so the agent knows what filter fields exist
+      let enrichedPrompt = prompt;
+      if (options?.getMetadataContext) {
+        try {
+          const ctx = await options.getMetadataContext();
+          if (ctx) enrichedPrompt = `${prompt}\n\nAvailable metadata fields and values:\n${ctx}`;
+        } catch {
+          // Non-fatal — agent works without metadata context
+        }
+      }
+
       let searchResult: Awaited<ReturnType<Agent['generate']>>;
       try {
-        searchResult = await knowledgeAgent.generate(prompt, {
+        searchResult = await knowledgeAgent.generate(enrichedPrompt, {
           toolChoice: 'auto',
           maxSteps: 7,
           modelSettings: { temperature: 0 },
@@ -163,15 +189,59 @@ export function createKnowledgeSearchTool(knowledgeAgent: Agent) {
       }
       const uniqueSources = [...dedupMap.values()];
 
-      // Filter low-quality results and cap count
-      const filtered = uniqueSources
-        .filter((s) => (s.score as number) >= 0.25)
-        .sort((a, b) => (b.score as number) - (a.score as number))
-        .slice(0, 10);
+      // Rerank combined results using the shared refineResults pipeline.
+      // Pure cross-encoder weights — sources come from different tools with
+      // incompatible original score scales, so no blending with original scores.
+      const obsContext = createObservabilityContext(context?.tracingContext);
+      const parentSpan = obsContext.tracingContext?.currentSpan;
+
+      // Convert deduplicated sources to QueryResult format for refineResults
+      const queryResults = uniqueSources.map((s) => ({
+        id: (s.chunkId as string) ?? '',
+        metadata: s as Record<string, unknown>,
+        score: s.score as number,
+      }));
+
+      await emitToolProgress(
+        context as ToolExecutionContext,
+        `Reranking ${String(queryResults.length)} combined chunks…`,
+      );
+
+      const rerankSpan = parentSpan?.createChildSpan({
+        type: SpanType.RAG_ACTION,
+        name: 'rag rerank: combined',
+        input: { candidateCount: queryResults.length },
+        attributes: { action: 'rerank' } as never,
+      });
+
+      const refined = await refineResults(queryResults, prompt, {
+        minScore: RAG_RERANK_MIN_SCORE,
+        reranker: (r, q) =>
+          rerankWithScorer({
+            results: r,
+            query: q,
+            scorer: rerankerScorer,
+            options: {
+              weights: RAG_RERANK_WEIGHTS,
+              topK: RAG_KNOWLEDGE_MAX_RESULTS,
+            },
+          }),
+      });
+
+      const metrics = rerankerScorer.getMetrics(prompt);
+      rerankSpan?.end({
+        output: {
+          refinedCount: refined.length,
+          topScore: metrics?.topScore,
+          durationMs: metrics?.durationMs,
+        },
+      });
+
+      const filtered = refined.map((r) => ({ ...(r.metadata as Record<string, unknown>), score: r.score }));
 
       log.debug('filtered', {
         dedupCount: uniqueSources.length,
-        belowThreshold: uniqueSources.filter((s) => (s.score as number) < 0.25).length,
+        belowThreshold: uniqueSources.filter((s) => (s.score as number) < RAG_RERANK_MIN_SCORE).length,
         finalCount: filtered.length,
         scores: filtered.map((s) => s.score),
         documents: [...new Set(filtered.map((s) => s.source))],
@@ -233,11 +303,30 @@ export function createKnowledgeSearchTool(knowledgeAgent: Agent) {
         }
       }
 
-      const { text } = await generateText({
+      const citationSpan = parentSpan?.createChildSpan({
+        type: SpanType.MODEL_GENERATION,
+        name: 'llm citation generation',
+        input: { chunkCount: indexedSources.length, prompt },
+        attributes: { model: 'citation' } as never,
+      });
+
+      const { text, usage: citationUsage } = await generateText({
         model: createCitationModel(),
         temperature: 0,
         system: CITATION_SYSTEM,
         prompt: `User question: ${prompt}\n\nSearch results:\n${summaryParts.join('\n\n')}`,
+        experimental_telemetry: {
+          isEnabled: true,
+          functionId: 'citation-generation',
+        },
+      });
+
+      citationSpan?.end({
+        output: {
+          textLength: text.length,
+          inputTokens: citationUsage?.promptTokens,
+          outputTokens: citationUsage?.completionTokens,
+        },
       });
 
       // Parse which references the LLM actually cited

@@ -16,6 +16,7 @@
     "@tanstack/react-router": "^1.168.3",
     "@typhoon/chat": "workspace:*",
     "@typhoon/config": "workspace:*",
+    "@typhoon/evals": "workspace:*",
     "@typhoon/ui": "workspace:*",
     "better-auth": "^1.5.6",
     "lucide-react": "^0.577.0",

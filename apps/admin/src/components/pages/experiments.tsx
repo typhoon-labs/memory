@@ -1,5 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useSearch } from '@tanstack/react-router';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 import type { ColumnDef } from '@typhoon/ui';
 import {
   AlertDialog,
@@ -14,17 +14,8 @@ import {
   apiFetch,
   Button,
   DataTable,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
   EmptyState,
   formatRelativeTime,
-  Input,
-  Label,
   LoadingSpinner,
   PageHeader,
   Select,
@@ -36,7 +27,8 @@ import {
   type StatusBadgeVariant,
 } from '@typhoon/ui';
 import { FlaskConicalIcon, PlayIcon, Trash2Icon } from 'lucide-react';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo } from 'react';
+import { usePageTitle } from '../../hooks/use-page-title';
 
 // ---------- Types ----------
 
@@ -58,11 +50,6 @@ interface ExperimentListResponse {
   total: number;
 }
 
-interface Dataset {
-  id: string;
-  name: string;
-}
-
 // ---------- Helpers ----------
 
 const STATUS_VARIANT: Record<Experiment['status'], StatusBadgeVariant> = {
@@ -72,78 +59,12 @@ const STATUS_VARIANT: Record<Experiment['status'], StatusBadgeVariant> = {
   failed: 'error',
 };
 
-// ---------- Run Experiment Dialog ----------
-
-function RunExperimentForm({ onDone }: { onDone: () => void }) {
-  const queryClient = useQueryClient();
-  const [name, setName] = useState('');
-  const [datasetId, setDatasetId] = useState('');
-
-  const { data: datasets } = useQuery<{ datasets: Dataset[] }>({
-    queryKey: ['admin-datasets'],
-    queryFn: () => apiFetch('/api/v1/admin/datasets'),
-  });
-
-  const create = useMutation({
-    mutationFn: () =>
-      apiFetch('/api/v1/admin/experiments', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ datasetId, name: name || undefined }),
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-experiments'] });
-      onDone();
-    },
-  });
-
-  return (
-    <>
-      <DialogHeader>
-        <DialogTitle>Run Experiment</DialogTitle>
-        <DialogDescription>Evaluate agent quality against a dataset.</DialogDescription>
-      </DialogHeader>
-      <div className="flex flex-col gap-4 py-4">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="experiment-name">Name (optional)</Label>
-          <Input
-            id="experiment-name"
-            placeholder="e.g. Baseline v2"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label>Dataset</Label>
-          <Select value={datasetId} onValueChange={setDatasetId}>
-            <SelectTrigger>
-              <SelectValue placeholder="Select a dataset" />
-            </SelectTrigger>
-            <SelectContent>
-              {datasets?.datasets?.map((d) => (
-                <SelectItem key={d.id} value={d.id}>
-                  {d.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-      <DialogFooter>
-        <Button onClick={() => create.mutate()} disabled={!datasetId || create.isPending}>
-          {create.isPending ? 'Starting...' : 'Run'}
-        </Button>
-      </DialogFooter>
-    </>
-  );
-}
-
 // ---------- Main Page ----------
 
 export function ExperimentsPage() {
+  usePageTitle('Experiments');
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [dialogOpen, setDialogOpen] = useState(false);
   const { status } = useSearch({ strict: false }) as { status?: string };
   const activeStatus = status ?? 'all';
 
@@ -236,17 +157,12 @@ export function ExperimentsPage() {
           title="Experiments"
           description="Evaluate agent quality against datasets"
           actions={
-            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-              <DialogTrigger asChild>
-                <Button>
-                  <PlayIcon className="mr-2 size-4" />
-                  Run Experiment
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <RunExperimentForm onDone={() => setDialogOpen(false)} />
-              </DialogContent>
-            </Dialog>
+            <Button asChild>
+              <Link to="/experiments/create">
+                <PlayIcon className="mr-2 size-4" />
+                Run Experiment
+              </Link>
+            </Button>
           }
         />
 

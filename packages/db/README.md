@@ -17,6 +17,8 @@ src/schema/
   auth/             — Better Auth tables (user, session, account, apikey)
   versioned/        — Versioned resources (agents, workspaces, skills + version tables)
   documents.ts      — Document metadata and status tracking
+  metadata-field-group.ts — Reusable metadata field group definitions
+  metadata-template.ts    — Composable metadata templates (groups + custom fields)
   threads.ts        — Chat threads
   messages.ts       — Chat messages within threads
   feedback.ts       — User feedback (ratings, comments)

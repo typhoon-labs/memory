@@ -125,26 +125,31 @@ The Knowledge Agent has two search tools:
 
 ### Hybrid Search (default)
 
-Combines BM25 keyword matching with vector similarity using weighted Reciprocal Rank Fusion (RRF), followed by optional deduplication, LLM reranking, and score filtering via the shared `refineResults` pipeline:
+Combines BM25 keyword matching with vector similarity using weighted Reciprocal Rank Fusion (RRF). The tool supports a `rerank` toggle via `createHybridSearchTool({ rerank })`:
+
+- **`rerank: true` (default for standalone use):** Inflates retrieval to `RAG_RERANK_CANDIDATES` (default 100), reranks via Cohere Rerank, returns top `topK` results.
+- **`rerank: false` (used inside composite `searchKnowledge`):** Returns broad un-reranked candidates for downstream reranking.
 
 ```typescript
-// 1. hybridQuery: BM25 + vector → weighted RRF (vector 0.7, FTS 0.3)
+// Two-stage retrieve-then-rerank:
+// 1. Retrieve broadly: BM25 + vector → RRF → RAG_RERANK_CANDIDATES results
+const retrievalK = Math.max(RAG_RERANK_CANDIDATES, topK);
 const results = await vectorStore.hybridQuery({
   indexName: 'knowledge_base',
   queryText,
   queryVector: embedding,
-  topK: 15,           // candidates before refinement
-  vectorWeight: 0.7,  // vector similarity dominates
-  ftsWeight: 0.3,     // keyword matching boosts exact terms
+  topK: retrievalK,
 });
 
-// 2. Refine: dedup → rerank → minScore filter
+// 2. Rerank: dedup → cross-encoder rerank → minScore filter → top K
 const refined = await refineResults(results, queryText, {
-  minScore: 0.25,
+  minScore: RAG_RERANK_MIN_SCORE,
   dedupKey: 'chunkId',
-  reranker: (r, q) => rerank(r, q, rerankerModel, {
-    weights: { semantic: 0.5, vector: 0.3, position: 0.2 },
-    topK: 10,
+  reranker: (r, q) => rerankWithScorer({
+    results: r,
+    query: q,
+    scorer: rerankerScorer,  // RerankerScorer — calls Cohere-compatible /rerank endpoint
+    options: { weights: RAG_RERANK_WEIGHTS, topK },
   }),
 });
 ```
@@ -156,30 +161,38 @@ const refined = await refineResults(results, queryText, {
 Both the agent search tools and the `/v1/search/hybrid` API endpoint use `refineResults` for post-query processing. The pipeline stages run in order, each independently optional:
 
 1. **Dedup** by metadata key (keeps highest-scoring entry per key)
-2. **Rerank** via LLM callback (caller binds model + options)
+2. **Rerank** via dedicated reranker (`RerankerScorer` calls a Cohere-compatible `/rerank` endpoint with automatic batching)
 3. **minScore filter** (applied last — RRF scores are small fractions; reranked scores are normalized 0-1)
 
-| Consumer | dedupKey | reranker | minScore |
-|----------|----------|----------|----------|
-| Agent hybrid tool | `chunkId` | yes | 0.25 |
-| Search API (precise) | `documentId` | yes | 0.25 |
-| Search API (default) | — | — | — |
+| Consumer | dedupKey | reranker | minScore | Retrieval inflation |
+|----------|----------|----------|----------|---------------------|
+| Agent hybrid tool (standalone) | `chunkId` | yes | `RAG_RERANK_MIN_SCORE` | `RAG_RERANK_CANDIDATES` |
+| Agent hybrid tool (in composite) | — | no | — | `RAG_RERANK_CANDIDATES` |
+| Composite `searchKnowledge` | by `chunkId` | yes (semantic-only weights) | `RAG_RERANK_MIN_SCORE` | — (uses sub-tool results) |
+| Search API (default) | `documentId` | yes | `RAG_RERANK_MIN_SCORE` | `RAG_RERANK_CANDIDATES` |
+| Search API (expanded) | `chunkId` | yes | `RAG_RERANK_MIN_SCORE` | `RAG_RERANK_CANDIDATES_EXPANDED` |
+| Vector API (rerank=true) | — | yes | `RAG_RERANK_MIN_SCORE` | `RAG_RERANK_CANDIDATES` |
 
 ### Graph Search
 
 Uses `createGraphRAGTool` from `@mastra/rag` for relationship and comparison queries across documents.
 
-### Search Pipeline
+### Search Pipeline (Two-Stage Retrieval)
 
-The `searchKnowledge` wrapper tool orchestrates the full pipeline:
+The `searchKnowledge` composite tool orchestrates a two-stage retrieve-then-rerank pipeline:
 
-1. Knowledge agent searches (up to 7 steps, `toolChoice: auto`)
-2. Results are deduped by chunk ID (highest score wins)
-3. Filtered: score >= 0.25, sorted by score, capped at 10 chunks
-4. Grouped by document for hierarchical citation indices (`[Source: N.M]`)
-5. Second LLM call generates a cited response
-6. Post-processing: only cited chunks are kept, display indices renumbered sequentially
-7. Graph tool IDs (numeric node indices) resolved to real vector store chunk IDs
+**Stage 1 — Broad recall (sub-tools, no individual reranking):**
+The knowledge agent calls hybrid and/or graph tools with `rerank: false`. Sub-tools retrieve `RAG_RERANK_CANDIDATES` candidates each, returning broad, un-reranked results.
+
+**Stage 2 — Precision reranking (composite tool):**
+1. Results from all sub-tools are merged
+2. Deduped by chunk ID (highest original score wins)
+3. Combined set is reranked via the shared `refineResults` pipeline with `rerankWithScorer` using semantic-only weights (`{ semantic: 1.0, vector: 0, position: 0 }` — no blending with original scores since sources come from different tools with incompatible score scales)
+4. Filtered: score >= `RAG_RERANK_MIN_SCORE`, capped at `RAG_KNOWLEDGE_MAX_RESULTS`
+5. Grouped by document for hierarchical citation indices (`[Source: N.M]`)
+6. Second LLM call generates a cited response
+7. Post-processing: only cited chunks are kept, display indices renumbered sequentially
+8. Graph tool IDs (numeric node indices) resolved to real vector store chunk IDs
 
 ### Citation Storage & Hydration
 

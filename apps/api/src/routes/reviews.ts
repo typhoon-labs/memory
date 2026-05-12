@@ -29,9 +29,7 @@ export const reviewRoutes = [
     method: 'GET',
     middleware: [requireAuth, requireAdmin],
     handler: async (c) => {
-      const page = Number(c.req.query('page') ?? '0');
-      const perPage = Number(c.req.query('perPage') ?? '20');
-      const sortBy = c.req.query('sortBy') ?? 'worstScore';
+      const sortBy = c.req.query('sortBy') ?? 'newest';
       const annotationStatus = c.req.query('annotationStatus') ?? 'all';
 
       // Step 1: Fetch all threads with message counts
@@ -60,16 +58,21 @@ export const reviewRoutes = [
       const threadIds = allThreads.map((t) => t.id);
       let aggregates = new Map<
         string,
-        { avgScore: number | null; minScore: number | null; scoreCount: number; annotationCount: number }
+        { responseAvg: number | null; retrievalAvg: number | null; scoreCount: number; annotationCount: number }
       >();
 
       if (threadIds.length > 0) {
         const rows = (await sql.unsafe(
           `SELECT
             "thread_id",
-            AVG("score")::real AS avg_score,
-            MIN("score")::real AS min_score,
-            COUNT(*)::int AS score_count,
+            AVG(CASE
+              WHEN "scorer_id" IN ('answerRelevancy', 'faithfulness') THEN "score"
+              WHEN "scorer_id" = 'hallucination' THEN 1 - "score"
+            END)::real AS response_avg,
+            AVG(CASE
+              WHEN "scorer_id" IN ('contextRelevance', 'contextPrecision') THEN "score"
+            END)::real AS retrieval_avg,
+            COUNT(*) FILTER (WHERE "scorer_id" != 'human-review')::int AS score_count,
             COUNT(*) FILTER (WHERE "scorer_id" = 'human-review')::int AS annotation_count
           FROM "scores"
           WHERE "thread_id" = ANY($1) AND "entity_type" = 'message'
@@ -77,8 +80,8 @@ export const reviewRoutes = [
           [threadIds],
         )) as Array<{
           thread_id: string;
-          avg_score: number | null;
-          min_score: number | null;
+          response_avg: number | null;
+          retrieval_avg: number | null;
           score_count: number;
           annotation_count: number;
         }>;
@@ -87,8 +90,8 @@ export const reviewRoutes = [
           rows.map((r) => [
             r.thread_id,
             {
-              avgScore: r.avg_score,
-              minScore: r.min_score,
+              responseAvg: r.response_avg,
+              retrievalAvg: r.retrieval_avg,
               scoreCount: r.score_count,
               annotationCount: r.annotation_count,
             },
@@ -126,7 +129,7 @@ export const reviewRoutes = [
 
       // Step 3: Merge, filter, sort, paginate
       const fbDefaults = { feedbackCount: 0, negativeFeedbackCount: 0 };
-      const defaults = { avgScore: null, minScore: null, scoreCount: 0, annotationCount: 0 };
+      const defaults = { responseAvg: null, retrievalAvg: null, scoreCount: 0, annotationCount: 0 };
       let merged = allThreads.map((t) => ({
         ...t,
         ...(aggregates.get(t.id) ?? defaults),
@@ -139,22 +142,26 @@ export const reviewRoutes = [
         merged = merged.filter((t) => t.annotationCount === 0);
       }
 
-      if (sortBy === 'worstScore') {
+      if (sortBy === 'responseScore') {
         merged.sort((a, b) => {
-          if (a.minScore === null && b.minScore === null) return 0;
-          if (a.minScore === null) return 1;
-          if (b.minScore === null) return -1;
-          return a.minScore - b.minScore;
+          if (a.responseAvg === null && b.responseAvg === null) return 0;
+          if (a.responseAvg === null) return 1;
+          if (b.responseAvg === null) return -1;
+          return a.responseAvg - b.responseAvg;
+        });
+      } else if (sortBy === 'retrievalScore') {
+        merged.sort((a, b) => {
+          if (a.retrievalAvg === null && b.retrievalAvg === null) return 0;
+          if (a.retrievalAvg === null) return 1;
+          if (b.retrievalAvg === null) return -1;
+          return a.retrievalAvg - b.retrievalAvg;
         });
       } else if (sortBy === 'unscored') {
         merged.sort((a, b) => a.scoreCount - b.scoreCount);
       }
       // 'newest' preserves SQL ORDER BY (updated_at DESC)
 
-      const total = merged.length;
-      const paged = merged.slice(page * perPage, (page + 1) * perPage);
-
-      return c.json({ threads: paged, total, page, perPage, hasMore: (page + 1) * perPage < total });
+      return c.json({ threads: merged, total: merged.length });
     },
   }),
 

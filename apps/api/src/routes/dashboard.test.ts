@@ -144,8 +144,8 @@ describe('Dashboard Routes', () => {
           title: 'Bad Thread',
           resource_id: 'user-1',
           thread_created_at: '2026-04-15',
-          avg_score: 0.3,
-          min_score: 0.1,
+          response_avg: 0.3,
+          retrieval_avg: 0.6,
           score_count: 5,
         },
       ]);
@@ -156,7 +156,8 @@ describe('Dashboard Routes', () => {
       const body = await res.json();
       expect(body.threads).toHaveLength(1);
       expect(body.threads[0].threadId).toBe('t-1');
-      expect(body.threads[0].avgScore).toBe(0.3);
+      expect(body.threads[0].responseAvg).toBe(0.3);
+      expect(body.threads[0].retrievalAvg).toBe(0.6);
     });
 
     it('clamps limit to 50', async () => {
@@ -171,7 +172,7 @@ describe('Dashboard Routes', () => {
   describe('GET /v1/admin/dashboard/users', () => {
     it('returns per-user quality data', async () => {
       mockSqlUnsafe.mockResolvedValueOnce([
-        { resource_id: 'user-1', avg_score: 0.6, min_score: 0.2, score_count: 20, thread_count: 3 },
+        { resource_id: 'user-1', response_avg: 0.6, retrieval_avg: 0.4, score_count: 20, thread_count: 3 },
       ]);
 
       const res = await app.request('/v1/admin/dashboard/users');

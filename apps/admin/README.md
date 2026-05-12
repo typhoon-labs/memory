@@ -33,6 +33,37 @@ Default: `http://localhost:5174`
 | `/queues/$queueName` | Queue detail with job inspection and retry |
 | `/login` | Authentication page |
 
+## Deep Linking (URL State)
+
+All meaningful UI state is persisted in URL search parameters so views are shareable and survive page refresh.
+
+| Route | Params | Description |
+|-------|--------|-------------|
+| `/sources/$sourceId` | `tab`, `path` | Active tab and file path |
+| `/documents` | `syncTargetId`, `status` | Source and status filters |
+| `/reviews` | `sortBy`, `annotationStatus`, `feedbackStatus`, `search` | All filters (client-side pagination) |
+| `/experiments` | `status` | Status filter |
+| `/experiments/compare` | `a`, `b`, `item` | Experiment IDs + selected comparison item |
+| `/experiments/$experimentId` | `result` | Selected result detail |
+| `/scorers` | `status` | Status filter |
+| `/scorers/$scorerId` | `tab` | Active tab |
+| `/traces` | `status`, `entityType`, `search`, `threadId` | All filters |
+| `/traces/$traceId` | `span` | Selected span ID (opens detail sheet) |
+| `/queues/$queueName` | `tab`, `jobState` | Active tab and job state filter |
+
+Example shareable URLs:
+- `/reviews?sortBy=responseScore&annotationStatus=unannotated` — unannotated reviews sorted by response quality
+- `/traces/abc123?span=span456` — trace with a specific span detail open
+- `/experiments/compare?a=exp1&b=exp2&item=3` — comparison with item 3 selected
+
+## Browser Tab Titles
+
+Each page sets a dynamic `document.title` via `usePageTitle` and `detailTitle` from `src/hooks/use-page-title.ts`. The app suffix ("Typhoon Admin") and hierarchy separator (`:`) are defined as constants there.
+
+- List pages: "Reviews - Typhoon Admin", "Traces - Typhoon Admin"
+- Detail pages: "Datasets: My Dataset - Typhoon Admin", "Traces: a1b2c3d4 - Typhoon Admin"
+- Compare page: "Experiments: Compare: Baseline vs Candidate - Typhoon Admin"
+
 ## Key Features
 
 - Drag-and-drop file management (@dnd-kit)
@@ -44,7 +75,7 @@ Default: `http://localhost:5174`
 - Dataset management for evaluation
 - Experiment creation, execution, and side-by-side comparison
 - Scorer definition and configuration
-- Trace explorer with span waterfall view and filtering
+- Trace explorer with span waterfall view, expand/collapse all, and filtering by name and span type
 
 ## Dependencies
 

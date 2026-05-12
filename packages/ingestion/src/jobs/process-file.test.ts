@@ -5,29 +5,45 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const {
   mockProcessFile,
   mockDeleteDocumentVectors,
+  mockExtractMetadataFromContent,
   mockGetProvider,
   mockWithTimeout,
   mockIsUnrecoverable,
   mockAsUnrecoverable,
+  mockResolveTemplateSchema,
+  mockApplySchemaDefaults,
+  mockIsSyncJobCancelled,
+  mockIncrementSyncJobCompletion,
 } = vi.hoisted(() => ({
   mockProcessFile: vi.fn(),
   mockDeleteDocumentVectors: vi.fn(),
+  mockExtractMetadataFromContent: vi.fn(async () => ({})),
   mockGetProvider: vi.fn(),
   mockWithTimeout: vi.fn((p: Promise<unknown>) => p),
   mockIsUnrecoverable: vi.fn(() => false),
   mockAsUnrecoverable: vi.fn((err: unknown) => err),
+  mockResolveTemplateSchema: vi.fn(() => ({})),
+  mockApplySchemaDefaults: vi.fn(() => ({})),
+  mockIsSyncJobCancelled: vi.fn(async () => false),
+  mockIncrementSyncJobCompletion: vi.fn(async () => {}),
 }));
 
 vi.mock('@typhoon/db', () => ({
   documents: 'documents',
   syncTargets: 'syncTargets',
+  metadataTemplates: 'metadataTemplates',
+  metadataFieldGroups: 'metadataFieldGroups',
 }));
 
-vi.mock('drizzle-orm', () => ({ eq: vi.fn((_col: unknown, val: unknown) => val) }));
+vi.mock('drizzle-orm', () => ({
+  eq: vi.fn((_col: unknown, val: unknown) => val),
+  inArray: vi.fn((_col: unknown, vals: unknown) => vals),
+}));
 
 vi.mock('../pipeline', () => ({
   processFile: mockProcessFile,
   deleteDocumentVectors: mockDeleteDocumentVectors,
+  extractMetadataFromContent: mockExtractMetadataFromContent,
 }));
 
 vi.mock('../providers/index', () => ({
@@ -52,6 +68,19 @@ vi.mock('bullmq', () => ({
   },
 }));
 
+vi.mock('@typhoon/types', () => ({
+  resolveTemplateSchema: mockResolveTemplateSchema,
+  applySchemaDefaults: mockApplySchemaDefaults,
+}));
+
+vi.mock('./check-cancelled', () => ({
+  isSyncJobCancelled: mockIsSyncJobCancelled,
+}));
+
+vi.mock('./complete-sync-job', () => ({
+  incrementSyncJobCompletion: mockIncrementSyncJobCompletion,
+}));
+
 import { guessMimeType, handleProcessFileJob } from './process-file';
 
 // ---------- Helpers ----------
@@ -71,12 +100,18 @@ function makeJob(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function makeDb(targetRow?: Record<string, unknown> | null) {
+function makeDb(targetRow?: Record<string, unknown> | null, docRow?: Record<string, unknown> | null) {
   const row = targetRow === null ? undefined : (targetRow ?? { id: 'st-1', config: { bucket: 'b' } });
+  const doc = docRow === null ? undefined : (docRow ?? { id: 'doc-1', customMetadata: {} });
   return {
     select: vi.fn(() => ({
-      from: vi.fn(() => ({
-        where: vi.fn(async () => (row ? [row] : [])),
+      from: vi.fn((table: string) => ({
+        where: vi.fn(async () => {
+          if (table === 'documents') return doc ? [doc] : [];
+          if (table === 'metadataTemplates') return [];
+          if (table === 'metadataFieldGroups') return [];
+          return row ? [row] : [];
+        }),
       })),
     })),
     update: vi.fn(() => ({
@@ -287,5 +322,34 @@ describe('handleProcessFileJob', () => {
 
     // withTimeout called with the download promise, 60000ms timeout, and 'download' label
     expect(mockWithTimeout).toHaveBeenCalledWith(expect.anything(), 60_000, 'download');
+  });
+
+  it('defaults customMetadata to {} when sync target has no metadataTemplateId', async () => {
+    // biome-ignore lint/suspicious/noExplicitAny: test mock
+    const job = makeJob() as any;
+    // Sync target without metadataTemplateId
+    const db = makeDb({ id: 'st-1', config: { bucket: 'b' } });
+
+    // biome-ignore lint/suspicious/noExplicitAny: test mock
+    await handleProcessFileJob(job, db as any, {} as any);
+
+    const pfArgs = mockProcessFile.mock.calls[0][0];
+    expect(pfArgs.customMetadata).toEqual({});
+  });
+
+  it('passes customMetadata through to processFile', async () => {
+    // biome-ignore lint/suspicious/noExplicitAny: test mock
+    const job = makeJob() as any;
+    // Document with existing customMetadata, sync target without template
+    const db = makeDb(
+      { id: 'st-1', config: { bucket: 'b' } },
+      { id: 'doc-1', customMetadata: { department: 'sales' } },
+    );
+
+    // biome-ignore lint/suspicious/noExplicitAny: test mock
+    await handleProcessFileJob(job, db as any, {} as any);
+
+    const pfArgs = mockProcessFile.mock.calls[0][0];
+    expect(pfArgs.customMetadata).toEqual({ department: 'sales' });
   });
 });

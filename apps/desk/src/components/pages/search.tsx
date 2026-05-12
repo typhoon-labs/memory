@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate, useSearch } from '@tanstack/react-router';
 import { DocumentViewerPanel, documentContentQuery, documentParsedQuery } from '@typhoon/chat';
 import {
   apiFetch,
@@ -21,6 +22,7 @@ import {
 } from '@typhoon/ui';
 import { DatabaseIcon, FileTextIcon, SearchIcon, SparklesIcon } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { detailTitle, usePageTitle } from '../../hooks/use-page-title';
 
 // ── Types ───────────────────────────────────────────────────────
 
@@ -62,7 +64,6 @@ interface SyncTargetRecord {
 
 // ── Constants ───────────────────────────────────────────────────
 
-const INITIAL_TOP_K = 50;
 const GROUPS_PER_PAGE = 10;
 
 // ── Utilities ───────────────────────────────────────────────────
@@ -86,13 +87,25 @@ function scoreVariant(score: number): 'success' | 'info' | 'warning' {
 // ── Component ───────────────────────────────────────────────────
 
 export function SearchPage() {
-  const [query, setQuery] = useState('');
+  const navigate = useNavigate();
+  const { q, expanded, doc, chunk } = useSearch({ strict: false }) as {
+    q: string | undefined;
+    expanded: true | undefined;
+    doc: string | undefined;
+    chunk: number | undefined;
+  };
+
+  const expandedMode = expanded ?? false;
+  const selectedDocId = doc ?? null;
+  const selectedChunkIdx = chunk ?? null;
+
+  usePageTitle(detailTitle('Search', q));
+
+  const [query, setQuery] = useState(q ?? '');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
-  const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
   const [visibleGroupCount, setVisibleGroupCount] = useState(GROUPS_PER_PAGE);
-  const [preciseMode, setPreciseMode] = useState(false);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
 
@@ -141,9 +154,8 @@ export function SearchPage() {
 
   // ── Search handler ────────────────────────────────────────────
 
-  const handleSearch = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!query.trim()) return;
+  const executeSearch = useCallback(async (searchQuery: string, isExpanded: boolean) => {
+    if (!searchQuery.trim()) return;
     setIsSearching(true);
     setVisibleGroupCount(GROUPS_PER_PAGE);
     try {
@@ -151,9 +163,8 @@ export function SearchPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          query,
-          topK: INITIAL_TOP_K,
-          ...(preciseMode && { rerank: true, minScore: 0.25, dedup: true }),
+          query: searchQuery,
+          ...(isExpanded && { expanded: true }),
         }),
       });
       setResults(data.results ?? []);
@@ -165,7 +176,28 @@ export function SearchPage() {
     } finally {
       setIsSearching(false);
     }
+  }, []);
+
+  const handleSearch = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const trimmed = query.trim();
+    if (!trimmed) return;
+    navigate({ search: (prev) => ({ ...prev, q: trimmed, doc: undefined, chunk: undefined }) });
+    executeSearch(trimmed, expandedMode);
   };
+
+  const handleToggleExpanded = () => {
+    const next = !expandedMode;
+    navigate({ search: (prev) => ({ ...prev, expanded: next || undefined }), replace: true });
+    if (hasSearched) executeSearch(query.trim(), next);
+  };
+
+  // Auto-execute search when landing with a q param (shared link)
+  useEffect(() => {
+    if (q && !hasSearched && !isSearching) {
+      executeSearch(q, expandedMode);
+    }
+  }, [q, expandedMode, hasSearched, isSearching, executeSearch]);
 
   // ── Grouping with enrichment ──────────────────────────────────
 
@@ -196,8 +228,10 @@ export function SearchPage() {
     return Array.from(map.values()).sort((a, b) => b.bestScore - a.bestScore);
   }, [results, docMap, syncTargetMap]);
 
-  const visibleGroups = grouped.slice(0, visibleGroupCount);
-  const hasMore = visibleGroupCount < grouped.length;
+  // In expanded mode, show individual chunks; in default mode, show document groups
+  const displayItems = expandedMode ? results : grouped;
+  const visibleItems = displayItems.slice(0, visibleGroupCount * (expandedMode ? 3 : 1));
+  const hasMore = visibleItems.length < displayItems.length;
 
   // ── Infinite scroll ───────────────────────────────────────────
 
@@ -207,20 +241,20 @@ export function SearchPage() {
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry?.isIntersecting) {
-          setVisibleGroupCount((prev) => Math.min(prev + GROUPS_PER_PAGE, grouped.length));
+          setVisibleGroupCount((prev) => prev + GROUPS_PER_PAGE);
         }
       },
       { threshold: 0.1 },
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [hasMore, grouped.length]);
+  }, [hasMore]);
 
   // ── Results list ──────────────────────────────────────────────
 
   const resultsList = (
     <div className="overflow-y-auto p-4 sm:p-6">
-      <div className={selectedDocId ? '' : 'mx-auto max-w-4xl'}>
+      <div className={selectedDocId ? '' : 'mx-auto max-w-5xl'}>
         <PageHeader title="Search" description="Search across all knowledge base documents" />
 
         <div className="mt-4 space-y-3">
@@ -250,23 +284,25 @@ export function SearchPage() {
                 <TooltipTrigger asChild>
                   <Button
                     type="button"
-                    variant={preciseMode ? 'default' : 'outline'}
+                    variant={expandedMode ? 'default' : 'outline'}
                     size="xs"
-                    onClick={() => setPreciseMode((p) => !p)}
+                    onClick={handleToggleExpanded}
                   >
                     <SparklesIcon className="size-3" />
-                    Precise
+                    Expanded
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="bottom" align="start">
-                  AI reranking for better relevance (slower)
+                  Deep search showing all matching passages (slower)
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
 
-            {hasSearched && !isSearching && grouped.length > 0 && (
+            {hasSearched && !isSearching && displayItems.length > 0 && (
               <span className="text-xs text-muted-foreground">
-                {grouped.length} document{grouped.length !== 1 ? 's' : ''} found
+                {expandedMode
+                  ? `${results.length} passage${results.length !== 1 ? 's' : ''} found`
+                  : `${grouped.length} document${grouped.length !== 1 ? 's' : ''} found`}
               </span>
             )}
           </div>
@@ -280,51 +316,108 @@ export function SearchPage() {
 
         {!isSearching && (
           <div className="mt-3 space-y-2">
-            {visibleGroups.map((group) => {
-              const isActive = selectedDocId === group.documentId;
-              return (
-                <Card
-                  key={group.documentId}
-                  className={cn(
-                    'cursor-pointer transition-shadow hover:shadow-md',
-                    isActive && 'ring-2 ring-primary/40',
-                  )}
-                  onClick={() => setSelectedDocId(group.documentId)}
-                  onMouseEnter={() => prefetchDocument(group.documentId)}
-                >
-                  <CardHeader className="pb-1.5">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex min-w-0 gap-2">
-                        <FileTextIcon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
-                        <span className="break-words text-sm font-medium">{stripMarkdown(group.title)}</span>
-                      </div>
-                      <div className="flex shrink-0 items-center gap-2">
-                        <Badge variant={scoreVariant(group.bestScore)} className="text-2xs tabular-nums">
-                          {(group.bestScore * 100).toFixed(0)}%
-                        </Badge>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="pt-0">
-                    {group.description && (
-                      <p className="line-clamp-2 pl-[22px] text-xs leading-relaxed text-muted-foreground">
-                        {group.description}
-                      </p>
-                    )}
-                    <div className="mt-1.5 flex min-w-0 items-center gap-1.5 pl-[22px] text-2xs text-muted-foreground">
-                      {group.syncTargetName && (
-                        <>
-                          <DatabaseIcon className="size-3 shrink-0" />
-                          <span className="shrink-0">{group.syncTargetName}</span>
-                          <span className="shrink-0">&middot;</span>
-                        </>
+            {expandedMode
+              ? (visibleItems as SearchResult[]).map((result, idx) => {
+                  const docId = result.metadata.documentId ?? '';
+                  const isActive = selectedChunkIdx === idx;
+                  const doc = docMap.get(docId);
+                  const stId = result.metadata.syncTargetId ?? doc?.syncTargetId ?? '';
+                  const st = syncTargetMap.get(stId);
+                  return (
+                    <Card
+                      key={`${docId}-${result.metadata.startIndex ?? idx}`}
+                      className={cn(
+                        'cursor-pointer transition-shadow hover:shadow-md',
+                        isActive && 'ring-2 ring-primary/40',
                       )}
-                      {group.source && <span className="min-w-0 truncate font-mono">{group.source}</span>}
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
+                      onClick={() => {
+                        navigate({ search: (prev) => ({ ...prev, doc: docId, chunk: idx }), replace: true });
+                      }}
+                      onMouseEnter={() => docId && prefetchDocument(docId)}
+                    >
+                      <CardHeader className="pb-1.5">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex min-w-0 gap-2">
+                            <FileTextIcon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+                            <span className="break-words text-sm font-medium">
+                              {stripMarkdown(result.metadata.title ?? result.metadata.source ?? 'Unknown')}
+                            </span>
+                          </div>
+                          <Badge variant={scoreVariant(result.score)} className="shrink-0 text-2xs tabular-nums">
+                            {(result.score * 100).toFixed(0)}%
+                          </Badge>
+                        </div>
+                      </CardHeader>
+                      <CardContent className="pt-0">
+                        <p className="line-clamp-3 pl-[22px] text-xs leading-relaxed text-muted-foreground">
+                          {stripMarkdown(result.text)}
+                        </p>
+                        <div className="mt-1.5 flex min-w-0 items-center gap-1.5 pl-[22px] text-2xs text-muted-foreground">
+                          {st?.name && (
+                            <>
+                              <DatabaseIcon className="size-3 shrink-0" />
+                              <span className="shrink-0">{st.name}</span>
+                              <span className="shrink-0">&middot;</span>
+                            </>
+                          )}
+                          {result.metadata.source && (
+                            <span className="min-w-0 truncate font-mono">{result.metadata.source}</span>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })
+              : (visibleItems as GroupedResult[]).map((group) => {
+                  const isActive = selectedDocId === group.documentId;
+                  return (
+                    <Card
+                      key={group.documentId}
+                      className={cn(
+                        'cursor-pointer transition-shadow hover:shadow-md',
+                        isActive && 'ring-2 ring-primary/40',
+                      )}
+                      onClick={() =>
+                        navigate({
+                          search: (prev) => ({ ...prev, doc: group.documentId, chunk: undefined }),
+                          replace: true,
+                        })
+                      }
+                      onMouseEnter={() => prefetchDocument(group.documentId)}
+                    >
+                      <CardHeader className="pb-1.5">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex min-w-0 gap-2">
+                            <FileTextIcon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+                            <span className="break-words text-sm font-medium">{stripMarkdown(group.title)}</span>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-2">
+                            <Badge variant={scoreVariant(group.bestScore)} className="text-2xs tabular-nums">
+                              {(group.bestScore * 100).toFixed(0)}%
+                            </Badge>
+                          </div>
+                        </div>
+                      </CardHeader>
+                      <CardContent className="pt-0">
+                        {group.description && (
+                          <p className="line-clamp-2 pl-[22px] text-xs leading-relaxed text-muted-foreground">
+                            {group.description}
+                          </p>
+                        )}
+                        <div className="mt-1.5 flex min-w-0 items-center gap-1.5 pl-[22px] text-2xs text-muted-foreground">
+                          {group.syncTargetName && (
+                            <>
+                              <DatabaseIcon className="size-3 shrink-0" />
+                              <span className="shrink-0">{group.syncTargetName}</span>
+                              <span className="shrink-0">&middot;</span>
+                            </>
+                          )}
+                          {group.source && <span className="min-w-0 truncate font-mono">{group.source}</span>}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
 
             {hasMore && (
               <div ref={sentinelRef} className="flex justify-center py-6">
@@ -332,7 +425,7 @@ export function SearchPage() {
               </div>
             )}
 
-            {hasSearched && !hasMore && grouped.length > 0 && <div className="h-4" />}
+            {hasSearched && !hasMore && displayItems.length > 0 && <div className="h-4" />}
           </div>
         )}
 
@@ -367,10 +460,18 @@ export function SearchPage() {
       {/* Document viewer panel */}
       <ResizablePanel defaultSize={50} minSize={30}>
         <DocumentViewerPanel
-          key={selectedDocId}
+          key={expandedMode && selectedChunkIdx != null ? `${selectedDocId}-${selectedChunkIdx}` : selectedDocId}
           documentId={selectedDocId}
           searchTerms={searchTerms}
-          onClose={() => setSelectedDocId(null)}
+          startIndex={
+            expandedMode && selectedChunkIdx != null
+              ? (results[selectedChunkIdx]?.metadata.startIndex ?? undefined)
+              : undefined
+          }
+          chunkText={expandedMode && selectedChunkIdx != null ? results[selectedChunkIdx]?.text : undefined}
+          onClose={() => {
+            navigate({ search: (prev) => ({ ...prev, doc: undefined, chunk: undefined }), replace: true });
+          }}
         />
       </ResizablePanel>
     </ResizablePanelGroup>

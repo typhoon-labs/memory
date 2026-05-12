@@ -11,10 +11,17 @@ import {
   AlertDialogTrigger,
   apiFetch,
   Button,
+  Checkbox,
   DocumentContentViewer,
   formatAbsoluteTime,
+  Input,
   ScrollArea,
   SectionLabel,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
   Sheet,
   SheetContent,
   SheetHeader,
@@ -25,9 +32,10 @@ import {
   TabsContent,
   TabsList,
   TabsTrigger,
+  Textarea,
 } from '@typhoon/ui';
-import { RefreshCwIcon, RotateCwIcon, Trash2Icon } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { PencilIcon, RefreshCwIcon, RotateCwIcon, SaveIcon, Trash2Icon } from 'lucide-react';
+import { type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Document } from './shared';
 import { DOC_STATUS_MAP, formatBytes } from './shared';
 
@@ -37,7 +45,7 @@ interface DocumentContentResponse {
 }
 
 export function DocumentDetailSheet({
-  document,
+  document: initialDocument,
   open,
   onOpenChange,
 }: {
@@ -45,13 +53,26 @@ export function DocumentDetailSheet({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  if (!document) return null;
+  // Fetch fresh document data so edits (title, description, metadata) are reflected immediately
+  const { data: freshDocument } = useQuery<Document>({
+    queryKey: ['document', initialDocument?.id ?? ''],
+    queryFn: () => apiFetch(`/api/v1/documents/${initialDocument?.id}`),
+    enabled: open && !!initialDocument,
+    initialData: initialDocument ?? undefined,
+  });
 
+  if (!initialDocument) return null;
+
+  const document = freshDocument ?? initialDocument;
   const hasError = document.status === 'parse_error' || document.status === 'embed_error';
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent resizable className="overflow-y-auto sm:max-w-lg" onOpenAutoFocus={(e) => e.preventDefault()}>
+      <SheetContent
+        resizable
+        className="overflow-y-auto sm:max-w-lg"
+        onOpenAutoFocus={(e: Event) => e.preventDefault()}
+      >
         <SheetHeader>
           <SheetTitle className="break-all">{document.title ?? document.sourceKey}</SheetTitle>
           <div className="mt-1">
@@ -62,11 +83,16 @@ export function DocumentDetailSheet({
         <Tabs defaultValue="details" className="px-4 pb-4">
           <TabsList>
             <TabsTrigger value="details">Details</TabsTrigger>
+            <TabsTrigger value="metadata">Metadata</TabsTrigger>
             <TabsTrigger value="content">Content</TabsTrigger>
           </TabsList>
 
           <TabsContent value="details" className="mt-4">
             <DetailsTab document={document} hasError={hasError} onClose={() => onOpenChange(false)} />
+          </TabsContent>
+
+          <TabsContent value="metadata" className="mt-4">
+            <MetadataTab document={document} />
           </TabsContent>
 
           <TabsContent value="content" className="mt-4">
@@ -173,7 +199,7 @@ function DetailsTab({ document, hasError, onClose }: { document: Document; hasEr
 
       {/* Metadata */}
       <div>
-        <SectionLabel>Metadata</SectionLabel>
+        <SectionLabel>File Properties</SectionLabel>
         <dl className="mt-2 grid grid-cols-2 gap-3 text-sm">
           <div className="col-span-2">
             <dt className="text-muted-foreground">Source Key</dt>
@@ -231,6 +257,384 @@ function DetailsTab({ document, hasError, onClose }: { document: Document; hasEr
             </div>
           )}
         </dl>
+      </div>
+    </div>
+  );
+}
+
+// =============================================================================
+// Metadata types & utilities
+// =============================================================================
+
+interface MetadataFieldDefinition {
+  type: 'string' | 'number' | 'boolean' | 'string[]';
+  required?: boolean;
+  default?: unknown;
+  allowedValues?: unknown[];
+  description?: string;
+}
+
+type MetadataSchema = Record<string, MetadataFieldDefinition>;
+
+interface MetadataTemplate {
+  id: string;
+  effectiveSchema: MetadataSchema;
+}
+
+interface SyncTargetInfo {
+  id: string;
+  metadataTemplateId: string | null;
+}
+
+/**
+ * Coerce a string value to the proper type based on the field definition.
+ * Custom fields (not in schema) pass through as strings.
+ */
+export function coerceMetadataValue(value: string, fieldDef: MetadataFieldDefinition | undefined): unknown {
+  if (!fieldDef) return value;
+  switch (fieldDef.type) {
+    case 'number': {
+      const n = Number(value);
+      return Number.isNaN(n) ? value : n;
+    }
+    case 'boolean':
+      return value === 'true';
+    case 'string[]':
+      return value
+        ? value
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : [];
+    default:
+      return value;
+  }
+}
+
+// =============================================================================
+// Metadata Tab
+// =============================================================================
+
+const TABLE_GRID = 'grid grid-cols-[10rem_1fr_2rem] items-center gap-2 px-3';
+
+function MetadataTab({ document }: { document: Document }) {
+  const queryClient = useQueryClient();
+  const [title, setTitle] = useState(document.title ?? '');
+  const [description, setDescription] = useState(document.description ?? '');
+  const [metadata, setMetadata] = useState<Record<string, string>>(
+    Object.fromEntries(Object.entries(document.customMetadata ?? {}).map(([k, v]) => [k, String(v)])),
+  );
+  const [editingField, setEditingField] = useState<string | null>(null);
+
+  // Fetch sync target to get metadataTemplateId
+  const { data: syncTarget } = useQuery<SyncTargetInfo>({
+    queryKey: ['sync-targets', document.syncTargetId],
+    queryFn: () => apiFetch(`/api/v1/sync-targets/${document.syncTargetId}`),
+  });
+
+  // Fetch template effective schema if template is assigned
+  const { data: template } = useQuery<MetadataTemplate>({
+    queryKey: ['metadata-templates', syncTarget?.metadataTemplateId],
+    queryFn: () => apiFetch(`/api/v1/metadata-templates/${syncTarget?.metadataTemplateId}`),
+    enabled: !!syncTarget?.metadataTemplateId,
+  });
+
+  const effectiveSchema = template?.effectiveSchema ?? {};
+
+  // Reset form when document changes
+  useEffect(() => {
+    setTitle(document.title ?? '');
+    setDescription(document.description ?? '');
+    setMetadata(Object.fromEntries(Object.entries(document.customMetadata ?? {}).map(([k, v]) => [k, String(v)])));
+    setEditingField(null);
+  }, [document.title, document.description, document.customMetadata]);
+
+  // Build template fields: all schema keys, populated from metadata or undefined
+  const templateFields = useMemo(() => {
+    const fields: Record<string, string | undefined> = {};
+    for (const k of Object.keys(effectiveSchema)) {
+      fields[k] = metadata[k] != null ? String(metadata[k]) : undefined;
+    }
+    return fields;
+  }, [metadata, effectiveSchema]);
+
+  const updateMutation = useMutation({
+    mutationFn: (data: {
+      title?: string | null;
+      description?: string | null;
+      customMetadata?: Record<string, unknown>;
+    }) => apiFetch<Document>(`/api/v1/documents/${document.id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    onSuccess: (updated: Document) => {
+      queryClient.setQueryData(['document', document.id], updated);
+      for (const key of [['documents'], ['browse']]) {
+        queryClient.setQueriesData<Document[]>({ queryKey: key }, (old) =>
+          old?.map((d) => (d.id === updated.id ? updated : d)),
+        );
+      }
+    },
+  });
+
+  function updateMetadataField(key: string, value: string) {
+    setMetadata((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function handleSave() {
+    // Only send template-defined keys
+    const templateMetadata: Record<string, unknown> = {};
+    for (const key of Object.keys(effectiveSchema)) {
+      if (metadata[key] != null) {
+        templateMetadata[key] = coerceMetadataValue(metadata[key], effectiveSchema[key]);
+      }
+    }
+
+    updateMutation.mutate({
+      title: title || null,
+      description: description || null,
+      customMetadata: templateMetadata,
+    });
+  }
+
+  const originalMetadata = useMemo(
+    () => Object.fromEntries(Object.entries(document.customMetadata ?? {}).map(([k, v]) => [k, String(v)])),
+    [document.customMetadata],
+  );
+
+  const hasChanges =
+    title !== (document.title ?? '') ||
+    description !== (document.description ?? '') ||
+    JSON.stringify(metadata) !== JSON.stringify(originalMetadata);
+
+  const hasTemplate = Object.keys(effectiveSchema).length > 0;
+
+  const isEditingTitle = editingField === 'title';
+  const isEditingDescription = editingField === 'description';
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <div className="flex items-center justify-between">
+          <SectionLabel>Title</SectionLabel>
+          {!isEditingTitle && (
+            <Button variant="ghost" size="icon-sm" onClick={() => setEditingField('title')}>
+              <PencilIcon className="size-3" />
+            </Button>
+          )}
+        </div>
+        {isEditingTitle ? (
+          <Input
+            autoFocus
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            onBlur={() => setEditingField(null)}
+            onKeyDown={(e: KeyboardEvent) => {
+              if (e.key === 'Enter' || e.key === 'Escape') setEditingField(null);
+            }}
+            placeholder="Document title"
+            className="mt-1"
+          />
+        ) : (
+          <button
+            type="button"
+            className="mt-1 block w-full cursor-pointer truncate text-left text-sm outline-none"
+            onClick={() => setEditingField('title')}
+          >
+            {title || <span className="text-muted-foreground">No title</span>}
+          </button>
+        )}
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between">
+          <SectionLabel>Description</SectionLabel>
+          {!isEditingDescription && (
+            <Button variant="ghost" size="icon-sm" onClick={() => setEditingField('description')}>
+              <PencilIcon className="size-3" />
+            </Button>
+          )}
+        </div>
+        {isEditingDescription ? (
+          <Textarea
+            autoFocus
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            onBlur={() => setEditingField(null)}
+            onKeyDown={(e: KeyboardEvent) => {
+              if (e.key === 'Escape') setEditingField(null);
+            }}
+            placeholder="Document description"
+            rows={2}
+            className="mt-1"
+          />
+        ) : (
+          <button
+            type="button"
+            className="mt-1 block w-full cursor-pointer text-left text-sm outline-none"
+            onClick={() => setEditingField('description')}
+          >
+            {description || <span className="text-muted-foreground">No description</span>}
+          </button>
+        )}
+      </div>
+
+      {/* Template Metadata */}
+      {hasTemplate ? (
+        <div>
+          <SectionLabel>Metadata</SectionLabel>
+          <div className="mt-2 rounded-lg border">
+            <div
+              className={`${TABLE_GRID} border-b py-2 text-2xs font-semibold uppercase tracking-widest text-muted-foreground`}
+            >
+              <span>Field</span>
+              <span>Value</span>
+              <span />
+            </div>
+            {Object.entries(templateFields).map(([key, value]) => {
+              const fieldDef = effectiveSchema[key];
+              return (
+                <TemplateFieldRow
+                  key={key}
+                  fieldKey={key}
+                  value={value}
+                  fieldDef={fieldDef}
+                  isEditing={editingField === `template:${key}`}
+                  onStartEdit={() => setEditingField(`template:${key}`)}
+                  onStopEdit={() => setEditingField(null)}
+                  onChange={(v) => updateMetadataField(key, v)}
+                />
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        <p className="text-sm text-muted-foreground">No metadata template assigned to this sync source.</p>
+      )}
+
+      <Button onClick={handleSave} disabled={!hasChanges || updateMutation.isPending} className="w-full">
+        <SaveIcon className="mr-1.5 size-3.5" />
+        {updateMutation.isPending ? 'Saving...' : updateMutation.isSuccess ? 'Saved' : 'Save Changes'}
+      </Button>
+    </div>
+  );
+}
+
+// =============================================================================
+// Template Field Row
+// =============================================================================
+
+function TemplateFieldRow({
+  fieldKey,
+  value,
+  fieldDef,
+  isEditing,
+  onStartEdit,
+  onStopEdit,
+  onChange,
+}: {
+  fieldKey: string;
+  value: string | undefined;
+  fieldDef: MetadataFieldDefinition;
+  isEditing: boolean;
+  onStartEdit: () => void;
+  onStopEdit: () => void;
+  onChange: (value: string) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [isEditing]);
+
+  function handleKeyDown(e: KeyboardEvent) {
+    if (e.key === 'Enter') onStopEdit();
+    if (e.key === 'Escape') onStopEdit();
+  }
+
+  // Boolean fields render as always-visible checkbox, no click-to-edit
+  if (fieldDef.type === 'boolean') {
+    return (
+      <div className={`${TABLE_GRID} border-b py-2.5 last:border-b-0`}>
+        <div>
+          <span className="text-sm font-medium">
+            {fieldKey}
+            {fieldDef.required && '*'}
+          </span>
+          {fieldDef.description && <p className="mt-0.5 text-xs text-muted-foreground">{fieldDef.description}</p>}
+        </div>
+        <div className="flex items-center gap-2">
+          <Checkbox
+            checked={value === 'true'}
+            onCheckedChange={(checked: boolean | 'indeterminate') => onChange(checked === true ? 'true' : 'false')}
+          />
+          <span className="text-sm text-muted-foreground">{value === 'true' ? 'Yes' : 'No'}</span>
+        </div>
+        <span />
+      </div>
+    );
+  }
+
+  // Fields with allowedValues render as a Select dropdown
+  if (fieldDef.allowedValues && fieldDef.allowedValues.length > 0) {
+    return (
+      <div className={`${TABLE_GRID} border-b py-2.5 last:border-b-0`}>
+        <div>
+          <span className="text-sm font-medium">
+            {fieldKey}
+            {fieldDef.required && '*'}
+          </span>
+          {fieldDef.description && <p className="mt-0.5 text-xs text-muted-foreground">{fieldDef.description}</p>}
+        </div>
+        <Select value={value ?? ''} onValueChange={(v: string) => onChange(v)}>
+          <SelectTrigger className="h-8 text-sm">
+            <SelectValue placeholder="Select..." />
+          </SelectTrigger>
+          <SelectContent>
+            {fieldDef.allowedValues.map((av) => (
+              <SelectItem key={String(av)} value={String(av)}>
+                {String(av)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <span />
+      </div>
+    );
+  }
+
+  // Default: click-to-edit text input
+  return (
+    <div className={`${TABLE_GRID} border-b py-2.5 last:border-b-0`}>
+      <div>
+        <span className="text-sm font-medium">
+          {fieldKey}
+          {fieldDef.required && '*'}
+        </span>
+        {fieldDef.description && <p className="mt-0.5 text-xs text-muted-foreground">{fieldDef.description}</p>}
+      </div>
+      {isEditing ? (
+        <Input
+          ref={inputRef}
+          type={fieldDef.type === 'number' ? 'number' : 'text'}
+          value={value ?? ''}
+          onChange={(e) => onChange(e.target.value)}
+          onBlur={onStopEdit}
+          onKeyDown={handleKeyDown}
+          placeholder={fieldDef.type === 'string[]' ? 'Comma-separated values' : 'Enter value'}
+          className="h-8 text-sm"
+        />
+      ) : (
+        <button type="button" className="cursor-pointer truncate text-left text-sm outline-none" onClick={onStartEdit}>
+          {value ? <span>{value}</span> : <span className="text-muted-foreground">&mdash;</span>}
+        </button>
+      )}
+      <div className="flex justify-center">
+        {!isEditing && (
+          <Button variant="ghost" size="icon-sm" onClick={onStartEdit}>
+            <PencilIcon className="size-3" />
+          </Button>
+        )}
       </div>
     </div>
   );

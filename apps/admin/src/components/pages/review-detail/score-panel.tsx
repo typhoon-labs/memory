@@ -3,7 +3,7 @@ import { apiFetch, cn, MarkdownContent, Tooltip, TooltipContent, TooltipProvider
 import { InfoIcon, LoaderIcon } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import type { ReviewScore } from './shared';
-import { SCORE_THRESHOLDS } from './shared';
+import { computeCategoryAverages, normalizeScoreForAvg, SCORE_THRESHOLDS, SCORER_CATEGORIES } from './shared';
 
 interface ScorersResponse {
   scorers: Array<{ name: string | null; description: string | null }>;
@@ -18,9 +18,16 @@ function formatScorerId(id: string): string {
     .trim();
 }
 
-function scoreDotClass(score: number): string {
-  if (score >= 0.7) return 'bg-emerald-400/60';
-  if (score >= 0.4) return 'bg-amber-400/60';
+function scoreDotClass(scorerId: string, score: number): string {
+  const normalized = normalizeScoreForAvg(scorerId, score);
+  if (normalized >= 0.7) return 'bg-emerald-400/60';
+  if (normalized >= 0.4) return 'bg-amber-400/60';
+  return 'bg-red-400/60';
+}
+
+function avgDotClass(avg: number): string {
+  if (avg >= 0.7) return 'bg-emerald-400/60';
+  if (avg >= 0.4) return 'bg-amber-400/60';
   return 'bg-red-400/60';
 }
 
@@ -61,59 +68,122 @@ export function ScorePanel({ scores, messageCreatedAt }: { scores: ReviewScore[]
     return <p className="py-4 text-xs text-muted-foreground">No scores available for this message.</p>;
   }
 
-  // Default: lowest scorer
+  // Group scores by category
+  const responseScores = automated.filter((s) => SCORER_CATEGORIES[s.scorer_id]?.category === 'response');
+  const retrievalScores = automated.filter((s) => SCORER_CATEGORIES[s.scorer_id]?.category === 'retrieval');
+  const otherScores = automated.filter((s) => !SCORER_CATEGORIES[s.scorer_id]);
+
+  // Check if retrieval scorers are expected but missing (no rows in DB)
+  const retrievalScorerIds = Object.entries(SCORER_CATEGORIES)
+    .filter(([, v]) => v.category === 'retrieval')
+    .map(([k]) => k);
+  const hasRetrievalScores = retrievalScores.length > 0;
+  const retrievalExpected = retrievalScorerIds.length > 0;
+
+  // Compute category averages
+  const avgs = computeCategoryAverages(automated.map((s) => ({ scorerId: s.scorer_id, score: s.score })));
+
+  // Default: lowest normalized scorer
   const effectiveScorer =
     selectedScorer ??
-    automated.reduce(
-      (lowest: ReviewScore | undefined, s) =>
-        s.score !== null && (!lowest || (s.score ?? 1) < (lowest.score ?? 1)) ? s : lowest,
-      undefined,
-    )?.scorer_id;
+    automated
+      .filter((s) => s.score !== null)
+      .reduce((lowest: ReviewScore | undefined, s) => {
+        const norm = normalizeScoreForAvg(s.scorer_id, s.score ?? 0);
+        const lowestNorm = lowest ? normalizeScoreForAvg(lowest.scorer_id, lowest.score ?? 0) : 1;
+        return norm < lowestNorm ? s : lowest;
+      }, undefined)?.scorer_id;
 
   const activeScore = automated.find((s) => s.scorer_id === effectiveScorer);
 
+  function renderScorerRow(s: ReviewScore) {
+    const name = formatScorerId(s.scorer_id);
+    const description = scorerDescriptions[s.scorer_id];
+    return (
+      <button
+        key={s.id}
+        type="button"
+        onClick={() => setSelectedScorer(s.scorer_id)}
+        className={cn(
+          'flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-xs transition-colors',
+          effectiveScorer === s.scorer_id ? 'bg-muted' : 'hover:bg-muted',
+        )}
+      >
+        <span className="flex items-center gap-1.5">
+          <span
+            className={cn(
+              'size-2 shrink-0 rounded-full',
+              s.score !== null ? scoreDotClass(s.scorer_id, s.score) : 'bg-muted-foreground/30',
+            )}
+          />
+          <span>{name}</span>
+          {description && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <InfoIcon className="size-3 text-muted-foreground/40 hover:text-muted-foreground" />
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs text-xs">{description}</TooltipContent>
+            </Tooltip>
+          )}
+        </span>
+        <span className="tabular-nums">{s.score !== null ? s.score.toFixed(2) : '\u2014'}</span>
+      </button>
+    );
+  }
+
   return (
     <div className="flex h-full flex-col">
-      {/* Scorer list */}
       <TooltipProvider delayDuration={200}>
-        <div className="flex flex-col">
-          {automated.map((s) => {
-            const name = formatScorerId(s.scorer_id);
-            const description = scorerDescriptions[s.scorer_id];
-            return (
-              <button
-                key={s.id}
-                type="button"
-                onClick={() => setSelectedScorer(s.scorer_id)}
-                className={cn(
-                  'flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-xs transition-colors',
-                  effectiveScorer === s.scorer_id ? 'bg-muted/50' : 'hover:bg-muted/30',
-                )}
-              >
-                <span className="flex items-center gap-1.5">
-                  <span
-                    className={cn(
-                      'size-2 shrink-0 rounded-full',
-                      s.score !== null ? scoreDotClass(s.score) : 'bg-muted-foreground/30',
-                    )}
-                  />
-                  <span className={cn(effectiveScorer === s.scorer_id && 'font-semibold')}>{name}</span>
-                  {description && (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <InfoIcon className="size-3 text-muted-foreground/40 hover:text-muted-foreground" />
-                      </TooltipTrigger>
-                      <TooltipContent className="max-w-xs text-xs">{description}</TooltipContent>
-                    </Tooltip>
-                  )}
+        {/* Response Quality */}
+        {responseScores.length > 0 && (
+          <div className="mb-3">
+            <div className="mb-1 flex items-center justify-between px-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                Response Quality
+              </span>
+              {avgs.responseAvg !== null && (
+                <span className="flex items-center gap-1 text-[10px] font-bold tabular-nums text-muted-foreground">
+                  <span className={cn('size-1.5 rounded-full', avgDotClass(avgs.responseAvg))} />
+                  {avgs.responseAvg.toFixed(2)}
                 </span>
-                <span className={cn('tabular-nums', effectiveScorer === s.scorer_id && 'font-semibold')}>
-                  {s.score !== null ? s.score.toFixed(2) : '\u2014'}
+              )}
+            </div>
+            <div className="flex flex-col gap-px">{responseScores.map(renderScorerRow)}</div>
+          </div>
+        )}
+
+        {/* Retrieval Quality */}
+        {retrievalExpected && (
+          <div className="mb-3">
+            <div className="mb-1 flex items-center justify-between px-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                Retrieval Quality
+              </span>
+              {avgs.retrievalAvg !== null && (
+                <span className="flex items-center gap-1 text-[10px] font-bold tabular-nums text-muted-foreground">
+                  <span className={cn('size-1.5 rounded-full', avgDotClass(avgs.retrievalAvg))} />
+                  {avgs.retrievalAvg.toFixed(2)}
                 </span>
-              </button>
-            );
-          })}
-        </div>
+              )}
+              {!hasRetrievalScores && <span className="text-[10px] text-muted-foreground/60">N/A</span>}
+            </div>
+            {hasRetrievalScores ? (
+              <div className="flex flex-col gap-px">{retrievalScores.map(renderScorerRow)}</div>
+            ) : (
+              <p className="px-2 text-[11px] text-muted-foreground/60">No retrieval context</p>
+            )}
+          </div>
+        )}
+
+        {/* Other (custom scorers) */}
+        {otherScores.length > 0 && (
+          <div className="mb-3">
+            <div className="mb-1 px-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Other</span>
+            </div>
+            <div className="flex flex-col gap-px">{otherScores.map(renderScorerRow)}</div>
+          </div>
+        )}
       </TooltipProvider>
 
       {/* Reasoning */}

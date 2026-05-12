@@ -85,6 +85,13 @@
       "when": 1776900000000,
       "tag": "0011_scoring_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1778496426075,
+      "tag": "0012_dashing_grey_gargoyle",
+      "breakpoints": true
     }
   ]
 }

@@ -97,7 +97,7 @@ export function JobDetailSheet({
           {/* Job Data */}
           <div>
             <SectionLabel>Job Data</SectionLabel>
-            <pre className="mt-2 overflow-x-auto rounded-md border border-border bg-muted/50 p-3 text-xs">
+            <pre className="mt-2 overflow-x-auto rounded-md border border-border bg-muted p-3 text-xs">
               {JSON.stringify(job.data, null, 2)}
             </pre>
           </div>
@@ -106,7 +106,7 @@ export function JobDetailSheet({
           {job.stacktrace.length > 0 && (
             <div>
               <SectionLabel>Stacktrace</SectionLabel>
-              <pre className="mt-2 overflow-x-auto rounded-md border border-border bg-muted/50 p-3 text-xs whitespace-pre-wrap">
+              <pre className="mt-2 overflow-x-auto rounded-md border border-border bg-muted p-3 text-xs whitespace-pre-wrap">
                 {job.stacktrace.join('\n')}
               </pre>
             </div>
@@ -116,7 +116,7 @@ export function JobDetailSheet({
           {job.returnvalue != null && (
             <div>
               <SectionLabel>Return Value</SectionLabel>
-              <pre className="mt-2 overflow-x-auto rounded-md border border-border bg-muted/50 p-3 text-xs">
+              <pre className="mt-2 overflow-x-auto rounded-md border border-border bg-muted p-3 text-xs">
                 {typeof job.returnvalue === 'string' ? job.returnvalue : JSON.stringify(job.returnvalue, null, 2)}
               </pre>
             </div>

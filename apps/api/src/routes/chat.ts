@@ -11,9 +11,9 @@ import { requireAuth } from '../middleware/require-auth';
 const log = createAppLogger('chat');
 
 // Module-level queue reference, wired by API bootstrap (see index.ts)
-let _scoringQueue: Queue | null = null;
-export function setScoringQueue(queue: Queue) {
-  _scoringQueue = queue;
+let _reviewsQueue: Queue | null = null;
+export function setReviewsQueue(queue: Queue) {
+  _reviewsQueue = queue;
 }
 
 const streamLoggingHooks = {
@@ -69,7 +69,7 @@ export const chatRoutes = [
       const traceId = getActiveTraceId();
       const threadId: string | undefined = params.memory?.thread;
 
-      const scoringEnabled = isScoringEnabled() && _scoringQueue !== null;
+      const scoringEnabled = isScoringEnabled() && _reviewsQueue !== null;
       const sampleRate = Number(process.env.SCORING_SAMPLE_RATE ?? '1.0');
       const shouldScore = scoringEnabled && !!threadId && Math.random() < sampleRate;
 
@@ -110,13 +110,13 @@ function enqueueScoringJob(opts: {
   agentId: string;
   traceId: string | null;
 }) {
-  if (!opts.shouldScore || !opts.threadId || !_scoringQueue) return;
+  if (!opts.shouldScore || !opts.threadId || !_reviewsQueue) return;
 
   // Use threadId + timestamp as a dedup key since we don't have the messageId yet.
   // The scoring worker resolves the actual latest assistant message in the thread.
   const jobId = `score-${opts.threadId}-${Date.now()}`;
 
-  _scoringQueue
+  _reviewsQueue
     .add(
       'score-message',
       {

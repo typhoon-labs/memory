@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 import type { ColumnDef } from '@typhoon/ui';
 import {
   AlertDialog,
@@ -14,22 +14,14 @@ import {
   apiFetch,
   Button,
   DataTable,
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
   EmptyState,
   formatRelativeTime,
-  Input,
-  Label,
   LoadingSpinner,
   PageHeader,
-  Textarea,
 } from '@typhoon/ui';
 import { DatabaseIcon, PlusIcon, Trash2Icon } from 'lucide-react';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo } from 'react';
+import { usePageTitle } from '../../hooks/use-page-title';
 
 interface Dataset {
   id: string;
@@ -95,12 +87,9 @@ function buildColumns(onDelete: (dataset: Dataset) => void): ColumnDef<Dataset, 
 }
 
 export function DatasetsPage() {
+  usePageTitle('Datasets');
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [isCreating, setIsCreating] = useState(false);
 
   const { data, isLoading } = useQuery<DatasetsResponse>({
     queryKey: ['admin-datasets'],
@@ -119,27 +108,6 @@ export function DatasetsPage() {
 
   const columns = useMemo(() => buildColumns(handleDelete), [handleDelete]);
 
-  async function handleCreate() {
-    if (!name.trim()) return;
-    setIsCreating(true);
-    try {
-      await apiFetch('/api/v1/admin/datasets', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: name.trim(),
-          description: description.trim() || undefined,
-        }),
-      });
-      queryClient.invalidateQueries({ queryKey: ['admin-datasets'] });
-      setName('');
-      setDescription('');
-      setDialogOpen(false);
-    } finally {
-      setIsCreating(false);
-    }
-  }
-
   return (
     <div className="overflow-y-auto p-4 sm:p-6 md:p-8">
       <div className="mx-auto max-w-5xl">
@@ -147,45 +115,12 @@ export function DatasetsPage() {
           title="Datasets"
           description="Manage evaluation datasets and test cases"
           actions={
-            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-              <DialogTrigger asChild>
-                <Button>
-                  <PlusIcon className="mr-2 size-4" />
-                  Create Dataset
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Create Dataset</DialogTitle>
-                </DialogHeader>
-                <div className="flex flex-col gap-4 py-4">
-                  <div className="flex flex-col gap-1.5">
-                    <Label htmlFor="dataset-name">Name</Label>
-                    <Input
-                      id="dataset-name"
-                      placeholder="e.g. Customer Support Q&A"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <Label htmlFor="dataset-description">Description (optional)</Label>
-                    <Textarea
-                      id="dataset-description"
-                      placeholder="Describe what this dataset is for..."
-                      value={description}
-                      onChange={(e) => setDescription(e.target.value)}
-                      rows={3}
-                    />
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button onClick={handleCreate} disabled={!name.trim() || isCreating}>
-                    {isCreating ? 'Creating...' : 'Create'}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+            <Button asChild>
+              <Link to="/datasets/create">
+                <PlusIcon className="mr-2 size-4" />
+                Create Dataset
+              </Link>
+            </Button>
           }
         />
 

@@ -14,8 +14,28 @@ Multi-agent orchestration layer built on Mastra. Provides a supervisor agent tha
 | `searchKnowledgeBaseGraph` | Graph-based RAG search tool |
 | `createInputGuardrails()` | Input processors (prompt injection, moderation) |
 | `createOutputGuardrails()` | Output processors (PII detection, content scrubbing) |
-| `createRagScorers()` / `runRagEvals()` | RAG evaluation and scoring |
+| `createExperimentAgent()` | Lightweight experiment agent (no guardrails/memory) |
 | `emitToolProgress()` / `withProgress()` | Live tool progress streaming to the UI |
+
+## Metadata-Filtered Search
+
+The search tools support metadata filtering to scope results to specific document subsets:
+
+- **Hybrid search tool** accepts an optional `filter` parameter (MongoDB-style operators: `$eq`, `$in`, `$contains`, `$and`, `$or`, etc.) and logs `queryText` + `filter` in OTel trace spans
+- **Vector and graph search tools** also support filtering via Mastra's `enableFilter: true`
+- **Knowledge agent** auto-detects filters from conversation context (e.g., "warranty in California" → `{ "state": "California" }`) and automatically includes `"global"` as a fallback to avoid excluding region-agnostic documents
+- **Dynamic metadata context** is queried from the database at API startup and injected into the knowledge agent so it knows the exact field names and values available for filtering
+
+```typescript
+// Supervisor with metadata context
+createSupervisor(memory, {
+  guardrails: { promptInjection: true },
+  metadataContext: 'country: US, DE, UK | state: CA, NY, TX | product_line: Pro, Basic',
+});
+
+// Knowledge agent with metadata context
+createKnowledgeAgent({ metadataContext: 'country: US, DE | product_line: Pro, Basic' });
+```
 
 ## Two-Phase Knowledge Search
 
@@ -32,6 +52,7 @@ This separation is necessary because `toolChoice: 'required'` prevents the knowl
 ```
 src/
   supervisor.ts        — Supervisor agent factory
+  experiment-agent.ts  — Experiment agent factory
   knowledge.ts         — Knowledge agent factory
   tools/
     knowledge-search.ts — Two-phase search + citation tool
@@ -42,10 +63,10 @@ src/
   guardrails/
     input.ts           — Input guardrail workflow
     output.ts          — Output guardrail workflow (batch parts processor)
-  evals/
-    scorers.ts         — RAG evaluation scorers
 ```
 
 ## Dependencies
 
-`@typhoon/ai` (model factories), `@typhoon/config` (env validation), `@typhoon/types` (domain types), `@mastra/core`, `@mastra/rag`, `@mastra/evals`
+`@typhoon/ai` (model factories), `@typhoon/config` (env validation), `@typhoon/types` (domain types), `@mastra/core`, `@mastra/rag`
+
+Evaluation and scoring logic lives in `@typhoon/evals`.

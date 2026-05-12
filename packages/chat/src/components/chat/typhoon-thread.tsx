@@ -19,6 +19,7 @@ export interface TyphoonThreadProps {
   stop?: () => void;
   config?: ChatConfig;
   className?: string;
+  error?: Error | null;
 }
 
 /** Returns true when the last assistant message already contains visible text. */
@@ -28,7 +29,7 @@ function lastMessageHasText(messages: ChatMessage[]): boolean {
   return last.parts.some((p) => p.type === 'text' && p.text.length > 0);
 }
 
-export function TyphoonThread({ messages, status, sendMessage, stop, config, className }: TyphoonThreadProps) {
+export function TyphoonThread({ messages, status, sendMessage, stop, config, className, error }: TyphoonThreadProps) {
   return (
     <ChatConfigProvider config={config ?? {}}>
       <div className={cn('relative flex h-full min-h-0 flex-col', className)}>
@@ -54,6 +55,12 @@ export function TyphoonThread({ messages, status, sendMessage, stop, config, cla
                     return <TyphoonMessage key={message.id} message={message} isStreaming={isStreaming} />;
                   })}
                 {(status === 'submitted' || (status === 'streaming' && !lastMessageHasText(messages))) && <Loader />}
+                {error && status !== 'streaming' && status !== 'submitted' && (
+                  <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3.5 py-2.5 text-sm text-destructive">
+                    <span className="mt-0.5 shrink-0">&#x26A0;</span>
+                    <span>{error.message || 'Something went wrong.'} Please try again.</span>
+                  </div>
+                )}
               </div>
             )}
           </ConversationContent>

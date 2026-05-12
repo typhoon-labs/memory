@@ -242,11 +242,23 @@ describe('Experiment Routes', () => {
 
       mockExperimentsStorage.listExperimentResults
         .mockResolvedValueOnce({
-          results: [{ itemId: 'item-1', input: { question: 'Q' }, output: { scores: [{ score: 0.8 }] } }],
+          results: [
+            {
+              itemId: 'item-1',
+              input: { question: 'Q' },
+              output: { scores: [{ scorerId: 'answerRelevancy', score: 0.8 }] },
+            },
+          ],
           total: 1,
         })
         .mockResolvedValueOnce({
-          results: [{ itemId: 'item-1', input: { question: 'Q' }, output: { scores: [{ score: 0.9 }] } }],
+          results: [
+            {
+              itemId: 'item-1',
+              input: { question: 'Q' },
+              output: { scores: [{ scorerId: 'answerRelevancy', score: 0.9 }] },
+            },
+          ],
           total: 1,
         });
 

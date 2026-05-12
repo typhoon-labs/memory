@@ -10,6 +10,8 @@ export { experimentResults, experiments } from './schema/experiments';
 export { failedJobs } from './schema/failed-job';
 export { feedback } from './schema/feedback';
 export { messages } from './schema/messages';
+export { metadataFieldGroups } from './schema/metadata-field-group';
+export { metadataTemplates } from './schema/metadata-template';
 export { aiSpans } from './schema/observability';
 export { resources } from './schema/resources';
 export { scores } from './schema/scores';

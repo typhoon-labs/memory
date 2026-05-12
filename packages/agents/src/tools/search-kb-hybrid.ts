@@ -1,76 +1,164 @@
-import type { MastraLanguageModel } from '@mastra/core/agent';
+import { createObservabilityContext, SpanType } from '@mastra/core/observability';
 import { createTool } from '@mastra/core/tools';
-import { rerank } from '@mastra/rag';
-import { createEmbeddingModel, createRerankerModel, EMBEDDING_MAX_CHARS } from '@typhoon/ai';
+import { rerankWithScorer } from '@mastra/rag';
+import {
+  createEmbeddingModel,
+  createRerankerScorer,
+  EMBEDDING_MAX_CHARS,
+  RAG_RERANK_CANDIDATES,
+  RAG_RERANK_MIN_SCORE,
+  RAG_RERANK_WEIGHTS,
+} from '@typhoon/ai';
 import { refineResults } from '@typhoon/db/drivers/pg';
 import { embed } from 'ai';
 import { z } from 'zod';
 import { emitToolProgress } from './with-progress';
 
-// biome-ignore lint/suspicious/noExplicitAny: RerankConfig types MastraLanguageModel narrowly but Agent constructor accepts LanguageModelV3 at runtime
-const rerankerModel = createRerankerModel() as any as MastraLanguageModel;
+export interface HybridSearchToolOptions {
+  /** Whether to rerank results with the Cohere cross-encoder. Default: true. */
+  rerank?: boolean;
+}
 
-export const searchKnowledgeBaseHybrid = createTool({
-  id: 'search_knowledge_base_hybrid',
-  description:
-    'Search the knowledge base for relevant document chunks using keyword matching and semantic similarity with reranking. Use this tool to find answers to customer questions from ingested source documents.',
-  inputSchema: z.object({
-    queryText: z.string().max(EMBEDDING_MAX_CHARS).describe('The search query text'),
-    topK: z.number().int().min(1).max(50).default(15).describe('Number of results to return'),
-  }),
-  execute: async ({ queryText, topK }, context) => {
-    const mastra = context?.mastra;
-    if (!mastra) throw new Error('Mastra context required for hybrid search');
+/**
+ * Factory that creates a hybrid (keyword + vector) search tool.
+ *
+ * When `rerank` is true (default) the tool inflates retrieval to
+ * `RAG_RERANK_CANDIDATES`, reranks the full candidate pool, and returns
+ * the top `topK` results. When false it returns raw RRF-scored results
+ * for downstream reranking (e.g. in the composite knowledge search tool).
+ */
+export function createHybridSearchTool(options?: HybridSearchToolOptions) {
+  const shouldRerank = options?.rerank ?? true;
+  const rerankerScorer = shouldRerank ? createRerankerScorer() : undefined;
 
-    const vectorStore = mastra.getVector('pgVector');
-    if (!vectorStore || !('hybridQuery' in vectorStore)) {
-      throw new Error('pgVector store with hybridQuery not available');
-    }
+  return createTool({
+    id: 'search_knowledge_base_hybrid',
+    description:
+      'Search the knowledge base for relevant document chunks using keyword matching and semantic similarity with reranking. Use this tool to find answers to customer questions from ingested source documents.',
+    inputSchema: z.object({
+      queryText: z.string().max(EMBEDDING_MAX_CHARS).describe('The search query text'),
+      topK: z.number().int().min(1).max(100).default(15).describe('Number of results to return'),
+      filter: z
+        .record(z.string(), z.unknown())
+        .optional()
+        .describe(
+          'MongoDB-style metadata filter to scope results. Examples: { "field": "value" }, { "field": { "$in": ["val1", "val2"] } }, { "$and": [{ "field1": "val1" }, { "field2": "val2" }] }',
+        ),
+    }),
+    execute: async ({ queryText, topK, filter }, context) => {
+      const mastra = context?.mastra;
+      if (!mastra) throw new Error('Mastra context required for hybrid search');
 
-    await emitToolProgress(context, 'Embedding query for hybrid search…');
+      const vectorStore = mastra.getVector('pgVector');
+      if (!vectorStore || !('hybridQuery' in vectorStore)) {
+        throw new Error('pgVector store with hybridQuery not available');
+      }
 
-    const { embedding } = await embed({
-      model: createEmbeddingModel(),
-      value: queryText,
-    });
+      const obsContext = createObservabilityContext(context?.tracingContext);
+      const parentSpan = obsContext.tracingContext?.currentSpan;
 
-    await emitToolProgress(context, `Running hybrid keyword + vector search (topK=${String(topK)})…`);
+      await emitToolProgress(context, 'Embedding query for hybrid search…');
 
-    // biome-ignore lint/suspicious/noExplicitAny: hybridQuery is not on MastraVector base class
-    const results = await (vectorStore as any).hybridQuery({
-      indexName: 'knowledge_base',
-      queryText,
-      queryVector: embedding,
-      topK,
-    });
+      const embedSpan = parentSpan?.createChildSpan({
+        type: SpanType.RAG_EMBEDDING,
+        name: 'rag embed: query',
+        input: queryText,
+        attributes: { mode: 'query' },
+      });
+      const { embedding } = await embed({
+        model: createEmbeddingModel(),
+        value: queryText,
+      });
+      embedSpan?.end({ output: { dimensions: embedding.length } });
 
-    if (results.length === 0) {
-      await emitToolProgress(context, 'No matching chunks found.', 'done');
-      return { sources: [] };
-    }
+      // Inflate retrieval depth so the reranker gets a broad candidate pool.
+      const effectiveTopK = topK ?? 15;
+      const retrievalK = Math.max(RAG_RERANK_CANDIDATES, effectiveTopK);
 
-    await emitToolProgress(context, `Reranking ${String(results.length)} chunks…`);
+      await emitToolProgress(context, `Running hybrid keyword + vector search (topK=${String(retrievalK)})…`);
 
-    const refined = await refineResults(results, queryText, {
-      minScore: 0.25,
-      dedupKey: 'chunkId',
-      reranker: (r, q) =>
-        rerank(r, q, rerankerModel, {
-          weights: { semantic: 0.5, vector: 0.3, position: 0.2 },
-          topK: Math.min(topK ?? 15, 10),
-        }),
-    });
+      const querySpan = parentSpan?.createChildSpan({
+        type: SpanType.RAG_VECTOR_OPERATION,
+        name: 'rag vector: hybrid query',
+        input: { queryText, topK: retrievalK, filter: filter ?? null },
+        attributes: { operation: 'query', indexName: 'knowledge_base' },
+      });
+      // biome-ignore lint/suspicious/noExplicitAny: hybridQuery is not on MastraVector base class
+      const results = await (vectorStore as any).hybridQuery({
+        indexName: 'knowledge_base',
+        queryText,
+        queryVector: embedding,
+        topK: retrievalK,
+        filter: filter ?? undefined,
+      });
+      querySpan?.end({ output: { resultCount: results.length } });
 
-    await emitToolProgress(context, `Returned ${String(refined.length)} reranked chunks.`, 'done');
+      if (results.length === 0) {
+        await emitToolProgress(context, 'No matching chunks found.', 'done');
+        return { sources: [] };
+      }
 
-    return {
-      sources: refined.map((r) => ({
-        id: r.id,
-        metadata: r.metadata,
-        score: r.score,
-        document: (r.metadata as Record<string, unknown>)?.text ?? '',
-        vector: [],
-      })),
-    };
-  },
-});
+      if (!shouldRerank || !rerankerScorer) {
+        await emitToolProgress(context, `Returned ${String(results.length)} chunks (no rerank).`, 'done');
+        return {
+          sources: results.map((r: { id: string; metadata: Record<string, unknown>; score: number }) => ({
+            id: r.id,
+            metadata: r.metadata,
+            score: r.score,
+            document: (r.metadata as Record<string, unknown>)?.text ?? '',
+            vector: [],
+          })),
+        };
+      }
+
+      await emitToolProgress(context, `Reranking ${String(results.length)} chunks…`);
+
+      const rerankSpan = parentSpan?.createChildSpan({
+        type: SpanType.RAG_ACTION,
+        name: 'rag rerank',
+        input: { candidateCount: results.length },
+        attributes: { action: 'rerank' } as never,
+      });
+
+      const refined = await refineResults(results, queryText, {
+        minScore: RAG_RERANK_MIN_SCORE,
+        dedupKey: 'chunkId',
+        reranker: (r, q) =>
+          rerankWithScorer({
+            results: r,
+            query: q,
+            scorer: rerankerScorer,
+            options: {
+              weights: RAG_RERANK_WEIGHTS,
+              topK: effectiveTopK,
+            },
+          }),
+      });
+
+      const metrics = rerankerScorer.getMetrics(queryText);
+      rerankSpan?.end({
+        output: {
+          refinedCount: refined.length,
+          topScore: metrics?.topScore,
+          durationMs: metrics?.durationMs,
+        },
+      });
+
+      await emitToolProgress(context, `Returned ${String(refined.length)} reranked chunks.`, 'done');
+
+      return {
+        sources: refined.map((r) => ({
+          id: r.id,
+          metadata: r.metadata,
+          score: r.score,
+          document: (r.metadata as Record<string, unknown>)?.text ?? '',
+          vector: [],
+        })),
+        rerank: metrics,
+      };
+    },
+  });
+}
+
+/** Default hybrid search tool with reranking enabled (standalone use). */
+export const searchKnowledgeBaseHybrid = createHybridSearchTool({ rerank: true });

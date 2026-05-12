@@ -24,6 +24,7 @@
     "@mastra/rag": "^2.1.3",
     "@typhoon/agents": "workspace:*",
     "@typhoon/ai": "workspace:*",
+    "@typhoon/evals": "workspace:*",
     "@typhoon/config": "workspace:*",
     "@typhoon/db": "workspace:*",
     "@typhoon/queue": "workspace:*",
