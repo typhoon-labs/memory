@@ -1,5 +1,6 @@
 import { DatasetsStorage } from '@mastra/core/storage';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+
 import type { Db } from '../../client';
 import { datasetItems, datasets, datasetVersions } from '../../schema/datasets';
 
@@ -17,7 +18,7 @@ export class DrizzleDatasetsStorage extends DatasetsStorage {
     });
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: Mastra dataset types
+  // oxlint-disable-next-line @typescript-eslint/no-explicit-any -- Mastra dataset types
   async createDataset(input: any) {
     const id = input.id ?? crypto.randomUUID();
     const [row] = await this.db
@@ -49,7 +50,7 @@ export class DrizzleDatasetsStorage extends DatasetsStorage {
     });
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: Mastra list types
+  // oxlint-disable-next-line @typescript-eslint/no-explicit-any -- Mastra list types
   async listDatasets(args: any) {
     const page = args?.page ?? 0;
     const perPage = args?.perPage ?? 100;
@@ -67,7 +68,7 @@ export class DrizzleDatasetsStorage extends DatasetsStorage {
     return { datasets: rows, total, page, perPage, hasMore: (page + 1) * perPage < total } as never;
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: Mastra types
+  // oxlint-disable-next-line @typescript-eslint/no-explicit-any -- Mastra types
   async _doUpdateDataset(args: any) {
     const { id, ...rest } = args;
     const sets: Partial<typeof datasets.$inferInsert> = {};
@@ -83,7 +84,7 @@ export class DrizzleDatasetsStorage extends DatasetsStorage {
     return row as never;
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: Mastra types
+  // oxlint-disable-next-line @typescript-eslint/no-explicit-any -- Mastra types
   async _doAddItem(args: any) {
     const id = args.id ?? crypto.randomUUID();
     const [row] = await this.db
@@ -102,7 +103,7 @@ export class DrizzleDatasetsStorage extends DatasetsStorage {
     return row as never;
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: Mastra types
+  // oxlint-disable-next-line @typescript-eslint/no-explicit-any -- Mastra types
   async _doUpdateItem(args: any) {
     const sets: Partial<typeof datasetItems.$inferInsert> = {};
     if (args.input !== undefined) sets.input = args.input;
@@ -123,7 +124,7 @@ export class DrizzleDatasetsStorage extends DatasetsStorage {
       .where(sql`${datasetItems.id} = ${args.id} AND ${datasetItems.datasetId} = ${args.datasetId}`);
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: Mastra types
+  // oxlint-disable-next-line @typescript-eslint/no-explicit-any -- Mastra types
   async listItems(args: any) {
     const page = args?.page ?? 0;
     const perPage = args?.perPage ?? 100;
@@ -145,9 +146,9 @@ export class DrizzleDatasetsStorage extends DatasetsStorage {
     return { items: rows, total, page, perPage, hasMore: (page + 1) * perPage < total } as never;
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: Mastra types
+  // oxlint-disable-next-line @typescript-eslint/no-explicit-any -- Mastra types
   async getItemById(args: any) {
-    if (args.datasetVersion != null) {
+    if (args.datasetVersion !== null && args.datasetVersion !== undefined) {
       const [row] = await this.db
         .select()
         .from(datasetItems)
@@ -186,7 +187,7 @@ export class DrizzleDatasetsStorage extends DatasetsStorage {
     return row as never;
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: Mastra types
+  // oxlint-disable-next-line @typescript-eslint/no-explicit-any -- Mastra types
   async listDatasetVersions(input: any) {
     const rows = await this.db
       .select()
@@ -196,7 +197,7 @@ export class DrizzleDatasetsStorage extends DatasetsStorage {
     return { versions: rows, total: rows.length, page: 0, perPage: false, hasMore: false } as never;
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: Mastra types
+  // oxlint-disable-next-line @typescript-eslint/no-explicit-any -- Mastra types
   async _doBatchInsertItems(input: any) {
     const items = input.items ?? [];
     if (items.length === 0) return [] as never;
@@ -204,6 +205,7 @@ export class DrizzleDatasetsStorage extends DatasetsStorage {
     await this.db.transaction(async (tx) => {
       for (const item of items) {
         const id = item.id ?? crypto.randomUUID();
+        // oxlint-disable-next-line no-await-in-loop -- sequential DB inserts within transaction
         await tx.insert(datasetItems).values({
           id,
           datasetId: input.datasetId,
@@ -228,7 +230,7 @@ export class DrizzleDatasetsStorage extends DatasetsStorage {
     return rows as never;
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: Mastra types
+  // oxlint-disable-next-line @typescript-eslint/no-explicit-any -- Mastra types
   async _doBatchDeleteItems(input: any) {
     const itemIds = input.itemIds ?? [];
     if (itemIds.length === 0) return;

@@ -2,9 +2,16 @@ export type { Document, DocumentStatus } from './document';
 export { documentSchema, documentStatusEnum } from './document';
 export type { CreateFeedback, Feedback, FeedbackRating } from './feedback';
 export { createFeedbackSchema, feedbackRatingEnum, feedbackSchema } from './feedback';
-export type { MetadataFieldDefinition, MetadataFieldType, MetadataSchema, MetadataValidationResult } from './metadata';
+export type {
+  MetadataFieldDefinition,
+  MetadataFieldType,
+  MetadataSchema,
+  MetadataValidationResult,
+  SearchPriority,
+} from './metadata';
 export {
   applySchemaDefaults,
+  buildDocumentMetadataSchema,
   buildZodFromMetadataSchema,
   createMetadataFieldGroupSchema,
   createMetadataTemplateSchema,
@@ -12,6 +19,8 @@ export {
   metadataFieldTypeEnum,
   metadataSchemaSchema,
   resolveTemplateSchema,
+  SEARCH_PRIORITY_TO_WEIGHT,
+  searchPriorityEnum,
   updateMetadataFieldGroupSchema,
   updateMetadataTemplateSchema,
   validateCustomMetadata,

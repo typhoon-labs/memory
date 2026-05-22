@@ -1,6 +1,7 @@
 import type { SQL } from 'drizzle-orm';
 import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import type { PgColumn } from 'drizzle-orm/pg-core';
+
 import type { Db } from '../../client';
 
 /**
@@ -9,9 +10,9 @@ import type { Db } from '../../client';
  * type-safe CRUD operations using Drizzle instead of raw SQL.
  */
 export interface VersionedDriverConfig {
-  // biome-ignore lint/suspicious/noExplicitAny: Drizzle generic constraints require concrete table types; callers pass typed refs
+  // oxlint-disable-next-line @typescript-eslint/no-explicit-any -- Drizzle generic constraints require concrete table types; callers pass typed refs
   mainTable: any;
-  // biome-ignore lint/suspicious/noExplicitAny: same as above
+  // oxlint-disable-next-line @typescript-eslint/no-explicit-any -- same as above
   versionTable: any;
   /** PK column on the main table (e.g., agents.id) */
   mainId: PgColumn;
@@ -82,7 +83,8 @@ export function createVersionedDriver(config: VersionedDriverConfig) {
     async update(db: Db, id: string, values: Record<string, unknown>): Promise<Record<string, unknown>> {
       if (Object.keys(values).length === 0) {
         const existing = await this.getById(db, id);
-        return existing!;
+        if (!existing) throw new Error(`Record ${id} not found`);
+        return existing;
       }
       const [row] = await db
         .update(main)
@@ -114,7 +116,10 @@ export function createVersionedDriver(config: VersionedDriverConfig) {
       }
       const where = conditions.length > 0 ? and(...conditions) : undefined;
 
-      const [countRow] = await db.select({ count: sql<number>`count(*)::int` }).from(main).where(where);
+      const [countRow] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(main)
+        .where(where);
       const total = countRow?.count ?? 0;
 
       let query = db.select().from(main).where(where).orderBy(direction(orderCol)).$dynamic();
@@ -177,7 +182,10 @@ export function createVersionedDriver(config: VersionedDriverConfig) {
 
       const where = eq(versionEntityId, entityId);
 
-      const [countRow] = await db.select({ count: sql<number>`count(*)::int` }).from(versions).where(where);
+      const [countRow] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(versions)
+        .where(where);
       const total = countRow?.count ?? 0;
 
       let query = db.select().from(versions).where(where).orderBy(direction(orderCol)).$dynamic();

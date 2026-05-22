@@ -12,7 +12,9 @@ import {
   XIcon,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+
 import { type DocumentContentResponse, documentContentQuery, documentParsedQuery } from './document-queries';
+import { cycleIndex, resolveChunkLines } from './viewer-utils';
 
 type DocumentChunk = DocumentContentResponse['chunks'][number];
 
@@ -63,7 +65,6 @@ function useKeywordNavigator(
 
   // Detect marks via MutationObserver — re-runs when hasParsedContent changes
   // (e.g. parsed content replaces chunk text)
-  // biome-ignore lint/correctness/useExhaustiveDependencies: hasParsedContent is an intentional trigger to re-detect highlights when content swaps
   useEffect(() => {
     if (!dataReady) return;
     const check = () => {
@@ -101,12 +102,12 @@ function useKeywordNavigator(
 
   const goNext = useCallback(() => {
     if (matchCount === 0) return;
-    setActiveIndex((prev) => (prev + 1) % matchCount);
+    setActiveIndex((prev) => cycleIndex(prev, matchCount, 'next'));
   }, [matchCount]);
 
   const goPrev = useCallback(() => {
     if (matchCount === 0) return;
-    setActiveIndex((prev) => (prev - 1 + matchCount) % matchCount);
+    setActiveIndex((prev) => cycleIndex(prev, matchCount, 'prev'));
   }, [matchCount]);
 
   return { matchCount, activeIndex, goNext, goPrev };
@@ -116,50 +117,7 @@ function useKeywordNavigator(
 
 const BLOCK_TAGS = new Set(['P', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'TD', 'BLOCKQUOTE']);
 
-/** Resolve a single target (startIndex or chunkText) to searchable text lines. */
-function resolveChunkLines(
-  docChunks: DocumentChunk[],
-  startIndex: number | undefined,
-  chunkText: string | undefined,
-): string[] {
-  if (startIndex == null && !chunkText) return [];
-
-  let chunk: DocumentChunk | undefined;
-  if (startIndex != null && docChunks.length > 0) {
-    chunk = docChunks.find((c) => c.startIndex != null && c.startIndex === startIndex);
-    if (!chunk) {
-      let closest: DocumentChunk | undefined;
-      let minDist = Number.POSITIVE_INFINITY;
-      for (const c of docChunks) {
-        if (c.startIndex == null) continue;
-        const dist = Math.abs(c.startIndex - startIndex);
-        if (dist < minDist) {
-          minDist = dist;
-          closest = c;
-        }
-      }
-      if (closest && minDist < 200) chunk = closest;
-    }
-  }
-  if (!chunk && chunkText && docChunks.length > 0) {
-    const needle = chunkText.slice(0, 100);
-    chunk = docChunks.find((c) => c.text.includes(needle) || needle.includes(c.text.slice(0, 100)));
-  }
-
-  const sourceText = chunk?.text ?? chunkText;
-  if (!sourceText) return [];
-
-  return sourceText
-    .replace(/^#{1,6}\s+/gm, '')
-    .replace(/\*\*(.+?)\*\*/g, '$1')
-    .replace(/\*(.+?)\*/g, '$1')
-    .replace(/^\s*[-*+]\s+/gm, '')
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-    .replace(/\|/g, ' ')
-    .split(/\n+/)
-    .map((l) => l.trim())
-    .filter((l) => l.length >= 8);
-}
+// resolveChunkLines and cycleIndex are imported from ./viewer-utils
 
 /**
  * Match DOM blocks to citation chunk text and provide prev/next navigation.
@@ -201,7 +159,6 @@ function useChunkNavigator(
     const blocks: HTMLElement[] = [];
     const seen = new Set<Element>();
 
-    // biome-ignore lint/suspicious/noAssignInExpressions: standard TreeWalker iteration
     for (let node: Node | null; (node = walker.nextNode()); ) {
       const text = node.textContent?.trim();
       if (!text || text.length < 5) continue;
@@ -225,7 +182,6 @@ function useChunkNavigator(
 
   // Effect 1: Detect chunk blocks — re-runs when hasParsedContent changes
   // (e.g. parsed content replaces chunk text)
-  // biome-ignore lint/correctness/useExhaustiveDependencies: hasParsedContent is an intentional trigger to re-detect highlights when content swaps
   useEffect(() => {
     if (!dataReady) return;
     const check = () => {
@@ -250,7 +206,6 @@ function useChunkNavigator(
   // Effect 2: Highlight active block and scroll (mirrors keyword highlight effect).
   // detectGeneration ensures this re-runs even when activeIndex stays 0 (e.g. parsed
   // content replaces chunk DOM and blocks are re-detected at the same index).
-  // biome-ignore lint/correctness/useExhaustiveDependencies: detectGeneration is an intentional trigger to re-apply highlights after DOM swap
   useEffect(() => {
     const blocks = getChunkBlocks();
     for (const el of blocks) {
@@ -268,12 +223,12 @@ function useChunkNavigator(
 
   const goNext = useCallback(() => {
     if (matchCount === 0) return;
-    setActiveIndex((prev) => (prev + 1) % matchCount);
+    setActiveIndex((prev) => cycleIndex(prev, matchCount, 'next'));
   }, [matchCount]);
 
   const goPrev = useCallback(() => {
     if (matchCount === 0) return;
-    setActiveIndex((prev) => (prev - 1 + matchCount) % matchCount);
+    setActiveIndex((prev) => cycleIndex(prev, matchCount, 'prev'));
   }, [matchCount]);
 
   return { matchCount, activeIndex, goNext, goPrev };
@@ -304,12 +259,7 @@ export function DocumentViewerPanel({
 }) {
   const contentRef = useRef<HTMLDivElement>(null);
 
-  const {
-    data,
-    isLoading,
-    isError: chunksError,
-    refetch: refetchChunks,
-  } = useQuery<DocumentContentResponse>(documentContentQuery(documentId));
+  const { data, isLoading, isError: chunksError, refetch: refetchChunks } = useQuery(documentContentQuery(documentId));
 
   const doc = data?.document;
   const chunks = data?.chunks ?? [];
@@ -324,8 +274,8 @@ export function DocumentViewerPanel({
 
   const fullText = useMemo(() => {
     if (parsedData?.text) return parsedData.text;
-    return chunks.map((c) => c.text).join('\n\n');
-  }, [chunks, parsedData]);
+    return (data?.chunks ?? []).map((c) => c.text).join('\n\n');
+  }, [data?.chunks, parsedData]);
 
   // Tracks whether parsed content has arrived — used as a dependency in
   // navigator hooks so highlights re-detect when the DOM swaps from chunk
@@ -333,11 +283,15 @@ export function DocumentViewerPanel({
   const hasParsedContent = !!parsedData?.text;
 
   // Mode: chunk (from citations) or keyword (from search)
-  const isChunkMode = startIndex != null || chunkText != null || (citationChunks != null && citationChunks.length > 0);
+  const isChunkMode =
+    (startIndex !== null && startIndex !== undefined) ||
+    (chunkText !== null && chunkText !== undefined) ||
+    (citationChunks !== null && citationChunks !== undefined && citationChunks.length > 0);
   // Build targets array — either multi-chunk or single target
   const chunkTargets = useMemo(() => {
     if (citationChunks && citationChunks.length > 0) return citationChunks;
-    if (startIndex != null || chunkText != null) return [{ startIndex, chunkText }];
+    if ((startIndex !== null && startIndex !== undefined) || (chunkText !== null && chunkText !== undefined))
+      return [{ startIndex, chunkText }];
     return [];
   }, [citationChunks, startIndex, chunkText]);
   // Enable highlighting as soon as chunks are ready — don't wait for parsed content.
@@ -370,7 +324,7 @@ export function DocumentViewerPanel({
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [nav.goNext, nav.goPrev]);
+  }, [nav]);
 
   const handleDownload = () => {
     window.open(`/api/v1/documents/${documentId}/download`, '_blank');
@@ -379,7 +333,7 @@ export function DocumentViewerPanel({
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
-      <div className="shrink-0 border-b border-border px-4 py-3">
+      <div className="border-border shrink-0 border-b px-4 py-3">
         <div className="flex items-start justify-between gap-2">
           {isLoading ? (
             <Skeleton className="h-6 w-48" />
@@ -388,20 +342,20 @@ export function DocumentViewerPanel({
               <button
                 type="button"
                 onClick={onClose}
-                className="mb-2 flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground lg:hidden"
+                className="text-muted-foreground hover:text-foreground mb-2 flex items-center gap-1 text-xs transition-colors lg:hidden"
               >
                 <ArrowLeftIcon className="size-3" />
                 Back to results
               </button>
-              <h2 className="flex items-center gap-2 break-all text-sm font-semibold">
-                <FileTextIcon className="size-4 shrink-0 text-muted-foreground" />
+              <h2 className="flex items-center gap-2 text-sm font-semibold break-all">
+                <FileTextIcon className="text-muted-foreground size-4 shrink-0" />
                 {doc?.title ?? doc?.sourceKey ?? 'Document'}
               </h2>
               {doc?.description && (
-                <p className="mt-1 pl-6 text-xs leading-relaxed text-muted-foreground">{doc.description}</p>
+                <p className="text-muted-foreground mt-1 pl-6 text-xs leading-relaxed">{doc.description}</p>
               )}
               {doc?.sourceKey && (
-                <p className="mt-0.5 truncate pl-6 font-mono text-xs text-muted-foreground">{doc.sourceKey}</p>
+                <p className="text-muted-foreground mt-0.5 truncate pl-6 font-mono text-xs">{doc.sourceKey}</p>
               )}
             </div>
           )}
@@ -410,18 +364,18 @@ export function DocumentViewerPanel({
               <button
                 type="button"
                 onClick={handleDownload}
-                className="rounded-md p-1 transition-colors hover:bg-muted"
+                className="hover:bg-muted rounded-md p-1 transition-colors"
                 title="Download original"
               >
-                <DownloadIcon className="size-4 text-muted-foreground" />
+                <DownloadIcon className="text-muted-foreground size-4" />
               </button>
             )}
             <button
               type="button"
               onClick={onClose}
-              className="hidden rounded-md p-1 transition-colors hover:bg-muted lg:block"
+              className="hover:bg-muted hidden rounded-md p-1 transition-colors lg:block"
             >
-              <XIcon className="size-4 text-muted-foreground" />
+              <XIcon className="text-muted-foreground size-4" />
             </button>
           </div>
         </div>
@@ -444,7 +398,7 @@ export function DocumentViewerPanel({
             )}
             {parsedError && (
               <button type="button" onClick={() => refetchParsed()}>
-                <Badge variant="outline" className="text-2xs gap-1 cursor-pointer text-amber-600 dark:text-amber-400">
+                <Badge variant="outline" className="text-2xs cursor-pointer gap-1 text-amber-600 dark:text-amber-400">
                   <AlertCircleIcon className="size-2.5" />
                   Full content unavailable — retry
                 </Badge>
@@ -456,24 +410,24 @@ export function DocumentViewerPanel({
 
       {/* Navigator bar — works for both chunk and keyword modes */}
       {nav.matchCount > 0 && (
-        <div className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-1.5">
+        <div className="border-border flex shrink-0 items-center gap-2 border-b px-4 py-1.5">
           <button
             type="button"
             onClick={nav.goPrev}
-            className="rounded p-0.5 transition-colors hover:bg-muted"
+            className="hover:bg-muted rounded p-0.5 transition-colors"
             title="Previous (Shift+F3)"
           >
-            <ChevronUpIcon className="size-3.5 text-muted-foreground" />
+            <ChevronUpIcon className="text-muted-foreground size-3.5" />
           </button>
           <button
             type="button"
             onClick={nav.goNext}
-            className="rounded p-0.5 transition-colors hover:bg-muted"
+            className="hover:bg-muted rounded p-0.5 transition-colors"
             title="Next (F3)"
           >
-            <ChevronDownIcon className="size-3.5 text-muted-foreground" />
+            <ChevronDownIcon className="text-muted-foreground size-3.5" />
           </button>
-          <span className="text-xs text-muted-foreground">
+          <span className="text-muted-foreground text-xs">
             {navLabel} {Math.max(0, nav.activeIndex) + 1} of {nav.matchCount}
           </span>
         </div>
@@ -491,8 +445,8 @@ export function DocumentViewerPanel({
         </div>
       ) : chunksError ? (
         <div className="flex flex-col items-center gap-3 p-8 text-center">
-          <AlertCircleIcon className="size-8 text-muted-foreground" />
-          <p className="text-sm text-muted-foreground">Failed to load document content</p>
+          <AlertCircleIcon className="text-muted-foreground size-8" />
+          <p className="text-muted-foreground text-sm">Failed to load document content</p>
           <Button variant="outline" size="sm" onClick={() => refetchChunks()}>
             <RefreshCwIcon className="mr-1.5 size-3.5" />
             Retry

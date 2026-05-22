@@ -10,8 +10,8 @@ const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://typhoon:typhoon@l
 const db = createDb(DATABASE_URL);
 
 const IDS = {
-  syncTarget1: '00000000-5eed-0000-0000-000000000001',
-  syncTarget2: '00000000-5eed-0000-0000-000000000002',
+  syncTarget1: '00000000-5eed-4000-8000-000000000001',
+  syncTarget2: '00000000-5eed-4000-8000-000000000002',
 };
 
 const existing = await db.select().from(syncTargets).where(eq(syncTargets.id, IDS.syncTarget1));
@@ -25,7 +25,8 @@ await db.insert(syncTargets).values([
     id: IDS.syncTarget1,
     name: 'Support Docs',
     sourceType: 's3',
-    config: { bucket: 'typhoon-documents', prefix: 'support/' },
+    source: 's3-default',
+    config: { prefix: 'support/' },
     cronSchedule: '0 */6 * * *',
     isActive: true,
   },
@@ -33,7 +34,8 @@ await db.insert(syncTargets).values([
     id: IDS.syncTarget2,
     name: 'Product Guides',
     sourceType: 's3',
-    config: { bucket: 'typhoon-documents', prefix: 'guides/' },
+    source: 's3-default',
+    config: { prefix: 'guides/' },
     cronSchedule: '0 0 * * *',
     isActive: true,
   },

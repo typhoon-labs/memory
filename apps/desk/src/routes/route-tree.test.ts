@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { validateSearchDocuments, validateSearchSearch } from './route-tree';
+
+import { routeTree, validateSearchDocuments, validateSearchSearch } from './route-tree';
 
 describe('validateSearchSearch', () => {
   it('returns all undefined for empty input', () => {
@@ -95,5 +96,71 @@ describe('validateSearchDocuments', () => {
   it('parses all params together', () => {
     const result = validateSearchDocuments({ source: 'src-1', type: 'Word', filter: 'readme', doc: 'doc-1' });
     expect(result).toEqual({ source: 'src-1', type: 'Word', filter: 'readme', doc: 'doc-1' });
+  });
+});
+
+describe('validateSearchSearch — edge cases', () => {
+  it('rejects null q value', () => {
+    expect(validateSearchSearch({ q: null }).q).toBeUndefined();
+  });
+
+  it('rejects expanded as number', () => {
+    expect(validateSearchSearch({ expanded: 1 }).expanded).toBeUndefined();
+  });
+
+  it('rejects doc as number', () => {
+    expect(validateSearchSearch({ doc: 42 }).doc).toBeUndefined();
+  });
+
+  it('handles negative numeric chunk', () => {
+    expect(validateSearchSearch({ chunk: '-1' }).chunk).toBe(-1);
+  });
+
+  it('rejects chunk as boolean', () => {
+    expect(validateSearchSearch({ chunk: true }).chunk).toBeUndefined();
+  });
+});
+
+describe('validateSearchDocuments — edge cases', () => {
+  it('handles empty string values', () => {
+    const result = validateSearchDocuments({ source: '', type: '', filter: '', doc: '' });
+    expect(result).toEqual({ source: '', type: '', filter: '', doc: '' });
+  });
+
+  it('rejects array values', () => {
+    const result = validateSearchDocuments({ source: ['a'], type: ['b'] });
+    expect(result.source).toBeUndefined();
+    expect(result.type).toBeUndefined();
+  });
+});
+
+describe('routeTree', () => {
+  it('exports a valid route tree', () => {
+    expect(routeTree).toBeTruthy();
+    // The route tree should have children (login + authenticated)
+    expect((routeTree as { children?: unknown[] }).children).toBeTruthy();
+  });
+
+  it('all getParentRoute callbacks return a truthy parent', () => {
+    function collectRoutes(
+      route: { options?: { path?: string }; children?: unknown[] },
+      acc: Array<{ options?: { path?: string; getParentRoute?: () => unknown } }> = [],
+    ) {
+      acc.push(route as { options?: { path?: string; getParentRoute?: () => unknown } });
+      const children = (route as { children?: unknown[] }).children;
+      if (Array.isArray(children)) {
+        for (const child of children) collectRoutes(child as typeof route, acc);
+      }
+      return acc;
+    }
+
+    const allRoutes = collectRoutes(routeTree as unknown as Parameters<typeof collectRoutes>[0]);
+    const routesWithParent = allRoutes.filter((route) => typeof route.options?.getParentRoute === 'function');
+    // We expect at least 5 routes with getParentRoute in desk
+    expect(routesWithParent.length).toBeGreaterThanOrEqual(5);
+    for (const route of routesWithParent) {
+      const parent = route.options?.getParentRoute?.();
+      expect(parent).toBeTruthy();
+    }
   });
 });

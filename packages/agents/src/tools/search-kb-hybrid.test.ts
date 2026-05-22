@@ -35,7 +35,7 @@ vi.mock('@mastra/rag', () => ({
 vi.mock('@typhoon/ai', () => ({
   createEmbeddingModel: mockCreateEmbeddingModel,
   createRerankerScorer: mockCreateRerankerScorer,
-  EMBEDDING_MAX_CHARS: 50_000,
+  EMBEDDING_MAX_CHARS: 2_000,
   RAG_RERANK_WEIGHTS: { semantic: 1.0, vector: 0, position: 0 },
   RAG_RERANK_MIN_SCORE: 0.1,
   RAG_RERANK_CANDIDATES: 100,
@@ -104,7 +104,6 @@ describe('searchKnowledgeBaseHybrid', () => {
   });
 
   it('rejects queryText exceeding embedding char limit', () => {
-    // biome-ignore lint/suspicious/noExplicitAny: mock returns raw config, Zod schema has safeParse at runtime
     const schema = searchKnowledgeBaseHybrid.inputSchema as any;
     const result = schema.safeParse({ queryText: 'x'.repeat(50_001), topK: 5 });
     expect(result.success).toBe(false);

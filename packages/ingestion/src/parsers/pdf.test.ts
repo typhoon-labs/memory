@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+
 import {
   buildHeadingMap,
   buildHtml,
@@ -306,5 +307,116 @@ describe('buildHtml', () => {
     const html = buildHtml(lines, new Map());
     expect(html).toContain('<p>Paragraph 1</p>');
     expect(html).toContain('<p>Paragraph 2</p>');
+  });
+
+  it('joins consecutive lines into a single paragraph when gap is small', () => {
+    // Two lines within 1.8x fontSize spacing
+    const lines = [
+      makeLine(100, 'First line'),
+      makeLine(114, 'Second line'), // gap = 14 < 12 * 1.8 = 21.6
+    ];
+    const html = buildHtml(lines, new Map());
+    // Both should be in a single <p> tag
+    expect(html).toContain('<p>First line\nSecond line</p>');
+  });
+
+  it('handles transition from table to body text', () => {
+    function tableRow(y: number) {
+      return {
+        y,
+        items: [
+          { str: 'Col1', x: 70, fontSize: 12, fontName: 'Arial', width: 30 },
+          { str: 'Col2', x: 200, fontSize: 12, fontName: 'Arial', width: 30 },
+        ],
+      };
+    }
+    const lines = [tableRow(100), tableRow(120), tableRow(140), makeLine(200, 'After table text')];
+    const html = buildHtml(lines, new Map());
+    expect(html).toContain('</tbody></table>');
+    expect(html).toContain('<p>After table text</p>');
+  });
+
+  it('handles transition from list to body text', () => {
+    const lines = [
+      makeLine(80, 'Body text to establish baseline', 12, 60),
+      makeLine(100, 'More body text', 12, 60),
+      { y: 120, items: [{ str: '- Bullet', x: 100, fontSize: 12, fontName: 'Arial', width: 60 }] },
+      makeLine(160, 'Text after list', 12, 60),
+    ];
+    const html = buildHtml(lines, new Map());
+    expect(html).toContain('<ul>');
+    expect(html).toContain('</ul>');
+    expect(html).toContain('<p>Text after list</p>');
+  });
+
+  it('skips empty lines (no items)', () => {
+    const lines = [makeLine(100, 'Valid text'), { y: 120, items: [] }, makeLine(200, 'More text')];
+    const html = buildHtml(lines, new Map());
+    expect(html).toContain('Valid text');
+    expect(html).toContain('More text');
+  });
+});
+
+describe('parsePdf', () => {
+  it('is exported as a function', async () => {
+    const { parsePdf } = await import('./pdf');
+    expect(typeof parsePdf).toBe('function');
+  });
+});
+
+describe('getBodyXBaseline — edge cases', () => {
+  it('ignores heading lines when determining baseline', () => {
+    const headingMap = new Map([[18, 'h1']]);
+    const lines = [
+      { y: 80, items: [{ str: 'Heading', x: 40, fontSize: 18, fontName: 'Arial', width: 50 }] },
+      { y: 100, items: [{ str: 'Body 1', x: 72, fontSize: 12, fontName: 'Arial', width: 30 }] },
+      { y: 120, items: [{ str: 'Body 2', x: 72, fontSize: 12, fontName: 'Arial', width: 30 }] },
+      { y: 140, items: [{ str: 'Body 3', x: 72, fontSize: 12, fontName: 'Arial', width: 30 }] },
+    ];
+    expect(getBodyXBaseline(lines, headingMap)).toBe(72);
+  });
+
+  it('ignores lines with no items', () => {
+    const lines = [{ y: 100, items: [] }];
+    // Falls back to default 60
+    expect(getBodyXBaseline(lines, new Map())).toBe(60);
+  });
+});
+
+describe('detectTableRegions — edge cases', () => {
+  function makeLine(y: number, xs: number[], fontSize = 12) {
+    return {
+      y,
+      items: xs.map((x) => ({ str: `col`, x, fontSize, fontName: 'Arial', width: 30 })),
+    };
+  }
+
+  it('detects multiple separate table regions', () => {
+    const lines = [
+      makeLine(100, [70, 200]),
+      makeLine(120, [70, 200]),
+      makeLine(140, [70, 200]),
+      // Non-table line breaks the region
+      { y: 160, items: [{ str: 'text', x: 70, fontSize: 12, fontName: 'Arial', width: 50 }] },
+      makeLine(180, [70, 200, 350]),
+      makeLine(200, [70, 200, 350]),
+      makeLine(220, [70, 200, 350]),
+    ];
+    const result = detectTableRegions(lines, new Map());
+    // Should have lines from both regions
+    expect(result.has(0)).toBe(true); // first region
+    expect(result.has(4)).toBe(true); // second region
+    expect(result.has(3)).toBe(false); // break line
+  });
+
+  it('handles 4+ consecutive rows as a single region', () => {
+    const lines = [
+      makeLine(100, [70, 200]),
+      makeLine(120, [70, 200]),
+      makeLine(140, [70, 200]),
+      makeLine(160, [70, 200]),
+    ];
+    const result = detectTableRegions(lines, new Map());
+    expect(result.size).toBe(4);
   });
 });

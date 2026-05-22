@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+
 import { getMDocFormat, getParser, needsCustomParser } from './registry';
 
 describe('needsCustomParser', () => {

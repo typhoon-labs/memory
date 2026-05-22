@@ -15,6 +15,7 @@ import {
 } from '@typhoon/ui';
 import { ActivityIcon, ChevronRightIcon, ClipboardCheckIcon, SearchIcon } from 'lucide-react';
 import { useMemo, useState } from 'react';
+
 import { detailTitle, usePageTitle } from '../../hooks/use-page-title';
 import type { Span, TraceDetailResponse } from './trace-detail/shared';
 import { buildSpanTree, formatDurationMs, SPAN_CATEGORY_COLORS, SPAN_CATEGORY_LABELS } from './trace-detail/shared';
@@ -104,10 +105,10 @@ export function TraceDetailPage() {
             <PageHeader
               title={
                 <span className="flex items-center gap-1.5">
-                  <Link to="/traces" className="text-muted-foreground transition-colors hover:text-foreground">
+                  <Link to="/traces" className="text-muted-foreground hover:text-foreground transition-colors">
                     Traces
                   </Link>
-                  <ChevronRightIcon className="size-3.5 text-muted-foreground/50" />
+                  <ChevronRightIcon className="text-muted-foreground/50 size-3.5" />
                   {traceId}
                   <StatusBadge variant={STATUS_VARIANT[data.summary.status] ?? 'pending'}>
                     {data.summary.status}
@@ -154,7 +155,7 @@ export function TraceDetailPage() {
                   key={cat}
                   asChild
                   variant={typeFilter === cat ? 'default' : 'outline'}
-                  className="cursor-pointer gap-1.5 text-xs transition-colors hover:bg-accent"
+                  className="hover:bg-accent cursor-pointer gap-1.5 text-xs transition-colors"
                 >
                   <button type="button" onClick={() => setTypeFilter(typeFilter === cat ? null : cat)}>
                     <span className={`size-1.5 rounded-full ${SPAN_CATEGORY_COLORS[cat]}`} />
@@ -163,7 +164,7 @@ export function TraceDetailPage() {
                 </Badge>
               ))}
               <div className="relative ml-auto">
-                <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                <SearchIcon className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" />
                 <Input
                   value={nameFilter}
                   onChange={(e) => setNameFilter(e.target.value)}
@@ -182,7 +183,7 @@ export function TraceDetailPage() {
                   traceDurationMs={traceDurationMs}
                   nameFilter={nameFilter}
                   typeFilter={typeFilter}
-                  onSelectSpan={(s: Span) => navigate({ search: { span: s.spanId }, replace: true })}
+                  onSelectSpan={(s: Span) => navigate({ search: { span: s.spanId } as never, replace: true })}
                 />
               ) : (
                 <EmptyState
@@ -198,7 +199,7 @@ export function TraceDetailPage() {
               span={selectedSpan}
               open={selectedSpan !== null}
               onOpenChange={(open) => {
-                if (!open) navigate({ search: { span: undefined }, replace: true });
+                if (!open) navigate({ search: { span: undefined } as never, replace: true });
               }}
             />
           </>

@@ -9,16 +9,25 @@
  * validating that the credentials it receives are correct for its type.
  */
 
+/** Credential values may be strings, booleans, or undefined (for optional fields using the AWS SDK default credential chain). */
+export type CredentialValue = string | boolean | undefined;
+
 export interface NamedSource {
   readonly name: string;
   readonly sourceType: string;
-  readonly credentials: Record<string, string>;
+  readonly credentials: Record<string, CredentialValue>;
+  readonly config: Record<string, CredentialValue>;
 }
 
 const registry = new Map<string, NamedSource>();
 
 /** Register a named credential source. */
-export function registerSource(raw: { name: string; sourceType: string; credentials: Record<string, string> }): void {
+export function registerSource(raw: {
+  name: string;
+  sourceType: string;
+  credentials: Record<string, CredentialValue>;
+  config?: Record<string, CredentialValue>;
+}): void {
   if (!raw.name?.trim()) throw new Error('Source name is required');
   if (!raw.sourceType?.trim()) throw new Error('Source sourceType is required');
 
@@ -26,7 +35,7 @@ export function registerSource(raw: { name: string; sourceType: string; credenti
   if (registry.has(name)) {
     throw new Error(`Source "${name}" is already registered`);
   }
-  registry.set(name, { name, sourceType: raw.sourceType, credentials: raw.credentials });
+  registry.set(name, { name, sourceType: raw.sourceType, credentials: raw.credentials, config: raw.config ?? {} });
 }
 
 export function getSource(name: string): NamedSource | undefined {

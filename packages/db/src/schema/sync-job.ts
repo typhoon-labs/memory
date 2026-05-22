@@ -1,4 +1,5 @@
 import { index, integer, pgEnum, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+
 import { syncTargets } from './sync-target';
 
 export const syncJobStatusEnum = pgEnum('sync_job_status', ['running', 'completed', 'failed', 'cancelled']);

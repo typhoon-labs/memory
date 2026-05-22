@@ -1,4 +1,5 @@
-import { createContext, type KeyboardEvent, type ReactNode, useCallback, useContext, useRef } from 'react';
+import { createContext, type KeyboardEvent, type ReactNode, useCallback, useContext, useMemo, useRef } from 'react';
+
 import { cn } from '../../lib/utils';
 
 // =============================================================================
@@ -24,8 +25,9 @@ export function PromptInput({
   onSubmit: () => void;
   className?: string;
 }) {
+  const ctxValue = useMemo(() => ({ submit: onSubmit }), [onSubmit]);
   return (
-    <PromptInputContext.Provider value={{ submit: onSubmit }}>
+    <PromptInputContext.Provider value={ctxValue}>
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -74,11 +76,11 @@ export function PromptInputTextarea({
       onChange={onChange}
       onKeyDown={handleKeyDown}
       placeholder={placeholder}
-      // biome-ignore lint/a11y/noAutofocus: composer needs focus on mount
+      // oxlint-disable-next-line jsx-a11y/no-autofocus -- composer needs focus on mount
       autoFocus={autoFocus}
       rows={1}
       className={cn(
-        'min-h-[22px] max-h-[120px] flex-1 resize-none overflow-y-auto field-sizing-content bg-transparent px-1 py-0.5 text-sm leading-relaxed text-foreground placeholder:text-muted-foreground/65 focus-visible:outline-none',
+        'text-foreground placeholder:text-muted-foreground/65 field-sizing-content max-h-[120px] min-h-[22px] flex-1 resize-none overflow-y-auto bg-transparent px-1 py-0.5 text-sm leading-relaxed focus-visible:outline-none',
         className,
       )}
       {...rest}
@@ -102,7 +104,7 @@ export function PromptInputSubmit({
       type="submit"
       disabled={disabled}
       className={cn(
-        'flex size-[30px] shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-opacity hover:opacity-85 disabled:opacity-40',
+        'bg-primary text-primary-foreground flex size-[30px] shrink-0 items-center justify-center rounded-lg transition-opacity hover:opacity-85 disabled:opacity-40',
         className,
       )}
     >

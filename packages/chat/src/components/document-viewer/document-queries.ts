@@ -1,45 +1,20 @@
-import { apiFetch } from '@typhoon/ui';
+/**
+ * Re-exports document content/parsed queries from @typhoon/api-client.
+ * Kept for backward compatibility — consumers should migrate to importing
+ * directly from '@typhoon/api-client'.
+ */
+export type { DocumentContentResponse, DocumentParsedResponse } from '@typhoon/api-client';
 
-interface DocumentChunk {
-  text: string;
-  startIndex: number | null;
-}
+export { documentsQueries } from '@typhoon/api-client';
 
-interface DocumentMeta {
-  id: string;
-  title: string | null;
-  description: string | null;
-  sourceKey: string;
-  mimeType: string | null;
-  chunkCount: number;
-  fileSize: number | null;
-}
+import { documentsQueries } from '@typhoon/api-client';
 
-export interface DocumentContentResponse {
-  document: DocumentMeta;
-  chunks: DocumentChunk[];
-}
-
-export interface DocumentParsedResponse {
-  text: string;
-}
-
-const STALE_TIME = 300_000; // 5 minutes — documents don't change during a session
-
-/** Shared TanStack Query options for document content (chunks from DB — fast). */
+/** @deprecated Use `documentsQueries.chunks(docId)` from @typhoon/api-client instead. */
 export function documentContentQuery(docId: string) {
-  return {
-    queryKey: ['document-content', docId] as const,
-    queryFn: () => apiFetch<DocumentContentResponse>(`/api/v1/documents/${docId}/chunks`),
-    staleTime: STALE_TIME,
-  };
+  return documentsQueries.chunks(docId);
 }
 
-/** Shared TanStack Query options for parsed document content (from S3 — slow). */
+/** @deprecated Use `documentsQueries.parsedContent(docId)` from @typhoon/api-client instead. */
 export function documentParsedQuery(docId: string) {
-  return {
-    queryKey: ['document-parsed', docId] as const,
-    queryFn: () => apiFetch<DocumentParsedResponse>(`/api/v1/documents/${docId}/parsed-content`),
-    staleTime: STALE_TIME,
-  };
+  return documentsQueries.parsedContent(docId);
 }

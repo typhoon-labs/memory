@@ -17,6 +17,7 @@ import {
   StatCard,
 } from '@typhoon/ui';
 import { AlertTriangleIcon, CheckCircleIcon, ClockIcon, LoaderIcon, PauseCircleIcon } from 'lucide-react';
+
 import type { QueueSummary, QueueWorker } from './shared';
 import { formatSeconds } from './shared';
 
@@ -29,7 +30,7 @@ const workerColumns: ColumnDef<QueueWorker, unknown>[] = [
   {
     accessorKey: 'name',
     header: 'Name',
-    cell: ({ row }) => <span className="text-xs text-muted-foreground">{row.original.name}</span>,
+    cell: ({ row }) => <span className="text-muted-foreground text-xs">{row.original.name}</span>,
   },
   {
     accessorKey: 'age',
@@ -40,7 +41,7 @@ const workerColumns: ColumnDef<QueueWorker, unknown>[] = [
     accessorKey: 'idle',
     header: 'Idle',
     cell: ({ row }) => (
-      <span className="text-xs tabular-nums text-muted-foreground">{formatSeconds(row.original.idle)}</span>
+      <span className="text-muted-foreground text-xs tabular-nums">{formatSeconds(row.original.idle)}</span>
     ),
   },
 ];
@@ -85,7 +86,7 @@ export function OverviewTab({ queue }: { queue: QueueSummary }) {
             <DataTable data={workers} columns={workerColumns} pageSize={10} enableSorting />
           </div>
         ) : (
-          <p className="mt-2 text-sm text-muted-foreground">No workers connected.</p>
+          <p className="text-muted-foreground mt-2 text-sm">No workers connected.</p>
         )}
       </div>
 

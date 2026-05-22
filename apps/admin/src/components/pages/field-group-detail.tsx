@@ -19,8 +19,9 @@ import {
   Separator,
   Textarea,
 } from '@typhoon/ui';
-import { ChevronRightIcon, Trash2Icon } from 'lucide-react';
+import { AlertTriangleIcon, ChevronRightIcon, Trash2Icon } from 'lucide-react';
 import { useEffect, useState } from 'react';
+
 import { detailTitle, usePageTitle } from '../../hooks/use-page-title';
 import { FieldSchemaEditor, type MetadataSchema } from '../shared/field-schema-editor';
 
@@ -71,15 +72,18 @@ export function FieldGroupDetailPage() {
     },
   });
 
+  const [affectedSyncTargetCount, setAffectedSyncTargetCount] = useState(0);
+
   const updateMutation = useMutation({
     mutationFn: () =>
-      apiFetch(`/api/v1/metadata-field-groups/${groupId}`, {
+      apiFetch<{ affectedSyncTargetCount?: number }>(`/api/v1/metadata-field-groups/${groupId}`, {
         method: 'PATCH',
         body: JSON.stringify({ name: name.trim(), description: description.trim() || undefined, fields }),
       }),
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['metadata-field-groups'] });
       queryClient.invalidateQueries({ queryKey: ['metadata-field-groups', groupId] });
+      setAffectedSyncTargetCount(data?.affectedSyncTargetCount ?? 0);
     },
   });
 
@@ -102,6 +106,12 @@ export function FieldGroupDetailPage() {
 
   const isPending = createMutation.isPending || updateMutation.isPending;
 
+  const hasChanges = isCreateMode
+    ? true
+    : name.trim() !== (group?.name ?? '') ||
+      (description.trim() || '') !== (group?.description ?? '') ||
+      JSON.stringify(fields) !== JSON.stringify(group?.fields ?? {});
+
   if (!isCreateMode && isLoading) {
     return (
       <div className="flex justify-center py-12">
@@ -118,11 +128,11 @@ export function FieldGroupDetailPage() {
             <span className="flex items-center gap-1.5">
               <Link
                 to="/metadata/field-groups"
-                className="text-muted-foreground transition-colors hover:text-foreground"
+                className="text-muted-foreground hover:text-foreground transition-colors"
               >
                 Field Groups
               </Link>
-              <ChevronRightIcon className="size-3.5 text-muted-foreground/50" />
+              <ChevronRightIcon className="text-muted-foreground/50 size-3.5" />
               {isCreateMode ? 'Create' : (group?.name ?? '...')}
             </span>
           }
@@ -152,10 +162,19 @@ export function FieldGroupDetailPage() {
           }
         />
 
+        {updateMutation.isSuccess && affectedSyncTargetCount > 0 && (
+          <div className="mt-6 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+            <div className="flex items-center gap-2">
+              <AlertTriangleIcon className="size-4 shrink-0" />
+              <p>{affectedSyncTargetCount} sync source(s) affected. Run a sync to apply search index changes.</p>
+            </div>
+          </div>
+        )}
+
         <div className="mt-6 space-y-5">
           <div>
             <h2 className="text-sm font-semibold">Details</h2>
-            <p className="mt-0.5 text-sm text-muted-foreground">Basic information about this field group.</p>
+            <p className="text-muted-foreground mt-0.5 text-sm">Basic information about this field group.</p>
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="group-name">Name</Label>
@@ -174,7 +193,7 @@ export function FieldGroupDetailPage() {
 
           <div className="pt-4">
             <h2 className="text-sm font-semibold">Fields</h2>
-            <p className="mt-0.5 text-sm text-muted-foreground">Define the metadata fields in this group.</p>
+            <p className="text-muted-foreground mt-0.5 text-sm">Define the metadata fields in this group.</p>
           </div>
           <FieldSchemaEditor fields={fields} onChange={setFields} />
 
@@ -184,7 +203,7 @@ export function FieldGroupDetailPage() {
             <Button variant="outline" onClick={() => navigate({ to: '/metadata/field-groups' })}>
               Cancel
             </Button>
-            <Button onClick={handleSubmit} disabled={!name.trim() || isPending}>
+            <Button onClick={handleSubmit} disabled={!name.trim() || isPending || (!isCreateMode && !hasChanges)}>
               {isPending ? 'Saving...' : isCreateMode ? 'Create' : 'Save'}
             </Button>
           </div>

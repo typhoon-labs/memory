@@ -24,6 +24,7 @@ import {
 } from '@typhoon/ui';
 import { DatabaseIcon, FileTextIcon, SearchIcon } from 'lucide-react';
 import { useCallback, useMemo } from 'react';
+
 import { usePageTitle } from '../../hooks/use-page-title';
 
 interface Document {
@@ -93,9 +94,15 @@ export function DocumentsPage() {
   usePageTitle('Documents');
 
   const setSourceFilter = (v: string) =>
-    navigate({ search: (prev) => ({ ...prev, source: v === '__all__' ? undefined : v }), replace: true });
+    navigate({
+      search: ((prev: Record<string, unknown>) => ({ ...prev, source: v === '__all__' ? undefined : v })) as never,
+      replace: true,
+    });
   const setTypeFilter = (v: string) =>
-    navigate({ search: (prev) => ({ ...prev, type: v === '__all__' ? undefined : v }), replace: true });
+    navigate({
+      search: ((prev: Record<string, unknown>) => ({ ...prev, type: v === '__all__' ? undefined : v })) as never,
+      replace: true,
+    });
 
   const {
     inputValue: textFilter,
@@ -104,7 +111,11 @@ export function DocumentsPage() {
     handleBlur: textFilterBlur,
   } = useUrlSearchInput({
     urlValue: filter,
-    onCommit: (val) => navigate({ search: (prev) => ({ ...prev, filter: val }), replace: true }),
+    onCommit: (val) =>
+      navigate({
+        search: ((prev: Record<string, unknown>) => ({ ...prev, filter: val })) as never,
+        replace: true,
+      }),
   });
 
   const queryClient = useQueryClient();
@@ -167,7 +178,7 @@ export function DocumentsPage() {
           <div className={cn('min-w-0', row.original.status !== 'ready' && 'opacity-60')}>
             <div className="truncate font-medium">{row.original.title ?? row.original.sourceKey}</div>
             {row.original.title && (
-              <div className="truncate text-xs text-muted-foreground">{row.original.sourceKey}</div>
+              <div className="text-muted-foreground truncate text-xs">{row.original.sourceKey}</div>
             )}
           </div>
         ),
@@ -180,7 +191,7 @@ export function DocumentsPage() {
           const target = targetMap.get(row.original.syncTargetId);
           if (!target) return <span className="text-muted-foreground">{'\u2014'}</span>;
           return (
-            <span className="flex items-center gap-1.5 text-muted-foreground">
+            <span className="text-muted-foreground flex items-center gap-1.5">
               <DatabaseIcon className="size-3 shrink-0" />
               {target.name}
             </span>
@@ -214,7 +225,7 @@ export function DocumentsPage() {
           if (doc.status === 'pending' || doc.status === 'processing') {
             return <StatusBadge variant="warning">Processing</StatusBadge>;
           }
-          if (doc.status === 'parse_error' || doc.status === 'embed_error') {
+          if (doc.status === 'error') {
             return <StatusBadge variant="error">Unavailable</StatusBadge>;
           }
           const ts = doc.lastSyncedAt ?? doc.updatedAt;
@@ -244,7 +255,12 @@ export function DocumentsPage() {
               pageSize={20}
               enableSorting
               getRowId={(row) => row.id}
-              onRowClick={(row) => navigate({ search: (prev) => ({ ...prev, doc: row.id }), replace: true })}
+              onRowClick={(row) =>
+                navigate({
+                  search: ((prev: Record<string, unknown>) => ({ ...prev, doc: row.id })) as never,
+                  replace: true,
+                })
+              }
               onRowHover={prefetchDocument}
               showRowCount
               toolbar={
@@ -277,7 +293,7 @@ export function DocumentsPage() {
                     </SelectContent>
                   </Select>
                   <div className="relative ml-auto">
-                    <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                    <SearchIcon className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" />
                     <Input
                       type="text"
                       placeholder="Search..."
@@ -330,7 +346,12 @@ export function DocumentsPage() {
           key={selectedDocId}
           documentId={selectedDocId}
           searchTerms={[]}
-          onClose={() => navigate({ search: (prev) => ({ ...prev, doc: undefined }), replace: true })}
+          onClose={() =>
+            navigate({
+              search: ((prev: Record<string, unknown>) => ({ ...prev, doc: undefined })) as never,
+              replace: true,
+            })
+          }
         />
       </ResizablePanel>
     </ResizablePanelGroup>

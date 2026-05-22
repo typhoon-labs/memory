@@ -16,6 +16,7 @@ import {
 } from '@typhoon/ui';
 import { ChevronRightIcon } from 'lucide-react';
 import { useState } from 'react';
+
 import { usePageTitle } from '../../hooks/use-page-title';
 
 const SCORER_TYPES = [
@@ -61,10 +62,10 @@ export function ScorerCreatePage() {
         <PageHeader
           title={
             <span className="flex items-center gap-1.5">
-              <Link to="/scorers" className="text-muted-foreground transition-colors hover:text-foreground">
+              <Link to="/scorers" className="text-muted-foreground hover:text-foreground transition-colors">
                 Scorers
               </Link>
-              <ChevronRightIcon className="size-3.5 text-muted-foreground/50" />
+              <ChevronRightIcon className="text-muted-foreground/50 size-3.5" />
               Create
             </span>
           }
@@ -73,7 +74,7 @@ export function ScorerCreatePage() {
         <div className="mt-6 space-y-5">
           <div>
             <h2 className="text-sm font-semibold">Details</h2>
-            <p className="mt-0.5 text-sm text-muted-foreground">
+            <p className="text-muted-foreground mt-0.5 text-sm">
               Configure the scorer name, type, and evaluation criteria.
             </p>
           </div>

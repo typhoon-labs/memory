@@ -1,6 +1,7 @@
 import { MenuIcon, XIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useState } from 'react';
+
 import { cn } from '../lib/utils';
 
 // =============================================================================
@@ -70,8 +71,8 @@ function NavContent({ navGroups, renderLink }: NavContentProps): React.JSX.Eleme
     <div className="flex flex-col gap-px px-2 py-1.5">
       {navGroups.map((group: NavGroup, groupIdx: number) => (
         <div key={group.label ?? `group-${String(groupIdx)}`} className="flex flex-col gap-px">
-          {group.label != null && (
-            <p className="mb-1 mt-2.5 px-2 text-2xs font-semibold uppercase tracking-widest text-foreground/50 first:mt-1">
+          {group.label !== null && group.label !== undefined && (
+            <p className="text-2xs text-foreground/50 mt-2.5 mb-1 px-2 font-semibold tracking-widest uppercase first:mt-1">
               {group.label}
             </p>
           )}
@@ -95,7 +96,7 @@ function NavContent({ navGroups, renderLink }: NavContentProps): React.JSX.Eleme
               </div>
             );
 
-            return renderLink != null ? (
+            return renderLink !== null && renderLink !== undefined ? (
               <div key={item.href}>{renderLink(item, renderRow)}</div>
             ) : (
               <DefaultLink key={item.href} href={item.href}>
@@ -127,15 +128,15 @@ function SidebarBody({ navGroups, bottomNavGroups, userMenu, renderLink }: Sideb
         <NavContent navGroups={navGroups} renderLink={renderLink} />
       </div>
 
-      {bottomNavGroups != null && bottomNavGroups.length > 0 && (
+      {bottomNavGroups !== null && bottomNavGroups !== undefined && bottomNavGroups.length > 0 && (
         <div className="shrink-0">
           <NavContent navGroups={bottomNavGroups} renderLink={renderLink} />
         </div>
       )}
 
-      {userMenu != null && (
+      {userMenu !== null && userMenu !== undefined && (
         <div className="shrink-0 p-2">
-          <div className="h-px bg-border" />
+          <div className="bg-border h-px" />
           <div className="mt-1.5">{userMenu}</div>
         </div>
       )}
@@ -186,26 +187,26 @@ export function AppShell({
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
-    <div className={cn('flex h-screen flex-col overflow-hidden bg-background text-foreground', className)}>
+    <div className={cn('bg-background text-foreground flex h-screen flex-col overflow-hidden', className)}>
       {/* -- Header -- */}
-      <header className="relative z-10 flex h-12 shrink-0 items-center gap-3 border-b border-border bg-background px-4">
+      <header className="border-border bg-background relative z-10 flex h-12 shrink-0 items-center gap-3 border-b px-4">
         {/* Hamburger / close — mobile only */}
         <button
           type="button"
           aria-label={mobileOpen ? 'Close navigation' : 'Open navigation'}
           onClick={() => setMobileOpen((prev) => !prev)}
-          className="flex size-8 items-center justify-center text-muted-foreground md:hidden"
+          className="text-muted-foreground flex size-8 items-center justify-center md:hidden"
         >
           {mobileOpen ? <XIcon className="size-5" /> : <MenuIcon className="size-5" />}
         </button>
 
         {/* Logo / wordmark */}
-        {logo != null && <div className="flex shrink-0 items-center">{logo}</div>}
+        {logo !== null && logo !== undefined && <div className="flex shrink-0 items-center">{logo}</div>}
 
         {/* Right: topBarLeft + topBarRight */}
         <div className="ml-auto flex shrink-0 items-center gap-2">
-          {topBarLeft != null && topBarLeft}
-          {topBarRight != null && topBarRight}
+          {topBarLeft !== null && topBarLeft !== undefined && topBarLeft}
+          {topBarRight !== null && topBarRight !== undefined && topBarRight}
         </div>
       </header>
 
@@ -219,10 +220,10 @@ export function AppShell({
           )}
         >
           {/* Nav panel */}
-          {/* biome-ignore lint/a11y/useKeyWithClickEvents lint/a11y/noStaticElementInteractions: nav links inside handle keyboard */}
+          {/* oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- nav links inside handle keyboard */}
           <div
             className={cn(
-              'flex w-[200px] shrink-0 flex-col border-r border-border bg-background transition-transform duration-200 ease-out',
+              'border-border bg-background flex w-[200px] shrink-0 flex-col border-r transition-transform duration-200 ease-out',
               mobileOpen ? 'translate-x-0' : '-translate-x-full',
             )}
             onClick={() => setMobileOpen(false)}
@@ -235,7 +236,7 @@ export function AppShell({
             />
           </div>
           {/* Backdrop — tap to close */}
-          {/* biome-ignore lint/a11y/useKeyWithClickEvents lint/a11y/noStaticElementInteractions: backdrop dismiss */}
+          {/* oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- backdrop dismiss */}
           <div
             className={cn(
               'flex-1 bg-black/50 transition-opacity duration-200',
@@ -246,7 +247,7 @@ export function AppShell({
         </div>
 
         {/* -- Desktop nav sidebar -- */}
-        <nav className="relative hidden w-[200px] shrink-0 flex-col overflow-visible border-r border-border bg-background md:flex">
+        <nav className="border-border bg-background relative hidden w-[200px] shrink-0 flex-col overflow-visible border-r md:flex">
           <SidebarBody
             navGroups={navGroups}
             bottomNavGroups={bottomNavGroups}
@@ -256,7 +257,7 @@ export function AppShell({
         </nav>
 
         {/* -- Main content -- */}
-        <main className="grid grid-rows-[minmax(0,1fr)] flex-1 overflow-hidden bg-background [&>*]:h-full">
+        <main className="bg-background grid flex-1 grid-rows-[minmax(0,1fr)] overflow-hidden [&>*]:h-full">
           {children}
         </main>
       </div>

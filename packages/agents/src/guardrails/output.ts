@@ -43,7 +43,7 @@ export function createFixedBatchPartsProcessor(options: { batchSize: number }) {
         if (part?.type === 'text-delta') {
           // Text resumes — batch it so we return to normal flow
           state._batch.push(part);
-        } else if (part != null) {
+        } else if (part !== null && part !== undefined) {
           // Another non-text part — re-defer it
           state._pendingPart = part;
         }
@@ -71,7 +71,7 @@ export function createFixedBatchPartsProcessor(options: { batchSize: number }) {
       // No pending text — pass through directly
       return part;
     },
-    // biome-ignore lint/suspicious/noExplicitAny: flush state is untyped in Mastra
+    // oxlint-disable-next-line @typescript-eslint/no-explicit-any -- flush state is untyped in Mastra
     flush(state?: any) {
       if (!state) return null;
       if (state._pendingPart) {
@@ -86,20 +86,20 @@ export function createFixedBatchPartsProcessor(options: { batchSize: number }) {
     },
   };
 
-  // biome-ignore lint/suspicious/noExplicitAny: processor state is untyped in Mastra
+  // oxlint-disable-next-line @typescript-eslint/no-explicit-any -- processor state is untyped in Mastra
   function flushTextBatch(state: Record<string, any>) {
     const batch = state._batch;
     state._batch = [];
     if (batch.length === 0) return null;
     if (batch.length === 1) {
       const single = batch[0];
-      if (single?.type === 'text-delta' && state._activeTextId != null) {
+      if (single?.type === 'text-delta' && state._activeTextId !== null && state._activeTextId !== undefined) {
         single.payload.id = state._activeTextId;
       }
       return single ?? null;
     }
     const combinedText = batch
-      // biome-ignore lint/suspicious/noExplicitAny: ChunkType payload varies by type
+      // oxlint-disable-next-line @typescript-eslint/no-explicit-any -- ChunkType payload varies by type
       .map((p: any) => (p.type === 'text-delta' ? p.payload.text : ''))
       .join('');
     return {
@@ -150,7 +150,7 @@ export function createOutputGuardrails(
       outputSchema: ProcessorStepSchema,
     })
       .then(createStep(createFixedBatchPartsProcessor({ batchSize: 10 })))
-      // biome-ignore lint/style/noNonNullAssertion: guarded by steps.length === 1
+      // oxlint-disable-next-line @typescript-eslint/no-non-null-assertion -- guarded by steps.length === 1
       .then(steps[0]!)
       .commit() as unknown as ProcessorWorkflow;
     return [workflow];

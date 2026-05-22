@@ -10,7 +10,10 @@ vi.mock('bullmq', () => ({
   },
 }));
 
+import { RedisProvider } from './redis-provider';
 import { createQueueRegistry } from './registry';
+
+const redis = new RedisProvider({ REDIS_URL: 'redis://localhost:6379' });
 
 describe('createQueueRegistry', () => {
   afterEach(() => {
@@ -19,7 +22,7 @@ describe('createQueueRegistry', () => {
 
   it('init creates a queue and returns it', () => {
     const registry = createQueueRegistry();
-    const queue = registry.init('sync', 'redis://localhost:6379');
+    const queue = registry.init('sync', redis);
 
     expect(queue).toBeDefined();
     expect(queue.name).toBe('sync');
@@ -27,20 +30,20 @@ describe('createQueueRegistry', () => {
 
   it('init is idempotent — returns same queue on repeated calls', () => {
     const registry = createQueueRegistry();
-    const first = registry.init('sync', 'redis://localhost:6379');
-    const second = registry.init('sync', 'redis://localhost:6379');
+    const first = registry.init('sync', redis);
+    const second = registry.init('sync', redis);
 
     expect(first).toBe(second);
   });
 
   it('init throws for unknown queue name', () => {
     const registry = createQueueRegistry();
-    expect(() => registry.init('unknown', 'redis://localhost:6379')).toThrow('Unknown queue: unknown');
+    expect(() => registry.init('unknown', redis)).toThrow('Unknown queue: unknown');
   });
 
   it('get returns queue after init', () => {
     const registry = createQueueRegistry();
-    const queue = registry.init('scoring', 'redis://localhost:6379');
+    const queue = registry.init('scoring', redis);
     expect(registry.get('scoring')).toBe(queue);
   });
 
@@ -51,8 +54,8 @@ describe('createQueueRegistry', () => {
 
   it('getAll returns all initialized queues', () => {
     const registry = createQueueRegistry();
-    registry.init('sync', 'redis://localhost:6379');
-    registry.init('scoring', 'redis://localhost:6379');
+    registry.init('sync', redis);
+    registry.init('scoring', redis);
 
     const all = registry.getAll();
     expect(all.size).toBe(2);
@@ -62,8 +65,8 @@ describe('createQueueRegistry', () => {
 
   it('shutdown closes all queues', async () => {
     const registry = createQueueRegistry();
-    const sync = registry.init('sync', 'redis://localhost:6379');
-    const scoring = registry.init('scoring', 'redis://localhost:6379');
+    const sync = registry.init('sync', redis);
+    const scoring = registry.init('scoring', redis);
 
     await registry.shutdown();
 
@@ -71,13 +74,10 @@ describe('createQueueRegistry', () => {
     expect(scoring.close).toHaveBeenCalledTimes(1);
   });
 
-  it('supports custom queue factories via extraFactories', () => {
-    const customFactory = vi.fn().mockReturnValue({ name: 'custom', close: vi.fn() });
-    const registry = createQueueRegistry({ custom: customFactory });
-
-    const queue = registry.init('custom', 'redis://localhost:6379');
-
-    expect(customFactory).toHaveBeenCalledWith({ url: 'redis://localhost:6379' });
+  it('supports custom queue defaults via extraDefaults', () => {
+    const registry = createQueueRegistry({ custom: { attempts: 5 } });
+    const queue = registry.init('custom', redis);
+    expect(queue).toBeDefined();
     expect(queue.name).toBe('custom');
   });
 });

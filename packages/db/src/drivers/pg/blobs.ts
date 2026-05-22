@@ -1,5 +1,6 @@
 import { BlobStore } from '@mastra/core/storage';
 import { eq, inArray } from 'drizzle-orm';
+
 import type { Db } from '../../client';
 import { skillBlobs } from '../../schema/blobs';
 
@@ -14,7 +15,7 @@ export class DrizzleBlobsStorage extends BlobStore {
     await this.db.delete(skillBlobs);
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: Mastra StorageBlobEntry type
+  // oxlint-disable-next-line @typescript-eslint/no-explicit-any -- Mastra StorageBlobEntry type
   async put(entry: any) {
     await this.db
       .insert(skillBlobs)
@@ -28,7 +29,7 @@ export class DrizzleBlobsStorage extends BlobStore {
       .onConflictDoNothing({ target: skillBlobs.hash });
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: Mastra types
+  // oxlint-disable-next-line @typescript-eslint/no-explicit-any -- Mastra types
   async get(hash: string): Promise<any> {
     const [row] = await this.db.select().from(skillBlobs).where(eq(skillBlobs.hash, hash));
     return row ?? null;
@@ -48,14 +49,15 @@ export class DrizzleBlobsStorage extends BlobStore {
     return result.length > 0;
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: Mastra types
+  // oxlint-disable-next-line @typescript-eslint/no-explicit-any -- Mastra types
   async putMany(entries: any[]) {
     for (const entry of entries) {
+      // oxlint-disable-next-line no-await-in-loop -- sequential DB writes via upsert
       await this.put(entry);
     }
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: Mastra types
+  // oxlint-disable-next-line @typescript-eslint/no-explicit-any -- Mastra types
   async getMany(hashes: string[]): Promise<Map<string, any>> {
     if (hashes.length === 0) return new Map();
     const rows = await this.db.select().from(skillBlobs).where(inArray(skillBlobs.hash, hashes));

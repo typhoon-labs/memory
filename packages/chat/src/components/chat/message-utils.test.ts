@@ -1,5 +1,6 @@
 import type { UIMessage } from '@ai-sdk/react';
 import { describe, expect, it } from 'vitest';
+
 import {
   collectProgressEvents,
   extractCitations,

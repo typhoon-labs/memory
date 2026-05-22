@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest';
+
 import type { MetadataSchema } from './metadata';
 import {
   applySchemaDefaults,
+  buildDocumentMetadataSchema,
   buildZodFromMetadataSchema,
   createMetadataFieldGroupSchema,
   createMetadataTemplateSchema,
+  metadataFieldDefinitionSchema,
   resolveTemplateSchema,
+  SEARCH_PRIORITY_TO_WEIGHT,
   validateCustomMetadata,
 } from './metadata';
 
@@ -166,6 +170,43 @@ describe('validateCustomMetadata', () => {
 });
 
 // =============================================================================
+// buildDocumentMetadataSchema
+// =============================================================================
+
+describe('buildDocumentMetadataSchema', () => {
+  it('returns schema with just title and description when no metadataSchema provided', () => {
+    const zod = buildDocumentMetadataSchema();
+    const result = zod.safeParse({ title: 'My Title', description: 'A description' });
+    expect(result.success).toBe(true);
+    // Should only have title and description keys
+    const keys = Object.keys(zod.shape);
+    expect(keys).toEqual(['title', 'description']);
+  });
+
+  it('returns schema with title, description, and custom fields when metadataSchema provided', () => {
+    const schema: MetadataSchema = {
+      country: { type: 'string', allowedValues: ['US', 'DE'] },
+      priority: { type: 'number' },
+    };
+    const zod = buildDocumentMetadataSchema(schema);
+    const keys = Object.keys(zod.shape);
+    expect(keys).toContain('title');
+    expect(keys).toContain('description');
+    expect(keys).toContain('country');
+    expect(keys).toContain('priority');
+
+    const result = zod.safeParse({ title: 'Doc', description: 'Desc', country: 'US', priority: 1 });
+    expect(result.success).toBe(true);
+  });
+
+  it('returns schema with just title and description when metadataSchema is empty', () => {
+    const zod = buildDocumentMetadataSchema({});
+    const keys = Object.keys(zod.shape);
+    expect(keys).toEqual(['title', 'description']);
+  });
+});
+
+// =============================================================================
 // buildZodFromMetadataSchema
 // =============================================================================
 
@@ -182,11 +223,12 @@ describe('buildZodFromMetadataSchema', () => {
     expect(result.success).toBe(true);
   });
 
-  it('makes all fields optional', () => {
+  it('makes all fields nullable', () => {
     const schema: MetadataSchema = { name: { type: 'string', required: true } };
     const zod = buildZodFromMetadataSchema(schema);
-    const result = zod.safeParse({});
-    expect(result.success).toBe(true);
+    // Nullable fields accept null but are still required keys
+    expect(zod.safeParse({ name: null }).success).toBe(true);
+    expect(zod.safeParse({ name: 'test' }).success).toBe(true);
   });
 
   it('uses z.enum for fields with allowedValues', () => {
@@ -194,6 +236,14 @@ describe('buildZodFromMetadataSchema', () => {
     const zod = buildZodFromMetadataSchema(schema);
     expect(zod.safeParse({ region: 'us' }).success).toBe(true);
     expect(zod.safeParse({ region: 'invalid' }).success).toBe(false);
+  });
+
+  it('uses z.array(z.enum) for string[] fields with allowedValues', () => {
+    const schema: MetadataSchema = { region: { type: 'string[]', allowedValues: ['us', 'eu', 'global'] } };
+    const zod = buildZodFromMetadataSchema(schema);
+    expect(zod.safeParse({ region: ['us', 'eu'] }).success).toBe(true);
+    expect(zod.safeParse({ region: ['invalid'] }).success).toBe(false);
+    expect(zod.safeParse({ region: 'us' }).success).toBe(false); // must be array
   });
 });
 
@@ -247,5 +297,67 @@ describe('createMetadataTemplateSchema', () => {
     const result = createMetadataTemplateSchema.parse({ name: 'Minimal' });
     expect(result.fieldGroupIds).toEqual([]);
     expect(result.customFields).toEqual({});
+  });
+});
+
+// =============================================================================
+// Search priority & searchable field properties
+// =============================================================================
+
+describe('metadataFieldDefinitionSchema — search fields', () => {
+  it('accepts searchable and searchPriority', () => {
+    const result = metadataFieldDefinitionSchema.safeParse({
+      type: 'string',
+      searchable: true,
+      searchPriority: 'high',
+    });
+    expect(result.success).toBe(true);
+    expect(result.data).toMatchObject({ searchable: true, searchPriority: 'high' });
+  });
+
+  it('accepts all valid search priorities', () => {
+    for (const p of ['critical', 'high', 'moderate', 'standard']) {
+      const result = metadataFieldDefinitionSchema.safeParse({ type: 'string', searchPriority: p });
+      expect(result.success).toBe(true);
+    }
+  });
+
+  it('rejects invalid search priority', () => {
+    const result = metadataFieldDefinitionSchema.safeParse({ type: 'string', searchPriority: 'ultra' });
+    expect(result.success).toBe(false);
+  });
+
+  it('allows omitting searchable and searchPriority', () => {
+    const result = metadataFieldDefinitionSchema.safeParse({ type: 'number' });
+    expect(result.success).toBe(true);
+    expect(result.data).not.toHaveProperty('searchable');
+    expect(result.data).not.toHaveProperty('searchPriority');
+  });
+});
+
+describe('SEARCH_PRIORITY_TO_WEIGHT', () => {
+  it('maps all priorities to PostgreSQL weight tiers', () => {
+    expect(SEARCH_PRIORITY_TO_WEIGHT).toEqual({
+      critical: 'A',
+      high: 'B',
+      moderate: 'C',
+      standard: 'D',
+    });
+  });
+});
+
+describe('validateCustomMetadata — reserved _searchMeta_* keys', () => {
+  it('rejects _searchMeta_A as a custom metadata key', () => {
+    const result = validateCustomMetadata({ _searchMeta_A: 'test' }, { _searchMeta_A: { type: 'string' } });
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes('reserved'))).toBe(true);
+  });
+
+  it('rejects all _searchMeta_ tiers', () => {
+    for (const tier of ['A', 'B', 'C', 'D']) {
+      const key = `_searchMeta_${tier}`;
+      const result = validateCustomMetadata({ [key]: 'test' }, { [key]: { type: 'string' } });
+      expect(result.valid).toBe(false);
+    }
   });
 });

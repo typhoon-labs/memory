@@ -6,7 +6,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./drivers/pg": "./src/drivers/pg/index.ts",
-    "./queries": "./src/queries/index.ts",
+    "./repos": "./src/repos/index.ts",
+    "./repos/test-utils": "./src/repos/test-utils.ts",
     "./connection": "./src/connection.ts"
   },
   "scripts": {
@@ -16,7 +17,7 @@
     "db:push": "drizzle-kit push"
   },
   "dependencies": {
-    "@mastra/core": "^1.22.0",
+    "@mastra/core": "^1.27.0",
     "@typhoon/config": "workspace:*",
     "@typhoon/types": "workspace:*",
     "drizzle-orm": "^0.45.1",

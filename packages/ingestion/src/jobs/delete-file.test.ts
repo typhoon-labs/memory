@@ -1,10 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
 
-vi.mock('@typhoon/db', () => ({
-  documents: 'documents',
-  syncTargets: 'syncTargets',
-}));
-vi.mock('drizzle-orm', () => ({ eq: vi.fn((_col, val) => val) }));
 vi.mock('../pipeline.js', () => ({
   deleteDocumentVectors: vi.fn(async () => {}),
 }));
@@ -23,18 +18,22 @@ import { deleteDocumentVectors } from '../pipeline';
 import { getProvider } from '../providers/index';
 import { handleDeleteFileJob } from './delete-file';
 
-function mockDb() {
+function mockRepos(target?: Record<string, unknown> | null) {
   return {
-    select: vi.fn(() => ({
-      from: vi.fn(() => ({
-        where: vi.fn(async () => []),
-      })),
-    })),
-    update: vi.fn(() => ({
-      set: vi.fn(() => ({
-        where: vi.fn(async () => {}),
-      })),
-    })),
+    syncTargetRepo: {
+      findById: vi.fn(async () => target ?? null),
+    },
+    syncJobRepo: {
+      findStatusById: vi.fn(async () => 'running'),
+      incrementCompletion: vi.fn(async () => null),
+      markCompleted: vi.fn(async () => {}),
+    },
+    documentRepo: {
+      markDeleted: vi.fn(async () => {}),
+    },
+    metadataRepo: {
+      resolveEffectiveSchema: vi.fn(async () => null),
+    },
   };
 }
 
@@ -44,37 +43,32 @@ function mockJob(data = { documentId: 'doc-1', sourceKey: undefined, sourceType:
 
 describe('handleDeleteFileJob', () => {
   it('deletes vectors and updates document status', async () => {
-    const db = mockDb();
+    const repos = mockRepos();
     const vectorStore = {};
     const job = mockJob();
-    await handleDeleteFileJob(job as never, db as never, vectorStore as never);
+    await handleDeleteFileJob(job as never, repos as never, vectorStore as never);
     expect(deleteDocumentVectors).toHaveBeenCalledWith(vectorStore, 'doc-1');
-    expect(db.update).toHaveBeenCalled();
+    expect(repos.documentRepo.markDeleted).toHaveBeenCalledWith('doc-1');
   });
 
   it('skips source deletion when no source info', async () => {
-    const db = mockDb();
+    const repos = mockRepos();
     const job = mockJob();
-    await handleDeleteFileJob(job as never, db as never, {} as never);
+    await handleDeleteFileJob(job as never, repos as never, {} as never);
     expect(getProvider).not.toHaveBeenCalled();
   });
 
   it('attempts source deletion when source info provided', async () => {
     const mockDeleteObj = vi.fn(async () => {});
     vi.mocked(getProvider).mockReturnValue({ deleteObject: mockDeleteObj } as never);
-    const db = mockDb();
-    db.select.mockReturnValue({
-      from: vi.fn(() => ({
-        where: vi.fn(async () => [{ id: 'st-1', config: {}, source: 'src' }]),
-      })),
-    });
+    const repos = mockRepos({ id: 'st-1', config: {}, source: 'src' });
     const job = mockJob({
       documentId: 'doc-1',
       sourceKey: 'file.pdf',
       sourceType: 's3',
       syncTargetId: 'st-1',
     } as never);
-    await handleDeleteFileJob(job as never, db as never, {} as never);
+    await handleDeleteFileJob(job as never, repos as never, {} as never);
     expect(mockDeleteObj).toHaveBeenCalled();
   });
 
@@ -84,37 +78,25 @@ describe('handleDeleteFileJob', () => {
         throw new Error('S3 error');
       }),
     } as never);
-    const db = mockDb();
-    db.select.mockReturnValue({
-      from: vi.fn(() => ({
-        where: vi.fn(async () => [{ id: 'st-1', config: {}, source: null }]),
-      })),
-    });
+    const repos = mockRepos({ id: 'st-1', config: {}, source: null });
     const job = mockJob({
       documentId: 'doc-1',
       sourceKey: 'file.pdf',
       sourceType: 's3',
       syncTargetId: 'st-1',
     } as never);
-    // Should NOT throw despite source deletion error
-    await handleDeleteFileJob(job as never, db as never, {} as never);
+    await expect(handleDeleteFileJob(job as never, repos as never, {} as never)).resolves.not.toThrow();
   });
 
   it('skips source deletion when provider has no deleteObject', async () => {
     vi.mocked(getProvider).mockReturnValue({} as never);
-    const db = mockDb();
-    db.select.mockReturnValue({
-      from: vi.fn(() => ({
-        where: vi.fn(async () => [{ id: 'st-1', config: {}, source: null }]),
-      })),
-    });
+    const repos = mockRepos({ id: 'st-1', config: {}, source: null });
     const job = mockJob({
       documentId: 'doc-1',
       sourceKey: 'file.pdf',
       sourceType: 's3',
       syncTargetId: 'st-1',
     } as never);
-    await handleDeleteFileJob(job as never, db as never, {} as never);
-    // No error thrown
+    await expect(handleDeleteFileJob(job as never, repos as never, {} as never)).resolves.not.toThrow();
   });
 });

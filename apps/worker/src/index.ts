@@ -1,11 +1,20 @@
 import '@typhoon/telemetry/instrumentation';
 import { listSources } from '@typhoon/ingestion';
 import { createAppLogger } from '@typhoon/logger';
+import { RedisProvider } from '@typhoon/queue';
+
 import { registerAllSources } from './config/sources';
-import { sql } from './db';
-import { startHealthServer } from './health';
-import { initVectorIndex } from './init';
-import { initExperimentQueue, initReviewsQueue, initScoringQueue, initSyncQueue, shutdownQueues } from './queue';
+import { sql } from './infra/db';
+import { startHealthServer } from './infra/health';
+import { initVectorIndex } from './infra/init';
+import {
+  initExperimentQueue,
+  initMaintenanceQueue,
+  initReviewsQueue,
+  initScoringQueue,
+  initSyncQueue,
+  shutdownQueues,
+} from './infra/queue';
 import { shutdownWorkers, startWorkers } from './workers';
 
 const log = createAppLogger('worker');
@@ -17,14 +26,15 @@ for (const s of listSources()) {
 
 await initVectorIndex(sql);
 
-const redisUrl = process.env.REDIS_URL ?? 'redis://localhost:6379';
+const redis = new RedisProvider();
 const connectionString = process.env.DATABASE_URL ?? 'postgresql://typhoon:typhoon@localhost:5432/typhoon';
 
-initSyncQueue(redisUrl);
-initScoringQueue(redisUrl);
-initReviewsQueue(redisUrl);
-initExperimentQueue(redisUrl);
-startWorkers(redisUrl, connectionString);
+initSyncQueue(redis);
+initScoringQueue(redis);
+initReviewsQueue(redis);
+initExperimentQueue(redis);
+initMaintenanceQueue(redis);
+startWorkers(redis, connectionString);
 
 const healthPort = Number(process.env.HEALTH_PORT ?? 5170);
 startHealthServer(healthPort);

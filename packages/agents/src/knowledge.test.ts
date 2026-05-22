@@ -7,7 +7,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const { MockAgent, agentCtorCalls } = vi.hoisted(() => {
   const agentCtorCalls: Array<Record<string, unknown>> = [];
   class MockAgent {
-    // biome-ignore lint/suspicious/noExplicitAny: mock captures all args
     constructor(opts: any) {
       agentCtorCalls.push(opts);
     }

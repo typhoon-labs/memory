@@ -1,5 +1,6 @@
 import { LogLevel } from '@mastra/core/logger';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { createAppLogger, TyphoonLogger } from './logger';
 
 describe('TyphoonLogger', () => {

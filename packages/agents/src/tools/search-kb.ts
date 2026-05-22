@@ -6,6 +6,7 @@ import {
   RAG_RERANK_WEIGHTS,
   RAG_VECTOR_MIN_SCORE_AGENT,
 } from '@typhoon/ai';
+
 import { withProgress } from './with-progress';
 
 export interface VectorSearchToolOptions {
@@ -55,10 +56,10 @@ export function createVectorSearchTool(options?: VectorSearchToolOptions) {
       const count = Array.isArray(output) ? output.length : 0;
       return count > 0 ? `Returned ${count} chunks.` : 'No matching chunks found.';
     },
-    // biome-ignore lint/suspicious/noExplicitAny: RagTool type uses internal path not portable across packages
+    // oxlint-disable-next-line @typescript-eslint/no-explicit-any -- RagTool type uses internal path not portable across packages
   }) as any;
 }
 
 /** Default vector search tool with reranking enabled (standalone use). */
-// biome-ignore lint/suspicious/noExplicitAny: RagTool type uses internal path not portable across packages
+// oxlint-disable-next-line @typescript-eslint/no-explicit-any -- RagTool type uses internal path not portable across packages
 export const searchKnowledgeBase: any = createVectorSearchTool({ rerank: true });

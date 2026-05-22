@@ -5,12 +5,14 @@
  * Usage: bun run test:e2e
  */
 
-import { type Browser, chromium, type Page } from 'playwright';
+import { type Browser, type BrowserContext, chromium, type Page } from 'playwright';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { ADMIN_URL, oidcLogin } from '../helpers/e2e-utils';
+
+import { ADMIN_URL, injectTestSession } from '../helpers/e2e-utils';
 
 describe('Dataset Items E2E', () => {
   let browser: Browser;
+  let context: BrowserContext;
   let page: Page;
   let datasetId: string | undefined;
   const datasetName = `E2E Items Dataset ${Date.now()}`;
@@ -22,10 +24,8 @@ describe('Dataset Items E2E', () => {
       headless: true,
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
     });
-    page = await browser.newPage();
+    ({ context, page } = await injectTestSession(browser, 'admin@typhoon.local'));
     await page.goto(ADMIN_URL);
-    await page.waitForURL('**/login', { timeout: 5_000 });
-    await oidcLogin(page, 'admin@typhoon.local', 'password', ADMIN_URL);
 
     // Create a dataset to hold test items
     const result = await page.evaluate(async (name) => {
@@ -48,6 +48,7 @@ describe('Dataset Items E2E', () => {
         }, datasetId)
         .catch(() => {});
     }
+    await context?.close();
     await browser?.close();
   });
 

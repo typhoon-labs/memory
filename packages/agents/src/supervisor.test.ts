@@ -7,7 +7,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const { MockAgent, agentCtorCalls } = vi.hoisted(() => {
   const agentCtorCalls: Array<Record<string, unknown>> = [];
   class MockAgent {
-    // biome-ignore lint/suspicious/noExplicitAny: mock constructor captures all args
     constructor(opts: any) {
       agentCtorCalls.push(opts);
     }
@@ -176,5 +175,85 @@ describe('createSupervisor', () => {
     expect(mockKnowledgeModule.createKnowledgeAgent).toHaveBeenCalledWith({ rerank: false });
     expect(mockGuardrailsModule.createInputGuardrails).toHaveBeenCalledWith(mockGuardrailModel, opts.guardrails);
     expect(mockGuardrailsModule.createOutputGuardrails).toHaveBeenCalledWith(mockGuardrailModel, opts.guardrails);
+  });
+
+  describe('threadTitle option', () => {
+    it('excludes setThreadTitle from tools when threadTitle is false', () => {
+      createSupervisor(fakeMemory, { threadTitle: false });
+      const opts = agentCtorCalls[0];
+      const tools = opts?.tools as Record<string, unknown>;
+      expect(tools).toHaveProperty('searchKnowledge');
+      expect(tools).not.toHaveProperty('setThreadTitle');
+    });
+
+    it('omits thread title section from instructions when threadTitle is false', () => {
+      createSupervisor(fakeMemory, { threadTitle: false });
+      const opts = agentCtorCalls[0];
+      expect(opts?.instructions).not.toContain('Thread title:');
+      expect(opts?.instructions).not.toContain('setThreadTitle');
+    });
+
+    it('includes thread title section by default', () => {
+      createSupervisor(fakeMemory);
+      const opts = agentCtorCalls[0];
+      expect(opts?.instructions).toContain('Thread title:');
+    });
+  });
+
+  describe('guardrails: false (experiment mode)', () => {
+    it('skips input and output processors', () => {
+      createSupervisor(fakeMemory, { guardrails: false });
+      const opts = agentCtorCalls[0];
+      expect(opts?.inputProcessors).toBeUndefined();
+      expect(opts?.outputProcessors).toBeUndefined();
+    });
+
+    it('skips error processors', () => {
+      createSupervisor(fakeMemory, { guardrails: false });
+      const opts = agentCtorCalls[0];
+      expect(opts?.errorProcessors).toBeUndefined();
+    });
+
+    it('does not call createGuardrailModel', () => {
+      createSupervisor(fakeMemory, { guardrails: false });
+      expect(mockAiModule.createGuardrailModel).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('optional memory', () => {
+    it('accepts undefined memory', () => {
+      createSupervisor(undefined, { guardrails: false, threadTitle: false });
+      const opts = agentCtorCalls[0];
+      expect(opts?.memory).toBeUndefined();
+    });
+
+    it('still sets id and name without memory', () => {
+      createSupervisor(undefined, { guardrails: false, threadTitle: false });
+      const opts = agentCtorCalls[0];
+      expect(opts?.id).toBe('typhoon-supervisor');
+      expect(opts?.name).toBe('Typhoon Supervisor');
+    });
+  });
+
+  describe('experiment mode (no memory, no guardrails, no thread title)', () => {
+    it('includes searchKnowledge but not setThreadTitle', () => {
+      createSupervisor(undefined, { guardrails: false, threadTitle: false });
+      const opts = agentCtorCalls[0];
+      const tools = opts?.tools as Record<string, unknown>;
+      expect(tools).toHaveProperty('searchKnowledge', mockSearchKnowledge);
+      expect(tools).not.toHaveProperty('setThreadTitle');
+    });
+
+    it('includes emoji prohibition in instructions', () => {
+      createSupervisor(undefined, { guardrails: false, threadTitle: false });
+      const opts = agentCtorCalls[0];
+      expect(opts?.instructions).toContain('NEVER use emojis');
+    });
+
+    it('includes narration instruction', () => {
+      createSupervisor(undefined, { guardrails: false, threadTitle: false });
+      const opts = agentCtorCalls[0];
+      expect(opts?.instructions).toContain('Narration:');
+    });
   });
 });

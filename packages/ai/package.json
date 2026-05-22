@@ -10,8 +10,14 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@ai-sdk/amazon-bedrock": "^2.2.0",
     "@ai-sdk/openai-compatible": "^2.0.0",
-    "@mastra/core": "^1.22.0",
+    "@aws-sdk/client-bedrock-agent-runtime": "^3.1016.0",
+    "@aws-sdk/credential-providers": "^3.1016.0",
+    "@mastra/core": "^1.27.0",
+    "@opentelemetry/api": "^1.9.0",
+    "@typhoon/logger": "workspace:*",
+    "@typhoon/telemetry": "workspace:*",
     "ai": "^6.0.0"
   },
   "devDependencies": {

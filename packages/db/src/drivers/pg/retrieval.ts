@@ -57,11 +57,11 @@ export async function refineResults(
   // 2. Rerank (optional — caller binds model + options)
   if (options.reranker) {
     const reranked = await options.reranker(refined, query);
-    refined = reranked.map((r) => ({ ...r.result, score: r.score }));
+    refined = reranked.map((r) => Object.assign({}, r.result, { score: r.score }));
   }
 
   // 3. Filter by minScore (applied after rerank so scores are normalized)
-  if (options.minScore != null && options.minScore > 0) {
+  if (options.minScore !== null && options.minScore !== undefined && options.minScore > 0) {
     const threshold = options.minScore;
     refined = refined.filter((r) => r.score >= threshold);
   }

@@ -5,12 +5,14 @@
  * Usage: bun run test:e2e
  */
 
-import { type Browser, chromium, type Page } from 'playwright';
+import { type Browser, type BrowserContext, chromium, type Page } from 'playwright';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { ADMIN_URL, oidcLogin } from '../helpers/e2e-utils';
+
+import { ADMIN_URL, injectTestSession } from '../helpers/e2e-utils';
 
 describe('Reviews E2E', () => {
   let browser: Browser;
+  let context: BrowserContext;
   let page: Page;
 
   beforeAll(async () => {
@@ -18,13 +20,11 @@ describe('Reviews E2E', () => {
       headless: true,
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
     });
-    page = await browser.newPage();
-    await page.goto(ADMIN_URL);
-    await page.waitForURL('**/login', { timeout: 5_000 });
-    await oidcLogin(page, 'admin@typhoon.local', 'password', ADMIN_URL);
+    ({ context, page } = await injectTestSession(browser, 'admin@typhoon.local'));
   }, 30_000);
 
   afterAll(async () => {
+    await context?.close();
     await browser?.close();
   });
 
@@ -37,17 +37,25 @@ describe('Reviews E2E', () => {
 
   it('renders a table or empty state', async () => {
     const tableCount = await page.locator('table, [role="table"]').count();
-    const emptyCount = await page.locator(':text("No reviews"), :text("No threads")').count();
+    const emptyCount = await page.locator(':text("No conversations")').count();
     expect(tableCount + emptyCount).toBeGreaterThan(0);
   });
 
-  it('has sort and filter controls', async () => {
+  it('has sort and filter controls when threads exist', async () => {
+    // The DataTable toolbar (with comboboxes) only renders when there are threads
+    const emptyState = await page.locator(':text("No conversations")').count();
+    if (emptyState > 0) return;
+
     await page.waitForSelector('[role="combobox"]', { timeout: 5_000 });
     const selectCount = await page.locator('[role="combobox"]').count();
     expect(selectCount).toBeGreaterThan(0);
   });
 
-  it('has a search input', async () => {
+  it('has a search input when threads exist', async () => {
+    // Search is inside the DataTable toolbar — not rendered in empty state
+    const emptyState = await page.locator(':text("No conversations")').count();
+    if (emptyState > 0) return;
+
     await page.waitForSelector('input[placeholder*="Search"]', { timeout: 5_000 });
     const search = page.locator('input[placeholder*="Search"]');
     expect(await search.count()).toBeGreaterThan(0);

@@ -11,6 +11,7 @@ import type {
 } from '@mastra/core/storage';
 import { MemoryStorage } from '@mastra/core/storage';
 import { and, asc, desc, eq, gt, gte, inArray, lt, lte, sql } from 'drizzle-orm';
+
 import type { Db } from '../../client';
 import { messages, resources, threads } from '../../schema';
 import { sanitizeKey } from './filter';
@@ -137,7 +138,10 @@ export class DrizzleMemoryStorage extends MemoryStorage {
     }
     const where = conditions.length > 0 ? and(...conditions) : undefined;
 
-    const [countRow] = await this.db.select({ count: sql<number>`count(*)::int` }).from(threads).where(where);
+    const [countRow] = await this.db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(threads)
+      .where(where);
     const total = countRow?.count ?? 0;
 
     let query = this.db.select().from(threads).where(where).orderBy(orderFn(orderCol)).$dynamic();
@@ -287,12 +291,14 @@ export class DrizzleMemoryStorage extends MemoryStorage {
     const updated: MastraDBMessage[] = [];
 
     for (const msg of args.messages) {
+      // oxlint-disable-next-line no-await-in-loop -- sequential: select then update per message
       const [current] = await this.db.select().from(messages).where(eq(messages.externalId, msg.id));
       if (!current) continue;
 
       const currentContent = current.content as Record<string, unknown>;
       const newContent = msg.content ? { ...currentContent, ...msg.content } : currentContent;
 
+      // oxlint-disable-next-line no-await-in-loop -- sequential: depends on current content above
       const [row] = await this.db
         .update(messages)
         .set({
@@ -406,7 +412,7 @@ export class DrizzleMemoryStorage extends MemoryStorage {
 
     const newExternalId = args.newThreadId ?? crypto.randomUUID();
     const cloneMetadata = {
-      ...(args.metadata ?? {}),
+      ...args.metadata,
       sourceThreadId: args.sourceThreadId,
       clonedAt: new Date(),
     };
@@ -427,11 +433,9 @@ export class DrizzleMemoryStorage extends MemoryStorage {
       perPage: false,
     });
 
-    const clonedMessages: MastraDBMessage[] = sourceMessages.map((msg) => ({
-      ...msg,
-      id: crypto.randomUUID(),
-      threadId: newExternalId,
-    }));
+    const clonedMessages: MastraDBMessage[] = sourceMessages.map((msg) =>
+      Object.assign({}, msg, { id: crypto.randomUUID(), threadId: newExternalId }),
+    );
 
     const { messages: saved } = await this.saveMessages({ messages: clonedMessages });
 

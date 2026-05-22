@@ -14,6 +14,8 @@ export const metadataFieldGroups = pgTable('metadata_field_groups', {
           default?: unknown;
           allowedValues?: unknown[];
           description?: string;
+          searchable?: boolean;
+          searchPriority?: 'critical' | 'high' | 'moderate' | 'standard';
         }
       >
     >()

@@ -1,5 +1,6 @@
 import { ObservabilityStorage } from '@mastra/core/storage';
 import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+
 import type { Db } from '../../client';
 import { aiSpans } from '../../schema/observability';
 
@@ -13,17 +14,17 @@ export class DrizzleObservabilityStorage extends ObservabilityStorage {
     await this.db.delete(aiSpans);
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: Mastra span types
+  // oxlint-disable-next-line @typescript-eslint/no-explicit-any -- Mastra span types
   override async createSpan(args: any) {
     await this.insertSpan(this.db, args);
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: Mastra span types
+  // oxlint-disable-next-line @typescript-eslint/no-explicit-any -- Mastra span types
   override async updateSpan(args: any) {
     await this.updateSpanRow(this.db, args);
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: Mastra span types
+  // oxlint-disable-next-line @typescript-eslint/no-explicit-any -- Mastra span types
   private async insertSpan(db: Db, args: any) {
     const s = args.span ?? args;
     await db
@@ -71,7 +72,7 @@ export class DrizzleObservabilityStorage extends ObservabilityStorage {
       .onConflictDoNothing({ target: aiSpans.id });
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: Mastra span types
+  // oxlint-disable-next-line @typescript-eslint/no-explicit-any -- Mastra span types
   private async updateSpanRow(db: Db, args: any) {
     const raw = args.span ?? args;
     // DefaultExporter sends { traceId, spanId, updates: {...} } — merge updates to top level
@@ -125,7 +126,7 @@ export class DrizzleObservabilityStorage extends ObservabilityStorage {
     }
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: Mastra types
+  // oxlint-disable-next-line @typescript-eslint/no-explicit-any -- Mastra types
   override async getSpan(args: any): Promise<any> {
     if (args.id) {
       const [row] = await this.db.select().from(aiSpans).where(eq(aiSpans.id, args.id));
@@ -138,7 +139,7 @@ export class DrizzleObservabilityStorage extends ObservabilityStorage {
     return row ?? null;
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: Mastra types
+  // oxlint-disable-next-line @typescript-eslint/no-explicit-any -- Mastra types
   override async getRootSpan(args: any): Promise<any> {
     const [row] = await this.db
       .select()
@@ -149,7 +150,7 @@ export class DrizzleObservabilityStorage extends ObservabilityStorage {
     return row ?? null;
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: Mastra types
+  // oxlint-disable-next-line @typescript-eslint/no-explicit-any -- Mastra types
   override async getTrace(args: any): Promise<any> {
     const spans = await this.db
       .select()
@@ -160,7 +161,7 @@ export class DrizzleObservabilityStorage extends ObservabilityStorage {
     return { traceId: args.traceId, spans } as never;
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: Mastra types
+  // oxlint-disable-next-line @typescript-eslint/no-explicit-any -- Mastra types
   override async listTraces(args: any): Promise<any> {
     const page = args?.page ?? 0;
     const perPage = args?.perPage ?? 100;
@@ -191,29 +192,31 @@ export class DrizzleObservabilityStorage extends ObservabilityStorage {
     return { traces: traceRows, total, page, perPage, hasMore: (page + 1) * perPage < total } as never;
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: Mastra span types
+  // oxlint-disable-next-line @typescript-eslint/no-explicit-any -- Mastra span types
   override async batchCreateSpans(args: any) {
     const spans = args.records ?? args.spans ?? [];
     if (spans.length === 0) return;
     await this.db.transaction(async (tx) => {
       for (const span of spans) {
+        // oxlint-disable-next-line no-await-in-loop -- sequential DB inserts within transaction
         await this.insertSpan(tx as unknown as Db, span);
       }
     });
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: Mastra span types
+  // oxlint-disable-next-line @typescript-eslint/no-explicit-any -- Mastra span types
   override async batchUpdateSpans(args: any) {
     const spans = args.records ?? args.spans ?? [];
     if (spans.length === 0) return;
     await this.db.transaction(async (tx) => {
       for (const span of spans) {
+        // oxlint-disable-next-line no-await-in-loop -- sequential DB updates within transaction
         await this.updateSpanRow(tx as unknown as Db, span);
       }
     });
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: Mastra types
+  // oxlint-disable-next-line @typescript-eslint/no-explicit-any -- Mastra types
   override async batchDeleteTraces(args: any) {
     const traceIds = args.traceIds ?? [];
     if (traceIds.length === 0) return;

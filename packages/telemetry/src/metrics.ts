@@ -83,3 +83,28 @@ export const embedTokenUsage = meter.createHistogram('embed.token_usage', {
   description: 'Tokens consumed per embedding call',
   unit: 'tokens',
 });
+
+// ── LLM Provider Metrics ────────────────────────────────────────────
+
+/** Histogram: LLM/embedding provider HTTP request duration. */
+export const llmRequestDuration = meter.createHistogram('llm.request.duration', {
+  description: 'LLM provider request duration',
+  unit: 'ms',
+});
+
+/** Counter: LLM/embedding provider request retries (429, 5xx, network errors). */
+export const llmRetryCount = meter.createCounter('llm.request.retries', {
+  description: 'LLM provider request retries',
+});
+
+// ── Reranker Metrics ────────────────────────────────────────────────
+
+/** Counter: reranker billed search units (from Cohere meta.billed_units). */
+export const rerankSearchUnits = meter.createCounter('rerank.search_units', {
+  description: 'Reranker billed search units',
+});
+
+/** Counter: reranker request retries. */
+export const rerankRetryCount = meter.createCounter('rerank.request.retries', {
+  description: 'Reranker request retries',
+});

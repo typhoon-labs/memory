@@ -20,6 +20,7 @@ import {
 } from '@typhoon/ui';
 import { ActivityIcon, SearchIcon } from 'lucide-react';
 import { useMemo } from 'react';
+
 import { usePageTitle } from '../../hooks/use-page-title';
 import { formatDurationMs } from './trace-detail/shared';
 
@@ -143,7 +144,7 @@ export function TracesPage() {
         id: 'duration',
         header: 'Duration',
         cell: ({ row }) => (
-          <span className="tabular-nums text-muted-foreground">{formatDurationMs(row.original.durationMs)}</span>
+          <span className="text-muted-foreground tabular-nums">{formatDurationMs(row.original.durationMs)}</span>
         ),
       },
     ],
@@ -196,7 +197,7 @@ export function TracesPage() {
                     </SelectContent>
                   </Select>
                   <div className="relative ml-auto">
-                    <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                    <SearchIcon className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" />
                     <Input
                       placeholder="Search..."
                       className="h-8 w-[220px] pl-8 text-sm"

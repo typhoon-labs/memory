@@ -72,7 +72,7 @@ export function makeSyncTarget(overrides: Record<string, unknown> = {}) {
     id: 'st-uuid-1',
     name: 'Test Source',
     sourceType: 's3',
-    config: { bucket: 'test-bucket', prefix: 'docs/' },
+    config: { prefix: 'docs/' },
     cronSchedule: '0 */6 * * *',
     isActive: true,
     managedBy: null,
@@ -134,7 +134,7 @@ export function chainable(result: unknown) {
   ]) {
     chain[method] = vi.fn().mockReturnValue(chain);
   }
-  // biome-ignore lint/suspicious/noThenProperty: intentional thenable mock for Drizzle query chain
+  // oxlint-disable-next-line unicorn/no-thenable -- intentional thenable mock for Drizzle query chain
   chain.then = vi.fn().mockImplementation((resolve: (v: unknown) => void) => Promise.resolve(result).then(resolve));
   return chain;
 }

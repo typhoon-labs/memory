@@ -1,9 +1,10 @@
 {
   "compilerOptions": {
     "strict": true,
-    "target": "ES2022",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
+    "target": "ES2025",
+    "lib": ["ES2025", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
     "esModuleInterop": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
@@ -13,6 +14,7 @@
     "sourceMap": true,
     "forceConsistentCasingInFileNames": true,
     "verbatimModuleSyntax": true,
+    "types": ["bun"],
     "jsx": "react-jsx",
     "outDir": "dist",
     "rootDir": "src"

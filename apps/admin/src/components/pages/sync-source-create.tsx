@@ -15,14 +15,21 @@ import {
 } from '@typhoon/ui';
 import { ChevronRightIcon } from 'lucide-react';
 import { useState } from 'react';
+
 import { usePageTitle } from '../../hooks/use-page-title';
+
+export interface SourceDefinition {
+  name: string;
+  sourceType: string;
+  config: Record<string, unknown>;
+}
 
 export function SyncSourceCreatePage() {
   usePageTitle('Add Source');
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const { data: sources } = useQuery<{ name: string; sourceType: string }[]>({
+  const { data: sources } = useQuery<SourceDefinition[]>({
     queryKey: ['sources'],
     queryFn: () => apiFetch('/api/v1/sources'),
   });
@@ -35,6 +42,7 @@ export function SyncSourceCreatePage() {
 
   const selectedSource = sources?.find((s) => s.name === form.source);
   const sourceType = selectedSource?.sourceType;
+  const sourceBucket = typeof selectedSource?.config?.bucket === 'string' ? selectedSource.config.bucket : undefined;
 
   const handleSourceChange = (value: string) => {
     setForm({ ...form, source: value, config: {} });
@@ -44,7 +52,7 @@ export function SyncSourceCreatePage() {
     setForm({ ...form, config: { ...form.config, [key]: value } });
   };
 
-  const isValid = form.name && form.source && sourceType && (sourceType !== 's3' || form.config.bucket);
+  const isValid = form.name && form.source && sourceType;
 
   const createMutation = useMutation({
     mutationFn: () =>
@@ -55,7 +63,7 @@ export function SyncSourceCreatePage() {
           name: form.name,
           sourceType,
           source: form.source,
-          config: sourceType === 's3' ? { bucket: form.config.bucket, prefix: form.config.prefix ?? '' } : form.config,
+          config: sourceType === 's3' ? { prefix: form.config.prefix ?? '' } : form.config,
         }),
       }),
     onSuccess: (data) => {
@@ -70,10 +78,10 @@ export function SyncSourceCreatePage() {
         <PageHeader
           title={
             <span className="flex items-center gap-1.5">
-              <Link to="/sources" className="text-muted-foreground transition-colors hover:text-foreground">
+              <Link to="/sources" className="text-muted-foreground hover:text-foreground transition-colors">
                 Sync Sources
               </Link>
-              <ChevronRightIcon className="size-3.5 text-muted-foreground/50" />
+              <ChevronRightIcon className="text-muted-foreground/50 size-3.5" />
               Add Source
             </span>
           }
@@ -82,7 +90,7 @@ export function SyncSourceCreatePage() {
         <div className="mt-6 space-y-5">
           <div>
             <h2 className="text-sm font-semibold">Details</h2>
-            <p className="mt-0.5 text-sm text-muted-foreground">
+            <p className="text-muted-foreground mt-0.5 text-sm">
               Name this sync target and select the source connector.
             </p>
           </div>
@@ -115,16 +123,10 @@ export function SyncSourceCreatePage() {
             <>
               <div className="pt-4">
                 <h2 className="text-sm font-semibold">S3 Configuration</h2>
-                <p className="mt-0.5 text-sm text-muted-foreground">Configure the S3 bucket and optional key prefix.</p>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="source-bucket">Bucket</Label>
-                <Input
-                  id="source-bucket"
-                  placeholder="e.g. my-docs-bucket"
-                  value={form.config.bucket ?? ''}
-                  onChange={(e) => setConfig('bucket', e.target.value)}
-                />
+                <p className="text-muted-foreground mt-0.5 text-sm">
+                  Syncing from bucket <span className="font-mono font-medium">{sourceBucket ?? 'unknown'}</span>.
+                  Optionally scope to a key prefix.
+                </p>
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="source-prefix">Prefix (optional)</Label>

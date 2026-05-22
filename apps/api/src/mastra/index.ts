@@ -3,9 +3,11 @@ import { Memory } from '@mastra/memory';
 import { createSupervisor } from '@typhoon/agents';
 import { createEmbeddingModel } from '@typhoon/ai';
 import { PgVector, PostgresStore } from '@typhoon/db/drivers/pg';
+import { MetadataRepo } from '@typhoon/db/repos';
 import { createAppLogger } from '@typhoon/logger';
 import { createMastraObservability } from '@typhoon/telemetry';
-import { db, sql } from '../db';
+
+import { db, sql } from '../infra/db';
 import { authRoutes } from '../routes/auth';
 import { chatRoutes } from '../routes/chat';
 import { dashboardRoutes } from '../routes/dashboard';
@@ -55,25 +57,12 @@ const envFlag = (key: string, defaultValue = true) => {
 // picked up without a server restart.
 const METADATA_CONTEXT_TTL_MS = 60_000;
 let _metadataCache: { value: string | undefined; expiresAt: number } = { value: undefined, expiresAt: 0 };
+const _metadataRepoForAgent = new MetadataRepo(db);
 
 async function getMetadataContext(): Promise<string | undefined> {
   if (Date.now() < _metadataCache.expiresAt) return _metadataCache.value;
   try {
-    const rows = await sql`
-      SELECT kv.key, jsonb_agg(DISTINCT kv.value) FILTER (WHERE jsonb_typeof(kv.value) != 'null') AS values
-      FROM documents d, jsonb_each(d.custom_metadata) AS kv(key, value)
-      WHERE d.status != 'deleted' AND d.custom_metadata != '{}'::jsonb
-      GROUP BY kv.key ORDER BY COUNT(DISTINCT d.id) DESC
-    `;
-    const value =
-      rows.length > 0
-        ? (rows as unknown as Array<{ key: string; values: unknown[] }>)
-            .map((r) => {
-              const vals = (r.values ?? []).map((v: unknown) => (typeof v === 'string' ? v : JSON.stringify(v)));
-              return `${r.key}: ${vals.join(', ')}`;
-            })
-            .join(' | ')
-        : undefined;
+    const value = await _metadataRepoForAgent.getFieldValuesForAgent();
     _metadataCache = { value, expiresAt: Date.now() + METADATA_CONTEXT_TTL_MS };
     return value;
   } catch {

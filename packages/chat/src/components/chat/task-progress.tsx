@@ -1,5 +1,6 @@
 import { type ProgressEvent, type ProgressStep, ProgressTracker } from '@typhoon/ui';
 import { useEffect, useMemo, useState } from 'react';
+
 import { stripMarkdown } from '../../lib/utils';
 import { resolveToolStatus } from './tool-labels';
 
@@ -40,6 +41,12 @@ export function resolveStepStatus(state: string, events?: ProgressEvent[], isAct
   if (state === 'output-available') {
     if (events?.some((e) => e.status === 'failed')) return 'failed';
     return 'completed';
+  }
+  // Tool finished but AI SDK hasn't flushed 'output-available' yet —
+  // trust the tool's own progress events for early status resolution.
+  if (events?.length) {
+    if (events.some((e) => e.status === 'failed')) return 'failed';
+    if (events.some((e) => e.status === 'done')) return 'completed';
   }
   return isActive ? 'in-progress' : 'failed';
 }
@@ -87,7 +94,6 @@ export function TaskProgress({
   );
 
   // Reset stale flag on activity; start an inactivity timer while streaming.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: fingerprint is an intentional trigger — re-run on any activity change
   useEffect(() => {
     setIsStale(false);
     if (!hasNonTerminal || !isStreaming) return;

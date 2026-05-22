@@ -59,7 +59,7 @@ export function createInputGuardrails(
       outputSchema: ProcessorStepSchema,
     })
       .then(createStep(new TokenLimiterProcessor({ limit: 127_000 })))
-      // biome-ignore lint/style/noNonNullAssertion: guarded by steps.length === 1
+      // oxlint-disable-next-line @typescript-eslint/no-non-null-assertion -- guarded by steps.length === 1
       .then(steps[0]!)
       .commit() as unknown as ProcessorWorkflow;
     return [workflow];

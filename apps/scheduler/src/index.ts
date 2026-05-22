@@ -1,13 +1,15 @@
 import '@typhoon/telemetry/instrumentation';
 import { createAppLogger } from '@typhoon/logger';
-import { startHealthServer } from './health';
-import { initSyncQueue, shutdownQueues } from './queue';
-import { refreshScheduler, stopScheduler } from './scheduler';
+import { RedisProvider } from '@typhoon/queue';
+
+import { refreshScheduler, stopScheduler } from './cron/sync-scheduler';
+import { startHealthServer } from './infra/health';
+import { initSyncQueue, shutdownQueues } from './infra/queue';
 
 const log = createAppLogger('scheduler');
 
-const redisUrl = process.env.REDIS_URL ?? 'redis://localhost:6379';
-initSyncQueue(redisUrl);
+const redis = new RedisProvider();
+initSyncQueue(redis);
 
 await refreshScheduler();
 

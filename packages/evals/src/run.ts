@@ -1,6 +1,7 @@
 import type { Agent } from '@mastra/core/agent';
 import { runEvals } from '@mastra/core/evals';
 import type { MastraModelConfig } from '@mastra/core/llm';
+
 import { createRagScorers } from './scorers';
 
 export interface EvalInput {
@@ -27,7 +28,7 @@ export interface EvalResult {
  * ]);
  * ```
  */
-// biome-ignore lint/suspicious/noExplicitAny: Agent generic varies based on tool types
+// oxlint-disable-next-line @typescript-eslint/no-explicit-any -- Agent generic varies based on tool types
 export async function runRagEvals(agent: Agent<any, any>, model: MastraModelConfig, data: EvalInput[]) {
   const scorers = createRagScorers(model);
   const scorerList = Object.values(scorers);

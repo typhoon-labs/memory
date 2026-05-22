@@ -10,7 +10,7 @@ const AXIS_TICK = { fontSize: 11, fill: 'var(--muted-foreground)', fontFamily: '
 export function VolumeChart({ data }: VolumeChartProps) {
   if (data.length === 0) {
     return (
-      <div className="flex h-[200px] items-center justify-center text-sm text-muted-foreground">
+      <div className="text-muted-foreground flex h-[200px] items-center justify-center text-sm">
         No conversation data yet
       </div>
     );

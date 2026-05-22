@@ -5,7 +5,7 @@ const { mockAuthHandler } = vi.hoisted(() => ({
   mockAuthHandler: vi.fn(),
 }));
 
-vi.mock('../auth', () => ({
+vi.mock('../infra/auth', () => ({
   auth: {
     handler: mockAuthHandler,
   },
@@ -18,7 +18,6 @@ function mountRoutes(routes: Record<string, unknown>[]) {
   for (const route of routes) {
     const mid = Array.isArray(route.middleware) ? route.middleware : route.middleware ? [route.middleware] : [];
     const method = (route.method as string).toLowerCase();
-    // biome-ignore lint/suspicious/noExplicitAny: Hono type narrowing for dynamic method dispatch
     (app as any).on(method, route.path as string, ...mid, route.handler);
   }
   return app;

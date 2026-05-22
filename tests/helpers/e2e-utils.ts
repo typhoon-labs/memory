@@ -2,9 +2,12 @@
  * Shared E2E test utilities.
  *
  * Usage:
- *   import { DESK_URL, ADMIN_URL, oidcLogin } from '../helpers/e2e-utils';
+ *   import { DESK_URL, ADMIN_URL, injectTestSession } from '../helpers/e2e-utils';
+ *   import { oidcLogin } from '../helpers/e2e-utils'; // only for auth.e2e.ts
  */
-import type { Page } from 'playwright';
+import type { Browser, BrowserContext, Page } from 'playwright';
+
+import { getTestCookies, resolveUserByEmail } from './test-auth';
 
 /** Desk app base URL — override via DESK_URL env var. */
 export const DESK_URL = process.env.DESK_URL ?? 'http://localhost:5173';
@@ -13,10 +16,32 @@ export const DESK_URL = process.env.DESK_URL ?? 'http://localhost:5173';
 export const ADMIN_URL = process.env.ADMIN_URL ?? 'http://localhost:5174';
 
 /**
- * Perform OIDC login via Dex.
+ * Create an authenticated browser session using Better Auth test utils.
  *
- * Clicks "Sign in with SSO", fills the Dex login form, and waits
- * for redirect back to the app at `returnUrl`.
+ * Looks up the user by email in the database, creates a real session, and
+ * injects the signed session cookie into a new Playwright browser context.
+ * No OIDC/Dex dependency — sessions go directly into the same Postgres the
+ * running API server reads from.
+ */
+export async function injectTestSession(
+  browser: Browser,
+  email: string,
+): Promise<{ context: BrowserContext; page: Page }> {
+  const userId = await resolveUserByEmail(email);
+  const cookies = await getTestCookies({ userId, domain: 'localhost' });
+
+  const context = await browser.newContext();
+  await context.addCookies(cookies);
+  const page = await context.newPage();
+
+  return { context, page };
+}
+
+/**
+ * Perform OIDC login via Dex (browser-based).
+ *
+ * Retained for auth.e2e.ts which specifically validates the OIDC flow.
+ * All other E2E tests should use `injectTestSession` instead.
  */
 export async function oidcLogin(page: Page, email: string, password: string, returnUrl: string): Promise<void> {
   await page.click('button:has-text("Sign in with SSO")');

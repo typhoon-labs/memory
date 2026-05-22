@@ -24,7 +24,8 @@ import {
   LogOutIcon,
   TagsIcon,
 } from 'lucide-react';
-import { useQueueEvents } from '../lib/use-queue-events';
+
+import { useQueueEvents } from '../features/queues/use-queue-events';
 
 const NAV_GROUPS: NavGroup[] = [
   {
@@ -72,12 +73,12 @@ function UserMenu() {
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="flex w-full min-w-0 items-center gap-2 rounded-md p-1 text-left transition-colors hover:bg-accent"
+          className="hover:bg-accent flex w-full min-w-0 items-center gap-2 rounded-md p-1 text-left transition-colors"
         >
-          <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary text-2xs font-medium text-primary-foreground">
+          <div className="bg-primary text-2xs text-primary-foreground flex size-7 shrink-0 items-center justify-center rounded-full font-medium">
             {user?.email?.charAt(0).toUpperCase() ?? 'A'}
           </div>
-          <span className="truncate text-xs text-muted-foreground">{user?.email ?? 'Admin'}</span>
+          <span className="text-muted-foreground truncate text-xs">{user?.email ?? 'Admin'}</span>
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-48">
@@ -105,7 +106,7 @@ export function AdminShell() {
       logo={
         <div className="flex items-baseline gap-1.5">
           <span className="text-base font-bold">Typhoon</span>
-          <span className="text-2xs font-medium uppercase tracking-wider text-muted-foreground">Admin</span>
+          <span className="text-2xs text-muted-foreground font-medium tracking-wider uppercase">Admin</span>
         </div>
       }
       navGroups={NAV_GROUPS}

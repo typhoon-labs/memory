@@ -3,7 +3,7 @@ import { Area, AreaChart, ResponsiveContainer } from 'recharts';
 interface SparklineProps {
   data: Array<{ value: number | null }>;
   color?: string;
-  width?: number | string;
+  width?: number | `${number}%`;
   height?: number;
 }
 

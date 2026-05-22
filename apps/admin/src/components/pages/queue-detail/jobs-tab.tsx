@@ -18,6 +18,7 @@ import {
 } from '@typhoon/ui';
 import { EraserIcon, InboxIcon, RotateCcwIcon, Trash2Icon } from 'lucide-react';
 import { useMemo, useState } from 'react';
+
 import { JobDetailSheet } from './job-detail-sheet';
 import type { JobState, QueueJob } from './shared';
 import { formatJobDuration, isStageProgress, JOB_STATE_BADGE_MAP } from './shared';
@@ -72,11 +73,13 @@ export function JobsTab({ queueName, jobState }: { queueName: string; jobState: 
   const retryAllMutation = useMutation({
     mutationFn: async () => {
       const failedJobs = (jobs ?? []).filter((j) => j.state === 'failed');
-      for (const job of failedJobs) {
-        await apiFetch(`/api/v1/queues/${queueName}/jobs/${job.id}/retry`, {
-          method: 'POST',
-        });
-      }
+      await Promise.all(
+        failedJobs.map((job) =>
+          apiFetch(`/api/v1/queues/${queueName}/jobs/${job.id}/retry`, {
+            method: 'POST',
+          }),
+        ),
+      );
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['queues'] });
@@ -114,7 +117,7 @@ export function JobsTab({ queueName, jobState }: { queueName: string; jobState: 
           return (
             <div className="flex min-h-[2.25rem] flex-col justify-center">
               <div className="font-medium">{row.original.name}</div>
-              {stage && <div className="text-xs text-muted-foreground">↳ {stage}</div>}
+              {stage && <div className="text-muted-foreground text-xs">↳ {stage}</div>}
             </div>
           );
         },
@@ -139,7 +142,7 @@ export function JobsTab({ queueName, jobState }: { queueName: string; jobState: 
         },
         header: 'Duration',
         cell: ({ row }) => (
-          <span className="text-xs text-muted-foreground">
+          <span className="text-muted-foreground text-xs">
             {formatJobDuration(row.original.processedOn, row.original.finishedOn)}
           </span>
         ),
@@ -148,8 +151,7 @@ export function JobsTab({ queueName, jobState }: { queueName: string; jobState: 
         id: 'actions',
         header: '',
         cell: ({ row }) => (
-          // biome-ignore lint/a11y/useKeyWithClickEvents: stop-propagation wrapper, not interactive
-          // biome-ignore lint/a11y/noStaticElementInteractions: stop-propagation wrapper, not interactive
+          // oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- stop-propagation wrapper, not interactive
           <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
             <Button
               variant="ghost"

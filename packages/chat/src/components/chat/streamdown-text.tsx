@@ -2,6 +2,7 @@ import { createCodePlugin } from '@streamdown/code';
 import { ExternalLinkDialog, InlineCitationChip, markdownComponents } from '@typhoon/ui';
 import { ExternalLinkIcon } from 'lucide-react';
 import { type Components, Streamdown } from 'streamdown';
+
 import 'streamdown/styles.css';
 import { useCitations } from './citation-context';
 
@@ -15,17 +16,17 @@ const chatComponents: Components = {
 
   // Chat uses larger heading sizes than the document viewer
   h1: ({ children, ...props }) => (
-    <h1 className="mt-6 mb-2 text-2xl font-semibold leading-tight first:mt-0" {...props}>
+    <h1 className="mt-6 mb-2 text-2xl leading-tight font-semibold first:mt-0" {...props}>
       {children}
     </h1>
   ),
   h2: ({ children, ...props }) => (
-    <h2 className="mt-5 mb-2 text-xl font-semibold leading-tight first:mt-0" {...props}>
+    <h2 className="mt-5 mb-2 text-xl leading-tight font-semibold first:mt-0" {...props}>
       {children}
     </h2>
   ),
   h3: ({ children, ...props }) => (
-    <h3 className="mt-4 mb-1.5 text-lg font-semibold leading-snug first:mt-0" {...props}>
+    <h3 className="mt-4 mb-1.5 text-lg leading-snug font-semibold first:mt-0" {...props}>
       {children}
     </h3>
   ),
@@ -51,7 +52,7 @@ const chatComponents: Components = {
   a: ({ children, href }) => {
     if (href?.startsWith('#')) {
       return (
-        <a href={href} className="font-medium text-primary underline underline-offset-2 hover:opacity-80">
+        <a href={href} className="text-primary font-medium underline underline-offset-2 hover:opacity-80">
           {children}
         </a>
       );
@@ -60,10 +61,10 @@ const chatComponents: Components = {
       <ExternalLinkDialog href={href ?? '#'}>
         <button
           type="button"
-          className="inline cursor-pointer font-medium text-primary underline underline-offset-2 hover:opacity-80"
+          className="text-primary inline cursor-pointer font-medium underline underline-offset-2 hover:opacity-80"
         >
           {children}
-          <ExternalLinkIcon className="ml-0.5 mb-0.5 inline size-3 opacity-60" />
+          <ExternalLinkIcon className="mb-0.5 ml-0.5 inline size-3 opacity-60" />
         </button>
       </ExternalLinkDialog>
     );
@@ -71,7 +72,7 @@ const chatComponents: Components = {
 
   // Streamdown-only: inline code is a separate key from code blocks
   inlineCode: ({ children, ...props }) => (
-    <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[0.8125em]" {...props}>
+    <code className="bg-muted rounded px-1.5 py-0.5 font-mono text-[0.8125em]" {...props}>
       {children}
     </code>
   ),
@@ -79,7 +80,7 @@ const chatComponents: Components = {
   // Chat pre uses slightly different spacing
   pre: ({ children, ...props }) => (
     <pre
-      className="my-4 overflow-x-auto rounded-xl border border-border bg-card p-4 font-mono text-[0.8125rem] leading-relaxed"
+      className="border-border bg-card my-4 overflow-x-auto rounded-xl border p-4 font-mono text-[0.8125rem] leading-relaxed"
       {...props}
     >
       {children}
@@ -89,7 +90,7 @@ const chatComponents: Components = {
   // Chat blockquote without text-[13px]
   blockquote: ({ children, ...props }) => (
     <blockquote
-      className="my-3 rounded-r border-l-[3px] border-border bg-muted px-4 py-2 italic text-muted-foreground"
+      className="border-border bg-muted text-muted-foreground my-3 rounded-r border-l-[3px] px-4 py-2 italic"
       {...props}
     >
       {children}
@@ -98,12 +99,12 @@ const chatComponents: Components = {
 
   // Chat table cells without border-r
   th: ({ children, ...props }) => (
-    <th className="whitespace-nowrap px-4 py-2 text-left text-[0.8125rem] font-semibold" {...props}>
+    <th className="px-4 py-2 text-left text-[0.8125rem] font-semibold whitespace-nowrap" {...props}>
       {children}
     </th>
   ),
   td: ({ children, ...props }) => (
-    <td className="border-t border-border px-4 py-2 text-sm" {...props}>
+    <td className="border-border border-t px-4 py-2 text-sm" {...props}>
       {children}
     </td>
   ),

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
+
 import { clearSourceRegistry, getSource, listSources, registerSource } from './source-registry';
 
 afterEach(() => {
@@ -7,12 +8,19 @@ afterEach(() => {
 
 describe('registerSource', () => {
   it('registers and retrieves a source', () => {
-    registerSource({ name: 'my-s3', sourceType: 's3', credentials: { bucket: 'test' } });
+    registerSource({ name: 'my-s3', sourceType: 's3', credentials: { accessKey: 'ak' }, config: { bucket: 'test' } });
     const source = getSource('my-s3');
     expect(source).toBeDefined();
     expect(source?.name).toBe('my-s3');
     expect(source?.sourceType).toBe('s3');
-    expect(source?.credentials).toEqual({ bucket: 'test' });
+    expect(source?.credentials).toEqual({ accessKey: 'ak' });
+    expect(source?.config).toEqual({ bucket: 'test' });
+  });
+
+  it('defaults config to empty object when omitted', () => {
+    registerSource({ name: 'no-config', sourceType: 's3', credentials: {} });
+    const source = getSource('no-config');
+    expect(source?.config).toEqual({});
   });
 
   it('throws on empty name', () => {

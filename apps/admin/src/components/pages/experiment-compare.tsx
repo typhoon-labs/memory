@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
-import { computeCategoryAverages } from '@typhoon/evals/scorer-categories';
+import { computeCategoryAverages, normalizeScoreForAvg, SCORER_CATEGORIES } from '@typhoon/evals/scorer-categories';
 import type { ColumnDef } from '@typhoon/ui';
 import {
   apiFetch,
@@ -35,7 +35,9 @@ import {
   InfoIcon,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
+
 import { detailTitle, usePageTitle } from '../../hooks/use-page-title';
+import { type SourceEntry, ResponseWithCitations } from '../shared/response-with-citations';
 
 // ---------- Types ----------
 
@@ -66,6 +68,7 @@ interface ScoreEntry {
 interface ResultDetail {
   responseText?: string;
   scores?: ScoreEntry[];
+  sources?: SourceEntry[];
 }
 
 interface ComparisonItem {
@@ -111,7 +114,7 @@ interface ScorersResponse {
 
 /** Extract a human-readable string from an unknown value, truncated to maxLen. */
 function truncateValue(value: unknown, maxLen = 60): string {
-  if (value == null) return '\u2014';
+  if (value === null || value === undefined) return '\u2014';
   if (typeof value === 'string') return value.length > maxLen ? `${value.slice(0, maxLen)}...` : value;
   if (typeof value === 'object') {
     const obj = value as Record<string, unknown>;
@@ -161,10 +164,21 @@ function DeltaIndicator({ delta }: { delta: number | null }) {
       </span>
     );
   }
-  return <span className="text-sm text-muted-foreground">0.00</span>;
+  return <span className="text-muted-foreground text-sm">0.00</span>;
 }
 
 // ---------- Score Breakdown ----------
+
+function formatScorerId(id: string): string {
+  return id
+    .replaceAll(/([A-Z])/g, ' $1')
+    .replace(/^./, (s) => s.toUpperCase())
+    .trim();
+}
+
+function normalizedDotClass(scorerId: string, rawScore: number): string {
+  return scoreDotClass(normalizeScoreForAvg(scorerId, rawScore));
+}
 
 function ScoreBreakdown({ scoresA, scoresB }: { scoresA: ScoreEntry[]; scoresB: ScoreEntry[] }) {
   const allScorerIds = useMemo(
@@ -176,6 +190,14 @@ function ScoreBreakdown({ scoresA, scoresB }: { scoresA: ScoreEntry[]; scoresB: 
     ],
     [scoresA, scoresB],
   );
+
+  // Group by category (matching experiment-detail and review-detail)
+  const responseIds = allScorerIds.filter((id) => SCORER_CATEGORIES[id]?.category === 'response');
+  const retrievalIds = allScorerIds.filter((id) => SCORER_CATEGORIES[id]?.category === 'retrieval');
+  const otherIds = allScorerIds.filter((id) => !SCORER_CATEGORIES[id]);
+
+  const avgsA = computeCategoryAverages(scoresA.map((s) => ({ scorerId: s.scorerId ?? s.name ?? '', score: s.score })));
+  const avgsB = computeCategoryAverages(scoresB.map((s) => ({ scorerId: s.scorerId ?? s.name ?? '', score: s.score })));
 
   const [selectedScorer, setSelectedScorer] = useState<string | undefined>();
   const effectiveScorer = selectedScorer ?? allScorerIds[0];
@@ -197,114 +219,97 @@ function ScoreBreakdown({ scoresA, scoresB }: { scoresA: ScoreEntry[]; scoresB: 
     return map;
   }, [scorersData]);
 
+  function renderScoreRow(sid: string, scores: ScoreEntry[]) {
+    const s = scores.find((sc) => (sc.scorerId ?? sc.name ?? 'unknown') === sid);
+    return (
+      <button
+        key={sid}
+        type="button"
+        onClick={() => setSelectedScorer(sid)}
+        className={cn(
+          'flex w-full items-center justify-between gap-2 rounded px-1.5 py-1.5 text-xs transition-colors',
+          effectiveScorer === sid ? 'bg-muted' : 'hover:bg-muted',
+        )}
+      >
+        <span className="flex items-center gap-1.5">
+          <span
+            className={cn(
+              'size-2 shrink-0 rounded-full',
+              s && s.score !== null && s.status !== 'skipped'
+                ? normalizedDotClass(sid, s.score)
+                : 'bg-muted-foreground/30',
+            )}
+          />
+          <span>{formatScorerId(sid)}</span>
+          {scorerDescriptions[sid] && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <InfoIcon className="text-muted-foreground/60 hover:text-muted-foreground size-3" />
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs text-xs">{scorerDescriptions[sid]}</TooltipContent>
+            </Tooltip>
+          )}
+        </span>
+        <span className="tabular-nums">
+          {s ? (s.status === 'skipped' ? 'N/A' : s.score !== null ? s.score.toFixed(2) : '\u2014') : '\u2014'}
+        </span>
+      </button>
+    );
+  }
+
+  function renderCategory(label: string, ids: string[], avgA: number | null, avgB: number | null) {
+    if (ids.length === 0) return null;
+    return (
+      <div className="mb-3">
+        <div className="mb-1 flex items-center justify-between">
+          <span className="text-muted-foreground text-[10px] font-bold tracking-wider uppercase">{label}</span>
+        </div>
+        <div className="sm:divide-border grid grid-cols-1 gap-4 sm:grid-cols-2 sm:divide-x">
+          <div className="sm:pr-4">
+            <div className="mb-1 flex items-center justify-between">
+              <span className="text-muted-foreground text-[10px]">Baseline</span>
+              {avgA !== null && (
+                <span className="text-muted-foreground flex items-center gap-1 text-[10px] font-bold tabular-nums">
+                  <span className={cn('size-1.5 rounded-full', scoreDotClass(avgA))} />
+                  {avgA.toFixed(2)}
+                </span>
+              )}
+            </div>
+            <div className="flex flex-col gap-px">{ids.map((sid) => renderScoreRow(sid, scoresA))}</div>
+          </div>
+          <div className="sm:pl-4">
+            <div className="mb-1 flex items-center justify-between">
+              <span className="text-muted-foreground text-[10px]">Candidate</span>
+              {avgB !== null && (
+                <span className="text-muted-foreground flex items-center gap-1 text-[10px] font-bold tabular-nums">
+                  <span className={cn('size-1.5 rounded-full', scoreDotClass(avgB))} />
+                  {avgB.toFixed(2)}
+                </span>
+              )}
+            </div>
+            <div className="flex flex-col gap-px">{ids.map((sid) => renderScoreRow(sid, scoresB))}</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div>
       <SectionLabel>Score Breakdown</SectionLabel>
       <TooltipProvider delayDuration={200}>
-        <div className="mt-2 grid grid-cols-1 gap-4 sm:grid-cols-2 sm:divide-x sm:divide-border">
-          {/* Baseline */}
-          <div className="sm:pr-4">
-            <p className="mb-1 text-xs font-medium text-muted-foreground">Baseline</p>
-            <div className="flex flex-col gap-px">
-              {allScorerIds.map((sid) => {
-                const s = scoresA.find((sc) => (sc.scorerId ?? sc.name ?? 'unknown') === sid);
-                return (
-                  <button
-                    key={sid}
-                    type="button"
-                    onClick={() => setSelectedScorer(sid)}
-                    className={cn(
-                      'flex w-full items-center justify-between gap-2 rounded px-1.5 py-1.5 text-xs transition-colors',
-                      effectiveScorer === sid ? 'bg-muted' : 'hover:bg-muted',
-                    )}
-                  >
-                    <span className="flex items-center gap-1.5">
-                      <span
-                        className={cn(
-                          'size-2 shrink-0 rounded-full',
-                          s && s.score !== null && s.status !== 'skipped' ? scoreDotClass(s.score) : 'bg-muted',
-                        )}
-                      />
-                      <span>{sid}</span>
-                      {scorerDescriptions[sid] && (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <InfoIcon className="size-3 text-muted-foreground/60 hover:text-muted-foreground" />
-                          </TooltipTrigger>
-                          <TooltipContent className="max-w-xs text-xs">{scorerDescriptions[sid]}</TooltipContent>
-                        </Tooltip>
-                      )}
-                    </span>
-                    <span className="tabular-nums">
-                      {s
-                        ? s.status === 'skipped'
-                          ? 'N/A'
-                          : s.score !== null
-                            ? s.score.toFixed(2)
-                            : '\u2014'
-                        : '\u2014'}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Candidate */}
-          <div className="sm:pl-4">
-            <p className="mb-1 text-xs font-medium text-muted-foreground">Candidate</p>
-            <div className="flex flex-col gap-px">
-              {allScorerIds.map((sid) => {
-                const s = scoresB.find((sc) => (sc.scorerId ?? sc.name ?? 'unknown') === sid);
-                return (
-                  <button
-                    key={sid}
-                    type="button"
-                    onClick={() => setSelectedScorer(sid)}
-                    className={cn(
-                      'flex w-full items-center justify-between gap-2 rounded px-1.5 py-1.5 text-xs transition-colors',
-                      effectiveScorer === sid ? 'bg-muted' : 'hover:bg-muted',
-                    )}
-                  >
-                    <span className="flex items-center gap-1.5">
-                      <span
-                        className={cn(
-                          'size-2 shrink-0 rounded-full',
-                          s && s.score !== null && s.status !== 'skipped' ? scoreDotClass(s.score) : 'bg-muted',
-                        )}
-                      />
-                      <span>{sid}</span>
-                      {scorerDescriptions[sid] && (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <InfoIcon className="size-3 text-muted-foreground/60 hover:text-muted-foreground" />
-                          </TooltipTrigger>
-                          <TooltipContent className="max-w-xs text-xs">{scorerDescriptions[sid]}</TooltipContent>
-                        </Tooltip>
-                      )}
-                    </span>
-                    <span className="tabular-nums">
-                      {s
-                        ? s.status === 'skipped'
-                          ? 'N/A'
-                          : s.score !== null
-                            ? s.score.toFixed(2)
-                            : '\u2014'
-                        : '\u2014'}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+        <div className="mt-2">
+          {renderCategory('Response Quality', responseIds, avgsA.responseAvg, avgsB.responseAvg)}
+          {renderCategory('Retrieval Quality', retrievalIds, avgsA.retrievalAvg, avgsB.retrievalAvg)}
+          {otherIds.length > 0 && renderCategory('Other', otherIds, null, null)}
         </div>
       </TooltipProvider>
 
       {/* Selected scorer reason */}
       {activeA?.reason || activeB?.reason ? (
         <>
-          <hr className="my-3 border-border" />
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:divide-x sm:divide-border">
+          <hr className="border-border my-3" />
+          <div className="sm:divide-border grid grid-cols-1 gap-4 sm:grid-cols-2 sm:divide-x">
             <div className="text-sm leading-relaxed sm:pr-4">
               {activeA?.reason ? (
                 <MarkdownContent text={activeA.reason} />
@@ -324,8 +329,8 @@ function ScoreBreakdown({ scoresA, scoresB }: { scoresA: ScoreEntry[]; scoresB: 
       ) : (
         effectiveScorer && (
           <>
-            <hr className="my-3 border-border" />
-            <p className="text-sm text-muted-foreground">No reasoning provided for this scorer.</p>
+            <hr className="border-border my-3" />
+            <p className="text-muted-foreground text-sm">No reasoning provided for this scorer.</p>
           </>
         )
       )}
@@ -347,7 +352,7 @@ function ComparisonDetailSheet({
   if (!item) return null;
 
   const inputText = (() => {
-    if (item.input == null) return '\u2014';
+    if (item.input === null || item.input === undefined) return '\u2014';
     if (typeof item.input === 'string') return item.input;
     if (typeof item.input === 'object') {
       const obj = item.input as Record<string, unknown>;
@@ -370,14 +375,14 @@ function ComparisonDetailSheet({
           {/* Input */}
           <div>
             <SectionLabel>Input</SectionLabel>
-            <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed">{inputText}</p>
+            <p className="mt-2 text-sm leading-relaxed whitespace-pre-wrap">{inputText}</p>
           </div>
 
           {/* Ground truth */}
-          {item.groundTruth != null && (
+          {item.groundTruth !== null && item.groundTruth !== undefined && (
             <div>
               <SectionLabel>Expected</SectionLabel>
-              <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed">{truncateValue(item.groundTruth, 500)}</p>
+              <p className="mt-2 text-sm leading-relaxed whitespace-pre-wrap">{truncateValue(item.groundTruth, 500)}</p>
             </div>
           )}
 
@@ -385,23 +390,23 @@ function ComparisonDetailSheet({
           <div>
             <SectionLabel>Scores</SectionLabel>
             <div className="mt-2 grid grid-cols-3 gap-3">
-              <div className="rounded-lg border border-border bg-card px-4 py-3">
-                <p className="text-xs font-medium text-muted-foreground">Baseline</p>
+              <div className="border-border bg-card rounded-lg border px-4 py-3">
+                <p className="text-muted-foreground text-xs font-medium">Baseline</p>
                 <div className="mt-1.5 flex items-center gap-2">
-                  {item.scoreA != null && (
+                  {item.scoreA !== null && item.scoreA !== undefined && (
                     <span className={`size-2 shrink-0 rounded-full ${scoreDotClass(item.scoreA)}`} />
                   )}
-                  <span className="text-xl font-semibold leading-none tabular-nums">
+                  <span className="text-xl leading-none font-semibold tabular-nums">
                     {item.scoreA?.toFixed(2) ?? '\u2014'}
                   </span>
                 </div>
               </div>
-              <div className="rounded-lg border border-border bg-card px-4 py-3">
-                <p className="text-xs font-medium text-muted-foreground">Delta</p>
+              <div className="border-border bg-card rounded-lg border px-4 py-3">
+                <p className="text-muted-foreground text-xs font-medium">Delta</p>
                 <div className="mt-1.5">
                   {item.delta !== null ? (
                     <span
-                      className={`inline-flex items-center gap-1 text-xl font-semibold leading-none tabular-nums ${item.delta > 0 ? 'text-emerald-500' : item.delta < 0 ? 'text-red-500' : 'text-muted-foreground'}`}
+                      className={`inline-flex items-center gap-1 text-xl leading-none font-semibold tabular-nums ${item.delta > 0 ? 'text-emerald-500' : item.delta < 0 ? 'text-red-500' : 'text-muted-foreground'}`}
                     >
                       {item.delta > 0 && <ArrowUpIcon className="size-4" />}
                       {item.delta < 0 && <ArrowDownIcon className="size-4" />}
@@ -409,17 +414,17 @@ function ComparisonDetailSheet({
                       {item.delta.toFixed(2)}
                     </span>
                   ) : (
-                    <span className="text-xl font-semibold leading-none text-muted-foreground">{'\u2014'}</span>
+                    <span className="text-muted-foreground text-xl leading-none font-semibold">{'\u2014'}</span>
                   )}
                 </div>
               </div>
-              <div className="rounded-lg border border-border bg-card px-4 py-3">
-                <p className="text-xs font-medium text-muted-foreground">Candidate</p>
+              <div className="border-border bg-card rounded-lg border px-4 py-3">
+                <p className="text-muted-foreground text-xs font-medium">Candidate</p>
                 <div className="mt-1.5 flex items-center gap-2">
-                  {item.scoreB != null && (
+                  {item.scoreB !== null && item.scoreB !== undefined && (
                     <span className={`size-2 shrink-0 rounded-full ${scoreDotClass(item.scoreB)}`} />
                   )}
-                  <span className="text-xl font-semibold leading-none tabular-nums">
+                  <span className="text-xl leading-none font-semibold tabular-nums">
                     {item.scoreB?.toFixed(2) ?? '\u2014'}
                   </span>
                 </div>
@@ -430,22 +435,22 @@ function ComparisonDetailSheet({
           {/* Responses */}
           <div>
             <SectionLabel>Responses</SectionLabel>
-            <div className="mt-2 grid grid-cols-1 gap-4 sm:grid-cols-2 sm:divide-x sm:divide-border">
+            <div className="sm:divide-border mt-2 grid grid-cols-1 gap-4 sm:grid-cols-2 sm:divide-x">
               <div className="sm:pr-4">
-                <p className="mb-1 text-xs font-medium text-muted-foreground">Baseline</p>
+                <p className="text-muted-foreground mb-1 text-xs font-medium">Baseline</p>
                 <div className="text-sm leading-relaxed">
                   {item.resultA?.responseText ? (
-                    <MarkdownContent text={item.resultA.responseText} />
+                    <ResponseWithCitations text={item.resultA.responseText} sources={item.resultA.sources} />
                   ) : (
                     <span className="text-muted-foreground">{'\u2014'}</span>
                   )}
                 </div>
               </div>
               <div className="sm:pl-4">
-                <p className="mb-1 text-xs font-medium text-muted-foreground">Candidate</p>
+                <p className="text-muted-foreground mb-1 text-xs font-medium">Candidate</p>
                 <div className="text-sm leading-relaxed">
                   {item.resultB?.responseText ? (
-                    <MarkdownContent text={item.resultB.responseText} />
+                    <ResponseWithCitations text={item.resultB.responseText} sources={item.resultB.sources} />
                   ) : (
                     <span className="text-muted-foreground">{'\u2014'}</span>
                   )}
@@ -513,8 +518,8 @@ function ExperimentSelector({
   }
 
   return (
-    <div className="rounded-lg border border-border bg-card p-5">
-      <h3 className="text-sm font-medium text-muted-foreground">{label}</h3>
+    <div className="border-border bg-card rounded-lg border p-5">
+      <h3 className="text-muted-foreground text-sm font-medium">{label}</h3>
       <div className="mt-3 flex items-end gap-3">
         <div className="flex-1">
           <Select value={selectedId} onValueChange={setSelectedId}>
@@ -607,7 +612,7 @@ export function ExperimentComparePage() {
 
   // Derive selected item from URL param
   const selectedItem: ComparisonItem | null = useMemo(
-    () => (itemIdx != null && comparison ? (comparison.items[itemIdx] ?? null) : null),
+    () => (itemIdx !== null && itemIdx !== undefined && comparison ? (comparison.items[itemIdx] ?? null) : null),
     [itemIdx, comparison],
   );
 
@@ -638,22 +643,27 @@ export function ExperimentComparePage() {
         cell: ({ row }) => {
           const scores = row.original.resultA?.scores;
           const scoreVal = row.original.scoreA;
-          if (scoreVal == null) return <span className="text-muted-foreground">&mdash;</span>;
+          if (scoreVal === null || scoreVal === undefined)
+            return <span className="text-muted-foreground">&mdash;</span>;
           if (!scores || scores.length <= 1) {
             return <span className="tabular-nums">{scoreVal.toFixed(2)}</span>;
           }
           return (
             <Tooltip>
               <TooltipTrigger asChild>
-                <span className="tabular-nums cursor-default">{scoreVal.toFixed(2)}</span>
+                <span className="cursor-default tabular-nums">{scoreVal.toFixed(2)}</span>
               </TooltipTrigger>
               <TooltipContent className="text-xs">
                 <div className="space-y-0.5">
                   {scores.map((s) => (
                     <div key={s.scorerId ?? s.name ?? 'unknown'} className="flex items-center justify-between gap-3">
                       <span>{s.name ?? s.scorerId ?? 'unknown'}</span>
-                      <span className="tabular-nums font-medium">
-                        {s.status === 'skipped' ? 'N/A' : s.score != null ? s.score.toFixed(2) : '\u2014'}
+                      <span className="font-medium tabular-nums">
+                        {s.status === 'skipped'
+                          ? 'N/A'
+                          : s.score !== null && s.score !== undefined
+                            ? s.score.toFixed(2)
+                            : '\u2014'}
                       </span>
                     </div>
                   ))}
@@ -670,22 +680,27 @@ export function ExperimentComparePage() {
         cell: ({ row }) => {
           const scores = row.original.resultB?.scores;
           const scoreVal = row.original.scoreB;
-          if (scoreVal == null) return <span className="text-muted-foreground">&mdash;</span>;
+          if (scoreVal === null || scoreVal === undefined)
+            return <span className="text-muted-foreground">&mdash;</span>;
           if (!scores || scores.length <= 1) {
             return <span className="tabular-nums">{scoreVal.toFixed(2)}</span>;
           }
           return (
             <Tooltip>
               <TooltipTrigger asChild>
-                <span className="tabular-nums cursor-default">{scoreVal.toFixed(2)}</span>
+                <span className="cursor-default tabular-nums">{scoreVal.toFixed(2)}</span>
               </TooltipTrigger>
               <TooltipContent className="text-xs">
                 <div className="space-y-0.5">
                   {scores.map((s) => (
                     <div key={s.scorerId ?? s.name ?? 'unknown'} className="flex items-center justify-between gap-3">
                       <span>{s.name ?? s.scorerId ?? 'unknown'}</span>
-                      <span className="tabular-nums font-medium">
-                        {s.status === 'skipped' ? 'N/A' : s.score != null ? s.score.toFixed(2) : '\u2014'}
+                      <span className="font-medium tabular-nums">
+                        {s.status === 'skipped'
+                          ? 'N/A'
+                          : s.score !== null && s.score !== undefined
+                            ? s.score.toFixed(2)
+                            : '\u2014'}
                       </span>
                     </div>
                   ))}
@@ -707,7 +722,10 @@ export function ExperimentComparePage() {
 
   // Compute overall delta between A and B avg scores
   const overallDelta =
-    comparison?.experimentA.avgScore != null && comparison?.experimentB.avgScore != null
+    comparison?.experimentA.avgScore !== null &&
+    comparison?.experimentA.avgScore !== undefined &&
+    comparison?.experimentB.avgScore !== null &&
+    comparison?.experimentB.avgScore !== undefined
       ? comparison.experimentB.avgScore - comparison.experimentA.avgScore
       : null;
 
@@ -717,10 +735,10 @@ export function ExperimentComparePage() {
         <PageHeader
           title={
             <span className="flex items-center gap-1.5">
-              <Link to="/experiments" className="text-muted-foreground transition-colors hover:text-foreground">
+              <Link to="/experiments" className="text-muted-foreground hover:text-foreground transition-colors">
                 Experiments
               </Link>
-              <ChevronRightIcon className="size-3.5 text-muted-foreground/50" />
+              <ChevronRightIcon className="text-muted-foreground/50 size-3.5" />
               Compare
             </span>
           }
@@ -782,25 +800,27 @@ export function ExperimentComparePage() {
 
             {/* Aggregate stat cards */}
             <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <div className="rounded-lg border border-border bg-card px-5 py-4">
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Baseline (A)</p>
-                <p className="mt-1 h-5 truncate text-sm font-medium text-foreground">
+              <div className="border-border bg-card rounded-lg border px-5 py-4">
+                <p className="text-muted-foreground text-xs font-semibold tracking-wider uppercase">Baseline (A)</p>
+                <p className="text-foreground mt-1 h-5 truncate text-sm font-medium">
                   {comparison.experimentA.name || comparison.experimentA.id.slice(0, 8)}
                 </p>
-                <p className="mt-3 text-xs text-muted-foreground">Avg. score</p>
-                <span className="mt-1 block text-xl font-semibold leading-none tracking-tight text-foreground">
-                  {comparison.experimentA.avgScore != null ? comparison.experimentA.avgScore.toFixed(2) : '\u2014'}
+                <p className="text-muted-foreground mt-3 text-xs">Avg. score</p>
+                <span className="text-foreground mt-1 block text-xl leading-none font-semibold tracking-tight">
+                  {comparison.experimentA.avgScore !== null && comparison.experimentA.avgScore !== undefined
+                    ? comparison.experimentA.avgScore.toFixed(2)
+                    : '\u2014'}
                 </span>
               </div>
 
-              <div className="rounded-lg border border-border bg-card px-5 py-4">
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Delta</p>
-                <p className="mt-1 h-5 truncate text-sm font-medium text-foreground">Candidate − Baseline</p>
-                <p className="mt-3 text-xs text-muted-foreground">Score change</p>
+              <div className="border-border bg-card rounded-lg border px-5 py-4">
+                <p className="text-muted-foreground text-xs font-semibold tracking-wider uppercase">Delta</p>
+                <p className="text-foreground mt-1 h-5 truncate text-sm font-medium">Candidate − Baseline</p>
+                <p className="text-muted-foreground mt-3 text-xs">Score change</p>
                 <span className="mt-1 block">
                   {overallDelta !== null ? (
                     <span
-                      className={`inline-flex items-center gap-1 text-xl font-semibold leading-none tracking-tight ${overallDelta > 0 ? 'text-emerald-500' : overallDelta < 0 ? 'text-red-500' : 'text-muted-foreground'}`}
+                      className={`inline-flex items-center gap-1 text-xl leading-none font-semibold tracking-tight ${overallDelta > 0 ? 'text-emerald-500' : overallDelta < 0 ? 'text-red-500' : 'text-muted-foreground'}`}
                     >
                       {overallDelta > 0 && <ArrowUpIcon className="size-4" />}
                       {overallDelta < 0 && <ArrowDownIcon className="size-4" />}
@@ -808,21 +828,23 @@ export function ExperimentComparePage() {
                       {overallDelta.toFixed(2)}
                     </span>
                   ) : (
-                    <span className="text-xl font-semibold leading-none tracking-tight text-foreground">
+                    <span className="text-foreground text-xl leading-none font-semibold tracking-tight">
                       {'\u2014'}
                     </span>
                   )}
                 </span>
               </div>
 
-              <div className="rounded-lg border border-border bg-card px-5 py-4">
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Candidate (B)</p>
-                <p className="mt-1 h-5 truncate text-sm font-medium text-foreground">
+              <div className="border-border bg-card rounded-lg border px-5 py-4">
+                <p className="text-muted-foreground text-xs font-semibold tracking-wider uppercase">Candidate (B)</p>
+                <p className="text-foreground mt-1 h-5 truncate text-sm font-medium">
                   {comparison.experimentB.name || comparison.experimentB.id.slice(0, 8)}
                 </p>
-                <p className="mt-3 text-xs text-muted-foreground">Avg. score</p>
-                <span className="mt-1 block text-xl font-semibold leading-none tracking-tight text-foreground">
-                  {comparison.experimentB.avgScore != null ? comparison.experimentB.avgScore.toFixed(2) : '\u2014'}
+                <p className="text-muted-foreground mt-3 text-xs">Avg. score</p>
+                <span className="text-foreground mt-1 block text-xl leading-none font-semibold tracking-tight">
+                  {comparison.experimentB.avgScore !== null && comparison.experimentB.avgScore !== undefined
+                    ? comparison.experimentB.avgScore.toFixed(2)
+                    : '\u2014'}
                 </span>
               </div>
             </div>

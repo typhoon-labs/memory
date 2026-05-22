@@ -19,19 +19,16 @@ export function stripChunkSources(content: Record<string, unknown>): Record<stri
         const result = inv.result as Record<string, unknown>;
         if (Array.isArray(result._chunkSources) && result._chunkSources.length > 0) {
           modified = true;
-          return {
-            ...p,
-            toolInvocation: {
-              ...inv,
-              result: {
-                ...result,
+          return Object.assign({}, p, {
+            toolInvocation: Object.assign({}, inv, {
+              result: Object.assign({}, result, {
                 _chunkSources: (result._chunkSources as Record<string, unknown>[]).map((cs) => ({
                   chunkId: cs.chunkId,
                   displayIndex: cs.displayIndex,
                 })),
-              },
-            },
-          };
+              }),
+            }),
+          });
         }
       }
     }

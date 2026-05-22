@@ -1,5 +1,6 @@
 import postgres from 'postgres';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
 import { TEST_DB_URL } from './test-utils';
 import { PgVector } from './vector';
 

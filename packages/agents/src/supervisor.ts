@@ -2,13 +2,14 @@ import { Agent } from '@mastra/core/agent';
 import type { MastraMemory } from '@mastra/core/memory';
 import { PrefillErrorHandler } from '@mastra/core/processors';
 import { createChatModel, createGuardrailModel } from '@typhoon/ai';
+
 import { createInputGuardrails } from './guardrails/input';
 import { createOutputGuardrails } from './guardrails/output';
 import { createKnowledgeAgent } from './knowledge';
 import { createKnowledgeSearchTool } from './tools/knowledge-search';
 import { setThreadTitle } from './tools/set-thread-title';
 
-const SUPERVISOR_INSTRUCTIONS = `You are Typhoon, an AI-powered customer service supervisor.
+const BASE_INSTRUCTIONS = `You are Typhoon, an AI-powered customer service supervisor.
 You route customer queries to specialized agents for accurate assistance.
 
 Available agents:
@@ -31,13 +32,14 @@ Response:
 - NEVER use emojis (no 📦 📋 💰 💡 🔧 ➕ ✅ ❌ or any other emoji). Use plain unicode text symbols only: →, —, ✓, ✗, ⚠. Headings must be plain text with no decorative symbols. Boolean values must use ✓ or ✗. For lists, use markdown syntax (- or *), not • characters.
 
 Narration:
-- Before a tool call, write one short conversational sentence telling the user what you're about to do (e.g. "Let me look that up for you."). Keep it under ~15 words.
+- Before a tool call, write one short conversational sentence telling the user what you're about to do (e.g. "Let me look that up for you."). Keep it under ~15 words.`;
+
+const THREAD_TITLE_INSTRUCTIONS = `
 
 Thread title:
 - On the FIRST user message in a new conversation, call setThreadTitle alongside your searchKnowledge call. Pass the user's full message.
 - Do not call setThreadTitle on follow-up messages — only the first message.
-- Do not narrate the setThreadTitle call.
-`;
+- Do not narrate the setThreadTitle call.`;
 
 export interface GuardrailsConfig {
   promptInjection?: boolean;
@@ -47,40 +49,70 @@ export interface GuardrailsConfig {
 }
 
 export interface SupervisorOptions {
-  guardrails?: GuardrailsConfig;
+  /** Pass `false` to skip all guardrails (e.g. for experiments). */
+  guardrails?: GuardrailsConfig | false;
   /** Async function that returns current metadata field names and values (cached with TTL). */
   getMetadataContext?: () => Promise<string | undefined>;
+  /** Include setThreadTitle tool and thread-title instructions. Default: `true`. */
+  threadTitle?: boolean;
 }
 
 export function createSupervisor(
-  supervisorMemory: MastraMemory,
+  supervisorMemory?: MastraMemory,
   guardrailsOrOptions?: GuardrailsConfig | SupervisorOptions,
 ) {
   // Support both old signature (GuardrailsConfig) and new (SupervisorOptions)
   const isSupervisorOptions = (v: unknown): v is SupervisorOptions =>
-    typeof v === 'object' && v !== null && ('guardrails' in v || 'getMetadataContext' in v);
+    typeof v === 'object' && v !== null && ('guardrails' in v || 'getMetadataContext' in v || 'threadTitle' in v);
   const options: SupervisorOptions = isSupervisorOptions(guardrailsOrOptions)
     ? guardrailsOrOptions
     : { guardrails: guardrailsOrOptions };
+
+  const includeThreadTitle = options.threadTitle !== false;
+  const skipGuardrails = options.guardrails === false;
 
   const knowledgeAgent = createKnowledgeAgent({ rerank: false });
   const searchKnowledge = createKnowledgeSearchTool(knowledgeAgent, {
     getMetadataContext: options.getMetadataContext,
   });
-  const guardrailModel = createGuardrailModel();
+
+  const instructions = includeThreadTitle ? BASE_INSTRUCTIONS + THREAD_TITLE_INSTRUCTIONS : BASE_INSTRUCTIONS;
+
+  const model = createChatModel();
+  const defaultOptions = { modelSettings: { temperature: 0 } };
+
+  // Build guardrail processors (skipped entirely when guardrails === false)
+  const guardrailModel = skipGuardrails ? undefined : createGuardrailModel();
+  const guardrailsConfig = skipGuardrails ? undefined : (options.guardrails as GuardrailsConfig | undefined);
+  const inputProcessors = guardrailModel ? createInputGuardrails(guardrailModel, guardrailsConfig) : undefined;
+  const outputProcessors = guardrailModel ? createOutputGuardrails(guardrailModel, guardrailsConfig) : undefined;
+  const errorProcessors = skipGuardrails ? undefined : [new PrefillErrorHandler()];
+
+  if (includeThreadTitle) {
+    return new Agent({
+      id: 'typhoon-supervisor',
+      name: 'Typhoon Supervisor',
+      model,
+      instructions,
+      tools: { searchKnowledge, setThreadTitle },
+      memory: supervisorMemory,
+      inputProcessors,
+      outputProcessors,
+      errorProcessors,
+      defaultOptions,
+    });
+  }
 
   return new Agent({
     id: 'typhoon-supervisor',
     name: 'Typhoon Supervisor',
-    model: createChatModel(),
-    instructions: SUPERVISOR_INSTRUCTIONS,
-    tools: { searchKnowledge, setThreadTitle },
+    model,
+    instructions,
+    tools: { searchKnowledge },
     memory: supervisorMemory,
-    inputProcessors: createInputGuardrails(guardrailModel, options.guardrails),
-    outputProcessors: createOutputGuardrails(guardrailModel, options.guardrails),
-    errorProcessors: [new PrefillErrorHandler()],
-    defaultOptions: {
-      modelSettings: { temperature: 0 },
-    },
+    inputProcessors,
+    outputProcessors,
+    errorProcessors,
+    defaultOptions,
   });
 }

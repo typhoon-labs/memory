@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Capture Worker constructor args and instances for inspection
-const { mockWorkerInstances, mockWorkerClose } = vi.hoisted(() => {
+const { mockWorkerInstances, mockWorkerClose, MockWorkerClass, MockFlowProducerClass } = vi.hoisted(() => {
   const mockWorkerInstances: Array<{
     queueName: string;
     processor: (job: unknown, token?: string) => Promise<unknown>;
@@ -12,26 +12,7 @@ const { mockWorkerInstances, mockWorkerClose } = vi.hoisted(() => {
   }> = [];
   const mockWorkerClose = vi.fn().mockResolvedValue(undefined);
 
-  return { mockWorkerInstances, mockWorkerClose };
-});
-
-vi.mock('bullmq', () => ({
-  UnrecoverableError: class UnrecoverableError extends Error {
-    constructor(message: string) {
-      super(message);
-      this.name = 'UnrecoverableError';
-    }
-  },
-  WaitingChildrenError: class WaitingChildrenError extends Error {
-    constructor() {
-      super('WaitingChildrenError');
-      this.name = 'WaitingChildrenError';
-    }
-  },
-  FlowProducer: class MockFlowProducer {
-    add = vi.fn().mockResolvedValue({ job: { id: 'flow-1' } });
-  },
-  Worker: class MockWorker {
+  class MockWorkerClass {
     queueName: string;
     processor: (job: unknown, token?: string) => Promise<unknown>;
     opts: Record<string, unknown>;
@@ -54,7 +35,30 @@ vi.mock('bullmq', () => ({
     }
 
     close = mockWorkerClose;
+  }
+
+  class MockFlowProducerClass {
+    add = vi.fn().mockResolvedValue({ job: { id: 'flow-1' } });
+  }
+
+  return { mockWorkerInstances, mockWorkerClose, MockWorkerClass, MockFlowProducerClass };
+});
+
+vi.mock('bullmq', () => ({
+  UnrecoverableError: class UnrecoverableError extends Error {
+    constructor(message: string) {
+      super(message);
+      this.name = 'UnrecoverableError';
+    }
   },
+  WaitingChildrenError: class WaitingChildrenError extends Error {
+    constructor() {
+      super('WaitingChildrenError');
+      this.name = 'WaitingChildrenError';
+    }
+  },
+  FlowProducer: MockFlowProducerClass,
+  Worker: MockWorkerClass,
 }));
 
 const { mockHandleScanJob, mockHandleProcessFileJob, mockHandleDeleteFileJob } = vi.hoisted(() => ({
@@ -100,7 +104,7 @@ const mockRunSingleScorer = vi.hoisted(() =>
 );
 
 vi.mock('@typhoon/agents', () => ({
-  createExperimentAgent: vi.fn(() => ({ generate: vi.fn() })),
+  createSupervisor: vi.fn(() => ({ generate: vi.fn() })),
 }));
 
 vi.mock('@typhoon/evals', () => ({
@@ -112,7 +116,6 @@ vi.mock('@typhoon/evals', () => ({
   processExperimentItemStep2: vi.fn().mockResolvedValue({ succeeded: true, scorersFailed: 0 }),
   completeExperiment: vi.fn().mockResolvedValue({ succeeded: 0, failed: 0, cancelled: false }),
   mapScorerRows: vi.fn(() => []),
-  PUBLISHED_SCORERS_QUERY: 'SELECT 1',
   extractContextFromSteps: vi.fn(() => []),
   constructScorer: vi.fn(),
 }));
@@ -123,6 +126,36 @@ vi.mock('@typhoon/ai', () => ({
 
 vi.mock('@typhoon/config', () => ({
   isScoringEnabled: vi.fn(() => true),
+}));
+
+const { mockScoringService } = vi.hoisted(() => {
+  const mockScoringDeps = {
+    fetchMessages: vi.fn().mockResolvedValue(null),
+    resolveLatestAssistantMessage: vi.fn().mockResolvedValue(null),
+    hydrateChunks: vi.fn().mockResolvedValue(new Map()),
+    hasExistingScore: vi.fn().mockResolvedValue(false),
+    saveScore: vi.fn().mockResolvedValue(undefined),
+  };
+  const mockScoringService = {
+    toScoringDeps: vi.fn(() => mockScoringDeps),
+    fetchMessages: mockScoringDeps.fetchMessages,
+    resolveLatestAssistantMessage: mockScoringDeps.resolveLatestAssistantMessage,
+    hydrateChunks: mockScoringDeps.hydrateChunks,
+    hasExistingScore: mockScoringDeps.hasExistingScore,
+    saveScore: mockScoringDeps.saveScore,
+  };
+  return { mockScoringService };
+});
+
+const { mockVectorStore } = vi.hoisted(() => ({
+  mockVectorStore: {},
+}));
+
+vi.mock('./services', () => ({
+  createWorkerServices: vi.fn(() => ({
+    scoringService: mockScoringService,
+    vectorStore: mockVectorStore,
+  })),
 }));
 
 vi.mock('@typhoon/db/drivers/pg', () => ({
@@ -137,22 +170,22 @@ vi.mock('@typhoon/db/drivers/pg', () => ({
 }));
 
 vi.mock('@typhoon/db', () => ({
-  createDb: vi.fn(() => ({
-    select: vi.fn().mockReturnThis(),
-    from: vi.fn().mockReturnThis(),
-    where: vi.fn().mockReturnThis(),
-    orderBy: vi.fn().mockReturnThis(),
-    limit: vi.fn().mockResolvedValue([]),
-  })),
-  messages: {},
-  threads: {},
+  createDb: vi.fn(() => ({})),
 }));
 
-vi.mock('drizzle-orm', () => ({
-  eq: vi.fn(),
-  and: vi.fn(),
-  desc: vi.fn(),
-  sql: vi.fn(),
+vi.mock('@typhoon/db/repos', () => ({
+  SyncTargetRepo: class MockSyncTargetRepo {},
+  SyncJobRepo: class MockSyncJobRepo {
+    incrementCompletion = vi.fn().mockResolvedValue(null);
+    markCompleted = vi.fn().mockResolvedValue(undefined);
+  },
+  DocumentRepo: class MockDocumentRepo {},
+  MetadataRepo: class MockMetadataRepo {},
+  PartitionRepo: class MockPartitionRepo {},
+  ScorerRepo: class MockScorerRepo {
+    listPublished = vi.fn().mockResolvedValue([]);
+  },
+  ExperimentRepo: class MockExperimentRepo {},
 }));
 
 vi.mock('@mastra/core', () => ({
@@ -175,14 +208,26 @@ const { mockSyncQueue, mockReviewsQueue, mockScoringQueue } = vi.hoisted(() => (
   mockScoringQueue: { add: vi.fn().mockResolvedValue({}), close: vi.fn() },
 }));
 
-vi.mock('./queue', () => ({
+vi.mock('./infra/queue', () => ({
   getSyncQueue: vi.fn(() => mockSyncQueue),
   getReviewsQueue: vi.fn(() => mockReviewsQueue),
   getScoringQueue: vi.fn(() => mockScoringQueue),
+  getMaintenanceQueue: vi.fn(() => ({ add: vi.fn().mockResolvedValue(undefined) })),
 }));
 
 // Import after mocks are registered
+import type { RedisProvider } from '@typhoon/queue';
+
 import { shutdownWorkers, startWorkers } from './workers';
+
+const mockRedis = {
+  createWorker: (
+    name: string,
+    processor: (job: unknown, token?: string) => Promise<unknown>,
+    opts?: Record<string, unknown>,
+  ) => new MockWorkerClass(name, processor, opts ?? {}),
+  createFlowProducer: () => new MockFlowProducerClass(),
+} as unknown as RedisProvider;
 
 const ENV_KEYS = [
   'SYNC_WORKER_CONCURRENCY',
@@ -210,19 +255,26 @@ describe('startWorkers', () => {
     mockWorkerInstances.length = 0;
   });
 
-  it('creates Workers for sync, reviews, scoring, and experiments queues', () => {
-    startWorkers('redis://localhost:6379', 'postgresql://localhost/typhoon');
+  it('creates Workers for maintenance, sync, reviews, scoring, and experiments queues', () => {
+    startWorkers(mockRedis, 'postgresql://localhost/typhoon');
     expect(mockWorkerInstances.length).toBeGreaterThanOrEqual(1);
 
     const queueNames = mockWorkerInstances.map((w) => w.queueName);
+    expect(queueNames).toContain('maintenance');
     expect(queueNames).toContain('sync');
     expect(queueNames).toContain('reviews');
     expect(queueNames).toContain('scoring');
     expect(queueNames).toContain('experiments');
   });
 
+  function findSyncWorker() {
+    const w = mockWorkerInstances.find((w) => w.queueName === 'sync');
+    if (!w) throw new Error('sync worker not found');
+    return w;
+  }
+
   it('returns syncWorker and syncQueue', () => {
-    const result = startWorkers('redis://localhost:6379', 'postgresql://localhost/typhoon');
+    const result = startWorkers(mockRedis, 'postgresql://localhost/typhoon');
     expect(result.syncWorker).toBeDefined();
     expect(result.syncQueue).toBe(mockSyncQueue);
   });
@@ -233,46 +285,52 @@ describe('startWorkers', () => {
     delete process.env.SYNC_WORKER_STALLED_INTERVAL_MS;
     delete process.env.SYNC_WORKER_MAX_STALLED_COUNT;
 
-    startWorkers('redis://localhost:6379', 'postgresql://localhost/typhoon');
-    const opts = mockWorkerInstances[0].opts;
-    expect(opts.concurrency).toBe(5);
-    expect(opts.lockDuration).toBe(120_000);
-    expect(opts.stalledInterval).toBe(60_000);
-    expect(opts.maxStalledCount).toBe(3);
+    startWorkers(mockRedis, 'postgresql://localhost/typhoon');
+    const syncWorker = findSyncWorker();
+    expect(syncWorker.opts.concurrency).toBe(5);
+    expect(syncWorker.opts.lockDuration).toBe(120_000);
+    expect(syncWorker.opts.stalledInterval).toBe(60_000);
+    expect(syncWorker.opts.maxStalledCount).toBe(3);
   });
 
   it('reads SYNC_WORKER_CONCURRENCY env var to override concurrency', async () => {
     process.env.SYNC_WORKER_CONCURRENCY = '3';
-    startWorkers('redis://localhost:6379', 'postgresql://localhost/typhoon');
-    expect(mockWorkerInstances[0].opts.concurrency).toBe(3);
+    startWorkers(mockRedis, 'postgresql://localhost/typhoon');
+    const syncWorker = findSyncWorker();
+    expect(syncWorker.opts.concurrency).toBe(3);
   });
 
-  it('routes "scan" job to handleScanJob with (job, db, queue)', async () => {
-    startWorkers('redis://localhost:6379', 'postgresql://localhost/typhoon');
-    const processor = mockWorkerInstances[0].processor;
+  it('routes "scan" job to handleScanJob with (job, repos, queue)', async () => {
+    startWorkers(mockRedis, 'postgresql://localhost/typhoon');
+    const syncWorker = findSyncWorker();
     const fakeJob = { name: 'scan', id: 'j-1', data: {} };
-    await processor(fakeJob);
+    await syncWorker.processor(fakeJob);
     expect(mockHandleScanJob).toHaveBeenCalledWith(fakeJob, expect.anything(), mockSyncQueue);
   });
 
-  it('routes "process-file" job to handleProcessFileJob with (job, db, vectorStore)', async () => {
-    startWorkers('redis://localhost:6379', 'postgresql://localhost/typhoon');
-    const processor = mockWorkerInstances[0].processor;
+  it('routes "process-file" job to handleProcessFileJob with (job, repos, vectorStore, sql)', async () => {
+    startWorkers(mockRedis, 'postgresql://localhost/typhoon');
+    const syncWorker = findSyncWorker();
     const fakeJob = { name: 'process-file', id: 'j-2', data: {} };
-    await processor(fakeJob);
-    expect(mockHandleProcessFileJob).toHaveBeenCalledWith(fakeJob, expect.anything(), expect.anything());
+    await syncWorker.processor(fakeJob);
+    expect(mockHandleProcessFileJob).toHaveBeenCalledWith(
+      fakeJob,
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+    );
   });
 
   it('throws Error for unknown sync job name', async () => {
-    startWorkers('redis://localhost:6379', 'postgresql://localhost/typhoon');
-    const processor = mockWorkerInstances[0].processor;
+    startWorkers(mockRedis, 'postgresql://localhost/typhoon');
+    const syncWorker = findSyncWorker();
     const fakeJob = { name: 'unknown-name', id: 'j-4', data: {} };
-    await expect(processor(fakeJob)).rejects.toThrow('Unknown job: unknown-name');
+    await expect(syncWorker.processor(fakeJob)).rejects.toThrow('Unknown job: unknown-name');
   });
 
   it('attaches event handlers to sync worker', () => {
-    startWorkers('redis://localhost:6379', 'postgresql://localhost/typhoon');
-    const { events } = mockWorkerInstances[0];
+    startWorkers(mockRedis, 'postgresql://localhost/typhoon');
+    const { events } = findSyncWorker();
     expect(events.error).toHaveLength(1);
     expect(events.failed).toHaveLength(1);
     expect(events.completed).toHaveLength(1);
@@ -292,19 +350,11 @@ describe('reviews worker processor', () => {
   });
 
   function getReviewsWorker() {
-    startWorkers('redis://localhost:6379', 'postgresql://localhost/typhoon');
+    startWorkers(mockRedis, 'postgresql://localhost/typhoon');
     const worker = mockWorkerInstances.find((w) => w.queueName === 'reviews');
     if (!worker) throw new Error('reviews worker not found');
     return worker;
   }
-
-  it('routes "partition-management" job to managePartitions', async () => {
-    const { managePartitions } = await import('@typhoon/ingestion');
-    const worker = getReviewsWorker();
-    const fakeJob = { name: 'partition-management', data: { retentionDays: 30 } };
-    await worker.processor(fakeJob);
-    expect(managePartitions).toHaveBeenCalledWith(expect.anything(), { retentionDays: 30 });
-  });
 
   it('routes score-message to prepareScoring and creates flow', async () => {
     const worker = getReviewsWorker();
@@ -372,7 +422,7 @@ describe('scoring worker processor', () => {
   });
 
   function getScoringRunWorker() {
-    startWorkers('redis://localhost:6379', 'postgresql://localhost/typhoon');
+    startWorkers(mockRedis, 'postgresql://localhost/typhoon');
     const worker = mockWorkerInstances.find((w) => w.queueName === 'scoring');
     if (!worker) throw new Error('scoring worker not found');
     return worker;
@@ -415,7 +465,7 @@ describe('experiment worker processor', () => {
   });
 
   function getExperimentsWorker() {
-    startWorkers('redis://localhost:6379', 'postgresql://localhost/typhoon');
+    startWorkers(mockRedis, 'postgresql://localhost/typhoon');
     const worker = mockWorkerInstances.find((w) => w.queueName === 'experiments');
     if (!worker) throw new Error('experiments worker not found');
     return worker;
@@ -457,7 +507,7 @@ describe('sync worker event handlers', () => {
 
   it('calls incrementSyncJobCompletion on failed job with syncJobId', async () => {
     const { incrementSyncJobCompletion } = await import('@typhoon/ingestion');
-    startWorkers('redis://localhost:6379', 'postgresql://localhost/typhoon');
+    startWorkers(mockRedis, 'postgresql://localhost/typhoon');
     const syncWorker = mockWorkerInstances.find((w) => w.queueName === 'sync');
     if (!syncWorker) throw new Error('sync worker not found');
     const failedHandler = syncWorker.events.failed[0];
@@ -467,7 +517,7 @@ describe('sync worker event handlers', () => {
 
   it('does not call incrementSyncJobCompletion when syncJobId is absent', async () => {
     const { incrementSyncJobCompletion } = await import('@typhoon/ingestion');
-    startWorkers('redis://localhost:6379', 'postgresql://localhost/typhoon');
+    startWorkers(mockRedis, 'postgresql://localhost/typhoon');
     const syncWorker = mockWorkerInstances.find((w) => w.queueName === 'sync');
     if (!syncWorker) throw new Error('sync worker not found');
     const failedHandler = syncWorker.events.failed[0];
@@ -493,14 +543,14 @@ describe('shutdownWorkers', () => {
   });
 
   it('calls close() on all workers', async () => {
-    startWorkers('redis://localhost:6379', 'postgresql://localhost/typhoon');
+    startWorkers(mockRedis, 'postgresql://localhost/typhoon');
     await shutdownWorkers();
-    // close() called for sync + reviews + scoring + experiments workers
-    expect(mockWorkerClose).toHaveBeenCalledTimes(4);
+    // close() called for maintenance + sync + reviews + scoring + experiments workers
+    expect(mockWorkerClose).toHaveBeenCalledTimes(5);
   });
 
   it('clears the tracked workers after shutdown', async () => {
-    startWorkers('redis://localhost:6379', 'postgresql://localhost/typhoon');
+    startWorkers(mockRedis, 'postgresql://localhost/typhoon');
     await shutdownWorkers();
     mockWorkerClose.mockClear();
     await shutdownWorkers();
@@ -509,7 +559,7 @@ describe('shutdownWorkers', () => {
 
   it('respects the gracefulMs timeout via Promise.race', async () => {
     mockWorkerClose.mockReturnValue(new Promise(() => {}));
-    startWorkers('redis://localhost:6379', 'postgresql://localhost/typhoon');
+    startWorkers(mockRedis, 'postgresql://localhost/typhoon');
     await expect(shutdownWorkers({ gracefulMs: 10 })).resolves.toBeUndefined();
   });
 });

@@ -1,4 +1,5 @@
 import type { ChatStatus } from 'ai';
+
 import { cn } from '../../lib/utils';
 import {
   Conversation,
@@ -24,7 +25,7 @@ export interface TyphoonThreadProps {
 
 /** Returns true when the last assistant message already contains visible text. */
 function lastMessageHasText(messages: ChatMessage[]): boolean {
-  const last = messages[messages.length - 1];
+  const last = messages.at(-1);
   if (!last || last.role !== 'assistant') return false;
   return last.parts.some((p) => p.type === 'text' && p.text.length > 0);
 }
@@ -56,7 +57,7 @@ export function TyphoonThread({ messages, status, sendMessage, stop, config, cla
                   })}
                 {(status === 'submitted' || (status === 'streaming' && !lastMessageHasText(messages))) && <Loader />}
                 {error && status !== 'streaming' && status !== 'submitted' && (
-                  <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3.5 py-2.5 text-sm text-destructive">
+                  <div className="border-destructive/30 bg-destructive/5 text-destructive flex items-start gap-2 rounded-lg border px-3.5 py-2.5 text-sm">
                     <span className="mt-0.5 shrink-0">&#x26A0;</span>
                     <span>{error.message || 'Something went wrong.'} Please try again.</span>
                   </div>

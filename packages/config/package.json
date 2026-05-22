@@ -8,7 +8,6 @@
     "./tsconfig.base.json": "./tsconfig.base.json",
     "./tsconfig.lib.json": "./tsconfig.lib.json",
     "./tsconfig.app.json": "./tsconfig.app.json",
-    "./biome.json": "./biome.json",
     "./vite": "./vite.shared.ts"
   },
   "scripts": {

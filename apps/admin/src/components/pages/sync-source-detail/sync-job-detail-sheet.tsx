@@ -8,6 +8,7 @@ import {
   StatCard,
   StatusBadge,
 } from '@typhoon/ui';
+
 import type { SyncJob } from './shared';
 import { formatDuration, JOB_STATUS_MAP } from './shared';
 

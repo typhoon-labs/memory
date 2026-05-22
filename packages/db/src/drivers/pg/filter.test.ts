@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+
 import { buildFilterQuery } from './filter';
 
 describe('buildFilterQuery', () => {
@@ -195,6 +196,63 @@ describe('buildFilterQuery', () => {
 
     it('throws on unsupported operator', () => {
       expect(() => buildFilterQuery({ x: { $unknown: 1 } })).toThrow('Unsupported filter operator');
+    });
+
+    it('throws on invalid metadata key', () => {
+      expect(() => buildFilterQuery({ 'drop table; --': 'x' })).toThrow('Invalid metadata key');
+    });
+
+    it('handles $ne with null (IS NOT NULL)', () => {
+      const result = buildFilterQuery({ status: { $ne: null } });
+      expect(result.sql).toContain('IS NOT NULL');
+      expect(result.values).toEqual([]);
+    });
+
+    it('handles deeply nested $and inside $or', () => {
+      const result = buildFilterQuery({
+        $or: [{ $and: [{ a: '1' }, { b: '2' }] }, { c: '3' }],
+      });
+      expect(result.sql).toContain('AND');
+      expect(result.sql).toContain('OR');
+      expect(result.values).toEqual(['1', '2', '3']);
+    });
+
+    it('$in with single value', () => {
+      const result = buildFilterQuery({ status: { $in: ['active'] } });
+      expect(result.sql).toContain('IN');
+      expect(result.values).toEqual(['active']);
+    });
+
+    it('$size operator', () => {
+      const result = buildFilterQuery({ tags: { $size: 3 } });
+      expect(result.sql).toContain('jsonb_array_length');
+      expect(result.values).toContain(3);
+    });
+
+    it('$contains with object (JSONB containment)', () => {
+      const result = buildFilterQuery({ data: { $contains: { nested: true } } });
+      expect(result.sql).toContain('@>');
+    });
+
+    it('$elemMatch with sub-operator', () => {
+      const result = buildFilterQuery({
+        items: { $elemMatch: { price: { $gt: 10 } } },
+      });
+      expect(result.sql).toContain('EXISTS');
+      expect(result.sql).toContain('jsonb_array_elements');
+      expect(result.values).toContain(10);
+    });
+
+    it('$regex with RegExp object', () => {
+      const result = buildFilterQuery({ name: { $regex: /^test/i } });
+      expect(result.sql).toContain('~');
+      expect(result.values).toContain('^test');
+    });
+
+    it('$all operator', () => {
+      const result = buildFilterQuery({ tags: { $all: ['a', 'b'] } });
+      expect(result.sql).toContain('?&');
+      expect(result.values).toEqual(['a', 'b']);
     });
   });
 });

@@ -1,4 +1,10 @@
+import { createAmazonBedrock } from '@ai-sdk/amazon-bedrock';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
+import { fromNodeProviderChain } from '@aws-sdk/credential-providers';
+export type { LanguageModel } from 'ai';
+
+import { BedrockRerankerScorer } from './bedrock-reranker-scorer';
+import { createInstrumentedFetch } from './instrumented-fetch';
 import { RerankerScorer } from './reranker-scorer';
 
 /** Default chat model ID (Anthropic on Bedrock). */
@@ -7,27 +13,94 @@ const DEFAULT_CHAT_MODEL = 'anthropic.claude-sonnet-4-6';
 /** Default embedding model ID (Titan V2 on Bedrock). */
 const DEFAULT_EMBEDDING_MODEL = 'amazon.titan-embed-text-v2:0';
 
+/**
+ * Returns `true` when an OpenAI-compatible gateway URL (e.g. Bifrost) is
+ * configured. When `false`, models are created via the native Bedrock SDK
+ * using the AWS credential provider chain (IRSA, instance profiles, env vars).
+ */
+const isGatewayMode = () => Boolean(process.env.LLM_BASE_URL);
+
 /** Maximum input tokens accepted by the embedding model. Default: 8,192 (Titan V2). */
 export const EMBEDDING_MAX_TOKENS = Number(process.env.EMBEDDING_MAX_TOKENS ?? 8_192);
 
-/** Maximum input characters accepted by the embedding model. Default: 50,000 (Titan V2). */
-export const EMBEDDING_MAX_CHARS = Number(process.env.EMBEDDING_MAX_CHARS ?? 50_000);
+/** Maximum input characters accepted by the embedding model. Default: 2,000 (~500 tokens for focused retrieval). */
+export const EMBEDDING_MAX_CHARS = Number(process.env.EMBEDDING_MAX_CHARS ?? 2_000);
+
+/** Maximum characters of parsed text sent to the LLM for metadata extraction (title, description, custom metadata). Default: 8,000. */
+export const METADATA_EXTRACTION_MAX_CHARS = Number(process.env.METADATA_EXTRACTION_MAX_CHARS ?? 8_000);
+
+// ── Retry configuration (per-provider with common fallback) ─────────
+
+/** Common retry defaults — per-provider env vars fall back to these. */
+const DEFAULT_MAX_RETRIES = Number(process.env.LLM_MAX_RETRIES ?? 3);
+const DEFAULT_RETRY_DELAY_MS = Number(process.env.LLM_RETRY_DELAY_MS ?? 500);
+const DEFAULT_RETRY_MAX_DELAY_MS = Number(process.env.LLM_RETRY_MAX_DELAY_MS ?? 10_000);
+
+/** LLM chat/scoring retry config. */
+export const LLM_MAX_RETRIES = DEFAULT_MAX_RETRIES;
+export const LLM_RETRY_DELAY_MS = DEFAULT_RETRY_DELAY_MS;
+export const LLM_RETRY_MAX_DELAY_MS = DEFAULT_RETRY_MAX_DELAY_MS;
+
+/** Embedding retry config — falls back to LLM_* values. */
+export const EMBEDDING_MAX_RETRIES = Number(process.env.EMBEDDING_MAX_RETRIES ?? DEFAULT_MAX_RETRIES);
+export const EMBEDDING_RETRY_DELAY_MS = Number(process.env.EMBEDDING_RETRY_DELAY_MS ?? DEFAULT_RETRY_DELAY_MS);
+export const EMBEDDING_RETRY_MAX_DELAY_MS = Number(
+  process.env.EMBEDDING_RETRY_MAX_DELAY_MS ?? DEFAULT_RETRY_MAX_DELAY_MS,
+);
+
+/** Reranker retry config — falls back to LLM_* values. */
+export const RERANKER_MAX_RETRIES = Number(process.env.RERANKER_MAX_RETRIES ?? DEFAULT_MAX_RETRIES);
+export const RERANKER_RETRY_DELAY_MS = Number(process.env.RERANKER_RETRY_DELAY_MS ?? DEFAULT_RETRY_DELAY_MS);
+export const RERANKER_RETRY_MAX_DELAY_MS = Number(
+  process.env.RERANKER_RETRY_MAX_DELAY_MS ?? DEFAULT_RETRY_MAX_DELAY_MS,
+);
+
+// ── Bedrock provider (singleton, lazily initialized) ─────────────────
+
+let _bedrockProvider: ReturnType<typeof createAmazonBedrock> | undefined;
+
+/** Returns a shared Bedrock provider instance using the AWS credential chain. */
+function getBedrockProvider() {
+  if (!_bedrockProvider) {
+    _bedrockProvider = createAmazonBedrock({
+      region: process.env.AWS_REGION ?? 'us-east-1',
+      credentialProvider: fromNodeProviderChain(),
+      fetch: createInstrumentedFetch({
+        maxRetries: LLM_MAX_RETRIES,
+        retryDelayMs: LLM_RETRY_DELAY_MS,
+        retryMaxDelayMs: LLM_RETRY_MAX_DELAY_MS,
+      }),
+    });
+  }
+  return _bedrockProvider;
+}
 
 /**
- * Creates a chat model via the configured OpenAI-compatible LLM gateway.
+ * Creates a chat model.
  *
- * Reads from environment:
- * - `LLM_BASE_URL` — gateway endpoint (e.g. Bifrost)
- * - `LLM_API_KEY` — gateway auth key
- * - `LLM_CHAT_MODEL` — model ID (default: anthropic/claude-sonnet-4-6)
+ * - **Gateway mode** (`LLM_BASE_URL` set): uses the OpenAI-compatible gateway (e.g. Bifrost)
+ * - **Direct mode** (`LLM_BASE_URL` unset): uses the native AWS Bedrock SDK with credential chain
  */
 export function createChatModel(modelId?: string) {
-  const provider = createOpenAICompatible({
-    name: 'llm',
-    baseURL: process.env.LLM_BASE_URL ?? '',
-    apiKey: process.env.LLM_API_KEY ?? '',
-  });
-  return provider(modelId ?? process.env.LLM_CHAT_MODEL ?? DEFAULT_CHAT_MODEL);
+  const resolvedId = modelId ?? process.env.LLM_CHAT_MODEL ?? DEFAULT_CHAT_MODEL;
+
+  if (isGatewayMode()) {
+    const provider = createOpenAICompatible({
+      name: 'llm',
+      baseURL: process.env.LLM_BASE_URL!,
+      apiKey: process.env.LLM_API_KEY ?? '',
+      supportsStructuredOutputs: true,
+      includeUsage: true,
+      fetch: createInstrumentedFetch({
+        maxRetries: LLM_MAX_RETRIES,
+        retryDelayMs: LLM_RETRY_DELAY_MS,
+        retryMaxDelayMs: LLM_RETRY_MAX_DELAY_MS,
+      }),
+    });
+    return provider(resolvedId);
+  }
+
+  return getBedrockProvider()(resolvedId);
 }
 
 /**
@@ -39,47 +112,64 @@ export function createTitleModel() {
 }
 
 /**
- * Creates an embedding model via the configured OpenAI-compatible endpoint.
+ * Creates an embedding model.
  *
- * Reads from environment:
- * - `EMBEDDING_BASE_URL` — embedding endpoint
- * - `EMBEDDING_API_KEY` — auth key
- * - `EMBEDDING_MODEL` — model ID (default: amazon.titan-embed-text-v2:0)
+ * - **Gateway mode** (`EMBEDDING_BASE_URL` set): uses the OpenAI-compatible endpoint
+ * - **Direct mode** (`EMBEDDING_BASE_URL` unset): uses the native AWS Bedrock SDK
  */
 export function createEmbeddingModel(modelId?: string) {
-  const provider = createOpenAICompatible({
-    name: 'embedding',
-    baseURL: process.env.EMBEDDING_BASE_URL ?? '',
-    apiKey: process.env.EMBEDDING_API_KEY ?? '',
-  });
-  return provider.textEmbeddingModel(modelId ?? process.env.EMBEDDING_MODEL ?? DEFAULT_EMBEDDING_MODEL);
+  const resolvedId = modelId ?? process.env.EMBEDDING_MODEL ?? DEFAULT_EMBEDDING_MODEL;
+
+  if (process.env.EMBEDDING_BASE_URL) {
+    const provider = createOpenAICompatible({
+      name: 'embedding',
+      baseURL: process.env.EMBEDDING_BASE_URL,
+      apiKey: process.env.EMBEDDING_API_KEY ?? '',
+      includeUsage: true,
+      fetch: createInstrumentedFetch({
+        maxRetries: EMBEDDING_MAX_RETRIES,
+        retryDelayMs: EMBEDDING_RETRY_DELAY_MS,
+        retryMaxDelayMs: EMBEDDING_RETRY_MAX_DELAY_MS,
+      }),
+    });
+    return provider.textEmbeddingModel(resolvedId);
+  }
+
+  return getBedrockProvider().embedding(resolvedId);
 }
+
+/** Per-request timeout for the reranker endpoint. Default: 15,000ms. */
+export const RERANKER_TIMEOUT_MS = Number(process.env.RERANKER_TIMEOUT_MS ?? 15_000);
 
 /**
- * Creates a dedicated reranker scorer via the configured rerank gateway.
+ * Creates a reranker scorer.
  *
- * Reads from environment:
- * - `RERANKER_BASE_URL` — rerank gateway endpoint (e.g. Bifrost)
- * - `RERANKER_API_KEY` — auth key (falls back to `LLM_API_KEY`)
- * - `RERANKER_MODEL` — reranker model ID (e.g. `bedrock/cohere.rerank-v3-5:0`)
+ * - **Gateway mode** (`RERANKER_BASE_URL` set): uses the Cohere-compatible HTTP endpoint via gateway
+ * - **Direct mode** (`RERANKER_BASE_URL` unset): uses the native AWS Bedrock Rerank API
  */
 export function createRerankerScorer() {
-  return new RerankerScorer(
-    process.env.RERANKER_BASE_URL ?? '',
-    process.env.RERANKER_API_KEY ?? process.env.LLM_API_KEY ?? '',
-    process.env.RERANKER_MODEL ?? '',
-  );
+  if (process.env.RERANKER_BASE_URL) {
+    return new RerankerScorer(
+      process.env.RERANKER_BASE_URL,
+      process.env.RERANKER_API_KEY ?? process.env.LLM_API_KEY ?? '',
+      process.env.RERANKER_MODEL ?? '',
+      RERANKER_TIMEOUT_MS,
+    );
+  }
+
+  return new BedrockRerankerScorer(process.env.RERANKER_MODEL ?? '', process.env.AWS_REGION ?? 'us-east-1');
 }
 
+export { BedrockRerankerScorer } from './bedrock-reranker-scorer';
 export { RerankerScorer } from './reranker-scorer';
 
 /**
  * Creates a chat model for metadata extraction during ingestion (title, keywords).
- * Uses `LLM_EXTRACTION_MODEL` if set, otherwise falls back to the default chat model.
+ * Uses `LLM_METADATA_EXTRACTION_MODEL` if set, otherwise falls back to the default chat model.
  * Point this at a cheap/fast model to control ingestion cost.
  */
-export function createExtractionModel() {
-  return createChatModel(process.env.LLM_EXTRACTION_MODEL);
+export function createMetadataExtractionModel() {
+  return createChatModel(process.env.LLM_METADATA_EXTRACTION_MODEL);
 }
 
 /**

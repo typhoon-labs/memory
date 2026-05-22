@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from 'react';
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+
 import { ChartLegend } from './chart-legend';
 import { createChartTooltip } from './chart-tooltip';
 import { type DateRange, formatDateForRange, getTimeTicks } from './chart-utils';
@@ -17,7 +18,8 @@ interface LatencyChartProps {
   range: DateRange;
 }
 
-function formatMs(ms: number) {
+/** Format milliseconds: sub-1000 as "Xms", 1000+ as "X.Xs". */
+export function formatMs(ms: number) {
   return ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${Math.round(ms)}ms`;
 }
 
@@ -46,7 +48,7 @@ export function LatencyChart({ data, range }: LatencyChartProps) {
 
   if (data.length === 0) {
     return (
-      <div className="flex h-[250px] items-center justify-center text-sm text-muted-foreground">
+      <div className="text-muted-foreground flex h-[250px] items-center justify-center text-sm">
         No latency data yet
       </div>
     );

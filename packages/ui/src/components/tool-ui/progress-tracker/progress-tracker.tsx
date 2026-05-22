@@ -1,4 +1,5 @@
 import { Check, Loader2, Timer, X } from 'lucide-react';
+
 import { cn } from '../../../lib/utils';
 import type { ProgressEvent, ProgressStep, ProgressTrackerProps } from './schema';
 
@@ -79,11 +80,11 @@ function StepIndicator({ status }: StepIndicatorProps) {
   if (status === 'completed') {
     return (
       <span
-        className="bg-primary text-primary-foreground border-primary flex size-5 shrink-0 items-center justify-center rounded-full border shadow-sm motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-75 motion-safe:duration-300 motion-safe:ease-out"
+        className="bg-primary text-primary-foreground border-primary motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-75 flex size-5 shrink-0 items-center justify-center rounded-full border shadow-sm motion-safe:duration-300 motion-safe:ease-out"
         aria-hidden="true"
       >
         <Check
-          className="size-3 motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-75 motion-safe:delay-75 motion-safe:duration-200 motion-safe:fill-mode-both"
+          className="motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-75 motion-safe:fill-mode-both size-3 motion-safe:delay-75 motion-safe:duration-200"
           strokeWidth={2.5}
         />
       </span>
@@ -93,11 +94,11 @@ function StepIndicator({ status }: StepIndicatorProps) {
   if (status === 'failed') {
     return (
       <span
-        className="bg-muted text-muted-foreground border-border flex size-5 shrink-0 items-center justify-center rounded-full border motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-75 motion-safe:duration-300 motion-safe:ease-out"
+        className="bg-muted text-muted-foreground border-border motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-75 flex size-5 shrink-0 items-center justify-center rounded-full border motion-safe:duration-300 motion-safe:ease-out"
         aria-hidden="true"
       >
         <X
-          className="size-3 motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-75 motion-safe:delay-75 motion-safe:duration-200 motion-safe:fill-mode-both"
+          className="motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-75 motion-safe:fill-mode-both size-3 motion-safe:delay-75 motion-safe:duration-200"
           strokeWidth={2.5}
         />
       </span>
@@ -132,7 +133,7 @@ function ProgressEventDot({
   if (effective === 'done') {
     return (
       <span
-        className="bg-primary size-1.5 shrink-0 rounded-full motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-75 motion-safe:duration-200"
+        className="bg-primary motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-75 size-1.5 shrink-0 rounded-full motion-safe:duration-200"
         aria-hidden="true"
       />
     );
@@ -153,11 +154,10 @@ export function ProgressTracker({ id, steps, elapsedTime, className }: ProgressT
   const currentStepId = getCurrentStepId(steps);
 
   return (
-    <article
+    <output
       className={cn('isolate flex w-full flex-col py-3', 'text-foreground', className)}
       data-slot="progress-tracker"
       data-tool-ui-id={id}
-      role="status"
       aria-live="polite"
       aria-busy={hasInProgress}
     >
@@ -234,7 +234,7 @@ export function ProgressTracker({ id, steps, elapsedTime, className }: ProgressT
                         <div className="flex size-5 shrink-0 items-center justify-center">
                           <ProgressEventDot status={isSuperseded ? 'done' : event.status} stepStatus={step.status} />
                         </div>
-                        <span className="text-xs text-foreground/80">{event.message}</span>
+                        <span className="text-foreground/80 text-xs">{event.message}</span>
                       </div>
                     );
                   })}
@@ -243,6 +243,6 @@ export function ProgressTracker({ id, steps, elapsedTime, className }: ProgressT
           })}
         </ol>
       </div>
-    </article>
+    </output>
   );
 }

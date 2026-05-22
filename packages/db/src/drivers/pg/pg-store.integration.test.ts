@@ -1,4 +1,5 @@
 import { afterAll, describe, expect, it } from 'vitest';
+
 import { PgStore } from './index';
 import { createTestConnection, TEST_DB_URL } from './test-utils';
 
@@ -7,6 +8,7 @@ describe('PgStore (integration)', () => {
 
   afterAll(async () => {
     for (const conn of connections) {
+      // oxlint-disable-next-line no-await-in-loop -- sequential: clean up DB connections in order
       await conn.sql.end();
     }
   });

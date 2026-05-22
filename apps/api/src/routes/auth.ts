@@ -1,5 +1,6 @@
 import { registerApiRoute } from '@mastra/core/server';
-import { auth } from '../auth';
+
+import { auth } from '../infra/auth';
 
 export const authRoutes = [
   registerApiRoute('/v1/auth/*', {

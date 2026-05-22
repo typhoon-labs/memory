@@ -1,5 +1,6 @@
 import { SectionLabel, Sheet, SheetContent, SheetHeader, SheetTitle, StatusBadge } from '@typhoon/ui';
 import { useEffect, useState } from 'react';
+
 import type { QueueJob } from './shared';
 import { formatJobDuration, formatTimestamp, isStageProgress, JOB_STATE_BADGE_MAP } from './shared';
 
@@ -53,12 +54,29 @@ export function JobDetailSheet({
             <div>
               <SectionLabel>Current Stage</SectionLabel>
               <div className="mt-2 flex items-baseline gap-2">
-                <span className="font-medium text-base">{stageProgress.stage}</span>
+                <span className="text-base font-medium">{stageProgress.stage}</span>
                 {isActive && (
                   <span className="text-muted-foreground text-xs tabular-nums">
                     {formatElapsed(Date.now() - stageProgress.startedAt)} elapsed
                   </span>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* Warnings — non-fatal issues reported by the job handler */}
+          {Array.isArray((job.returnvalue as Record<string, unknown>)?.warnings) && (
+            <div>
+              <SectionLabel>Warnings</SectionLabel>
+              <div className="mt-2 space-y-2">
+                {(job.returnvalue as { warnings: string[] }).warnings.map((w) => (
+                  <div
+                    key={w}
+                    className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200"
+                  >
+                    {w}
+                  </div>
+                ))}
               </div>
             </div>
           )}
@@ -97,7 +115,7 @@ export function JobDetailSheet({
           {/* Job Data */}
           <div>
             <SectionLabel>Job Data</SectionLabel>
-            <pre className="mt-2 overflow-x-auto rounded-md border border-border bg-muted p-3 text-xs">
+            <pre className="border-border bg-muted mt-2 overflow-x-auto rounded-md border p-3 text-xs">
               {JSON.stringify(job.data, null, 2)}
             </pre>
           </div>
@@ -106,17 +124,17 @@ export function JobDetailSheet({
           {job.stacktrace.length > 0 && (
             <div>
               <SectionLabel>Stacktrace</SectionLabel>
-              <pre className="mt-2 overflow-x-auto rounded-md border border-border bg-muted p-3 text-xs whitespace-pre-wrap">
+              <pre className="border-border bg-muted mt-2 overflow-x-auto rounded-md border p-3 text-xs whitespace-pre-wrap">
                 {job.stacktrace.join('\n')}
               </pre>
             </div>
           )}
 
           {/* Return Value */}
-          {job.returnvalue != null && (
+          {job.returnvalue !== null && job.returnvalue !== undefined && (
             <div>
               <SectionLabel>Return Value</SectionLabel>
-              <pre className="mt-2 overflow-x-auto rounded-md border border-border bg-muted p-3 text-xs">
+              <pre className="border-border bg-muted mt-2 overflow-x-auto rounded-md border p-3 text-xs">
                 {typeof job.returnvalue === 'string' ? job.returnvalue : JSON.stringify(job.returnvalue, null, 2)}
               </pre>
             </div>

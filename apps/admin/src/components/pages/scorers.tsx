@@ -17,9 +17,14 @@ import {
   SelectValue,
   StatusBadge,
   type StatusBadgeVariant,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
 } from '@typhoon/ui';
-import { GaugeIcon, PlusIcon, SearchIcon } from 'lucide-react';
+import { AlertTriangleIcon, GaugeIcon, PlusIcon, SearchIcon } from 'lucide-react';
 import { useMemo, useState } from 'react';
+
 import { usePageTitle } from '../../hooks/use-page-title';
 
 interface Scorer {
@@ -28,6 +33,7 @@ interface Scorer {
   name: string | null;
   type: string | null;
   description: string | null;
+  model: Record<string, unknown> | null;
   versionNumber: number | null;
   updatedAt: string;
 }
@@ -52,43 +58,73 @@ const TYPE_LABELS: Record<string, string> = {
   custom: 'Custom (LLM Judge)',
 };
 
-const columns: ColumnDef<Scorer, unknown>[] = [
-  {
-    accessorKey: 'name',
-    header: 'Name',
-    cell: ({ row }) => <div className="font-medium">{row.original.name ?? '\u2014'}</div>,
-  },
-  {
-    accessorKey: 'type',
-    header: 'Type',
-    cell: ({ row }) => (
-      <span className="text-muted-foreground">
-        {TYPE_LABELS[row.original.type ?? ''] ?? row.original.type ?? '\u2014'}
-      </span>
-    ),
-  },
-  {
-    accessorKey: 'status',
-    header: 'Status',
-    cell: ({ row }) => (
-      <StatusBadge variant={STATUS_VARIANT[row.original.status] ?? 'pending'}>{row.original.status}</StatusBadge>
-    ),
-  },
-  {
-    accessorKey: 'versionNumber',
-    header: 'Version',
-    cell: ({ row }) => (
-      <span className="tabular-nums text-sm text-muted-foreground">
-        {row.original.versionNumber != null ? `v${row.original.versionNumber}` : '\u2014'}
-      </span>
-    ),
-  },
-  {
-    accessorKey: 'updatedAt',
-    header: 'Updated',
-    cell: ({ row }) => <span className="text-muted-foreground">{formatRelativeTime(row.original.updatedAt)}</span>,
-  },
-];
+/** Extract a model ID string from the stored JSONB model object. */
+function extractModelId(model: Record<string, unknown> | null): string {
+  if (!model) return '';
+  if (typeof model.id === 'string') return model.id;
+  if (typeof model.name === 'string') return model.name;
+  return '';
+}
+
+function buildColumns(availableModels: string[]): ColumnDef<Scorer, unknown>[] {
+  return [
+    {
+      accessorKey: 'name',
+      header: 'Name',
+      cell: ({ row }) => {
+        const modelId = extractModelId(row.original.model);
+        const isUnavailable = modelId && !availableModels.includes(modelId);
+        return (
+          <div className="flex items-center gap-1.5">
+            <span className="font-medium">{row.original.name ?? '\u2014'}</span>
+            {isUnavailable && (
+              <TooltipProvider delayDuration={300}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <AlertTriangleIcon className="size-3.5 shrink-0 text-amber-400" />
+                  </TooltipTrigger>
+                  <TooltipContent>Pinned model is no longer available</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      accessorKey: 'type',
+      header: 'Type',
+      cell: ({ row }) => (
+        <span className="text-muted-foreground">
+          {TYPE_LABELS[row.original.type ?? ''] ?? row.original.type ?? '\u2014'}
+        </span>
+      ),
+    },
+    {
+      accessorKey: 'status',
+      header: 'Status',
+      cell: ({ row }) => (
+        <StatusBadge variant={STATUS_VARIANT[row.original.status] ?? 'pending'}>{row.original.status}</StatusBadge>
+      ),
+    },
+    {
+      accessorKey: 'versionNumber',
+      header: 'Version',
+      cell: ({ row }) => (
+        <span className="text-muted-foreground text-sm tabular-nums">
+          {row.original.versionNumber !== null && row.original.versionNumber !== undefined
+            ? `v${row.original.versionNumber}`
+            : '\u2014'}
+        </span>
+      ),
+    },
+    {
+      accessorKey: 'updatedAt',
+      header: 'Updated',
+      cell: ({ row }) => <span className="text-muted-foreground">{formatRelativeTime(row.original.updatedAt)}</span>,
+    },
+  ];
+}
 
 type StatusFilter = 'all' | 'draft' | 'active' | 'archived';
 
@@ -118,6 +154,15 @@ export function ScorersPage() {
       return apiFetch(`/api/v1/admin/scorers${qs ? `?${qs}` : ''}`);
     },
   });
+
+  const { data: modelsData } = useQuery<{ models: string[]; defaultModel: string }>({
+    queryKey: ['admin-scorer-models'],
+    queryFn: () => apiFetch('/api/v1/admin/scorers/models'),
+    staleTime: 5 * 60_000,
+  });
+  const availableModels = modelsData?.models ?? [];
+
+  const columns = useMemo(() => buildColumns(availableModels), [availableModels]);
 
   const scorers = useMemo(() => {
     const all = data?.scorers ?? [];
@@ -184,7 +229,7 @@ export function ScorersPage() {
                       </SelectContent>
                     </Select>
                     <div className="relative ml-auto">
-                      <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                      <SearchIcon className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" />
                       <Input
                         placeholder="Search..."
                         value={searchText}

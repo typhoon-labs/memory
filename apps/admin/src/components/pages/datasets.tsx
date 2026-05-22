@@ -21,6 +21,7 @@ import {
 } from '@typhoon/ui';
 import { DatabaseIcon, PlusIcon, Trash2Icon } from 'lucide-react';
 import { useCallback, useMemo } from 'react';
+
 import { usePageTitle } from '../../hooks/use-page-title';
 
 interface Dataset {
@@ -48,7 +49,7 @@ function buildColumns(onDelete: (dataset: Dataset) => void): ColumnDef<Dataset, 
       accessorKey: 'description',
       header: 'Description',
       cell: ({ row }) => (
-        <div className="max-w-[160px] truncate text-sm text-muted-foreground">
+        <div className="text-muted-foreground max-w-[160px] truncate text-sm">
           {row.original.description ?? '\u2014'}
         </div>
       ),
@@ -65,7 +66,7 @@ function buildColumns(onDelete: (dataset: Dataset) => void): ColumnDef<Dataset, 
         <AlertDialog>
           <AlertDialogTrigger asChild>
             <Button variant="ghost" size="icon" className="-my-1 size-6 rounded" onClick={(e) => e.stopPropagation()}>
-              <Trash2Icon className="size-3 text-muted-foreground" />
+              <Trash2Icon className="text-muted-foreground size-3" />
             </Button>
           </AlertDialogTrigger>
           <AlertDialogContent onClick={(e) => e.stopPropagation()}>

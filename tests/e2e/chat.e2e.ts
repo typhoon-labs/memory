@@ -5,12 +5,14 @@
  * Usage: bun run test:e2e
  */
 
-import { type Browser, chromium, type Page } from 'playwright';
+import { type Browser, type BrowserContext, chromium, type Page } from 'playwright';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { DESK_URL, oidcLogin } from '../helpers/e2e-utils';
+
+import { DESK_URL, injectTestSession } from '../helpers/e2e-utils';
 
 describe('Chat E2E', () => {
   let browser: Browser;
+  let context: BrowserContext;
   let page: Page;
   let createdThreadId: string | undefined;
 
@@ -19,10 +21,8 @@ describe('Chat E2E', () => {
       headless: true,
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
     });
-    page = await browser.newPage();
+    ({ context, page } = await injectTestSession(browser, 'rep@typhoon.local'));
     await page.goto(DESK_URL);
-    await page.waitForURL('**/login', { timeout: 5_000 });
-    await oidcLogin(page, 'rep@typhoon.local', 'password', DESK_URL);
   }, 30_000);
 
   afterAll(async () => {
@@ -34,6 +34,7 @@ describe('Chat E2E', () => {
         }, createdThreadId)
         .catch(() => {});
     }
+    await context?.close();
     await browser?.close();
   });
 

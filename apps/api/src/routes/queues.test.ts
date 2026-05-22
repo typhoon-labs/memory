@@ -3,54 +3,37 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // ── Mocks ────────────────────────────────────────────────────────────
 
-const { mockGetAllQueues, mockGetQueue, mockQueueEventBus } = vi.hoisted(() => ({
-  mockGetAllQueues: vi.fn(),
-  mockGetQueue: vi.fn(),
+const { mockQueueService, mockQueueEventBus } = vi.hoisted(() => ({
+  mockQueueService: {
+    listQueues: vi.fn(),
+    listWorkers: vi.fn(),
+    listJobs: vi.fn(),
+    pauseQueue: vi.fn(),
+    resumeQueue: vi.fn(),
+    cleanQueue: vi.fn(),
+    retryJob: vi.fn(),
+    removeJob: vi.fn(),
+    listFailedJobs: vi.fn(),
+    getFailedJob: vi.fn(),
+    deleteFailedJob: vi.fn(),
+  },
   mockQueueEventBus: { on: vi.fn(), off: vi.fn(), emit: vi.fn() },
 }));
 
-const { mockDbChain } = vi.hoisted(() => {
-  const mockDbChain = {
-    _result: [] as unknown[],
-    select: vi.fn(),
-    from: vi.fn(),
-    where: vi.fn(),
-    orderBy: vi.fn(),
-    limit: vi.fn(),
-    offset: vi.fn(),
-    delete: vi.fn(),
-    returning: vi.fn(),
-  };
-  // Make every method return mockDbChain for chaining, except terminal ones
-  mockDbChain.select.mockReturnValue(mockDbChain);
-  mockDbChain.from.mockReturnValue(mockDbChain);
-  mockDbChain.where.mockReturnValue(mockDbChain);
-  mockDbChain.orderBy.mockReturnValue(mockDbChain);
-  mockDbChain.limit.mockReturnValue(mockDbChain);
-  mockDbChain.offset.mockImplementation(() => Promise.resolve(mockDbChain._result));
-  mockDbChain.delete.mockReturnValue(mockDbChain);
-  mockDbChain.returning.mockImplementation(() => Promise.resolve(mockDbChain._result));
-  return { mockDbChain };
-});
-
-vi.mock('../db', () => ({ db: mockDbChain }));
-
-vi.mock('@typhoon/db', () => ({
-  failedJobs: { id: 'id', queue: 'queue', createdAt: 'createdAt' },
+vi.mock('../services', () => ({
+  getQueueService: () => mockQueueService,
 }));
 
-vi.mock('drizzle-orm', () => ({
-  eq: vi.fn((_col, val) => ({ __eq: val })),
-  desc: vi.fn((col) => ({ __desc: col })),
+vi.mock('@typhoon/services', () => ({
+  isError: (result: unknown) =>
+    result !== null && result !== undefined && typeof result === 'object' && 'error' in result,
 }));
 
 vi.mock('../middleware/require-auth', () => ({
   requireAuth: vi.fn(async (_c: unknown, next: () => Promise<void>) => next()),
 }));
 
-vi.mock('../queue', () => ({
-  getAllQueues: mockGetAllQueues,
-  getQueue: mockGetQueue,
+vi.mock('../infra/queue', () => ({
   queueEventBus: mockQueueEventBus,
 }));
 
@@ -62,99 +45,34 @@ function mountRoutes(
   const app = new Hono();
   for (const route of routes) {
     const mid = Array.isArray(route.middleware) ? route.middleware : route.middleware ? [route.middleware] : [];
-    // biome-ignore lint/suspicious/noExplicitAny: test helper
     (app as any)[route.method.toLowerCase()](route.path, ...mid, route.handler);
   }
   return app;
 }
 
-function makeMockJob(
-  overrides: {
-    id?: string;
-    name?: string;
-    state?: string;
-    retryFn?: () => Promise<void>;
-    removeFn?: () => Promise<void>;
-  } = {},
-) {
-  const {
-    id = 'job-1',
-    name = 'test-job',
-    state = 'failed',
-    retryFn = vi.fn().mockResolvedValue(undefined),
-    removeFn = vi.fn().mockResolvedValue(undefined),
-  } = overrides;
-
-  return {
-    id,
-    name,
-    data: { some: 'data' },
-    getState: vi.fn().mockResolvedValue(state),
-    retry: retryFn,
-    remove: removeFn,
-    attemptsMade: 1,
-    timestamp: Date.now(),
-    processedOn: null,
-    finishedOn: null,
-    failedReason: 'some error',
-    returnvalue: null,
-    stacktrace: [],
-    progress: null,
-  };
-}
-
-function makeMockQueue(
-  overrides: {
-    getJobCountsResult?: Record<string, number>;
-    isPausedResult?: boolean;
-    workersResult?: unknown[];
-    jobsResult?: unknown[];
-    jobResult?: unknown | null;
-    cleanResult?: string[];
-  } = {},
-) {
-  const {
-    getJobCountsResult = { waiting: 1, active: 0, completed: 5, failed: 2, delayed: 0 },
-    isPausedResult = false,
-    workersResult = [],
-    jobsResult = [],
-    jobResult = null,
-    cleanResult = ['job-a', 'job-b'],
-  } = overrides;
-
-  return {
-    getJobCounts: vi.fn().mockResolvedValue(getJobCountsResult),
-    isPaused: vi.fn().mockResolvedValue(isPausedResult),
-    getWorkers: vi.fn().mockResolvedValue(workersResult),
-    getJobs: vi.fn().mockResolvedValue(jobsResult),
-    pause: vi.fn().mockResolvedValue(undefined),
-    resume: vi.fn().mockResolvedValue(undefined),
-    clean: vi.fn().mockResolvedValue(cleanResult),
-    getJob: vi.fn().mockResolvedValue(jobResult),
-  };
-}
-
 // ── Tests ─────────────────────────────────────────────────────────────
 
 let app: Hono;
-let mockQueue: ReturnType<typeof makeMockQueue>;
 
 beforeEach(async () => {
   vi.clearAllMocks();
 
-  mockQueue = makeMockQueue();
-
-  // Default: known queue is 'sync', unknown queues throw
-  mockGetQueue.mockImplementation((name: string) => {
-    if (name === 'sync') return mockQueue;
-    throw new Error(`Queue "${name}" not initialized`);
+  // Defaults
+  mockQueueService.listQueues.mockResolvedValue({
+    data: [{ name: 'sync', isPaused: false, counts: { waiting: 1, active: 0, completed: 5, failed: 2, delayed: 0 } }],
   });
-
-  // Default: getAllQueues returns a Map with one entry
-  mockGetAllQueues.mockReturnValue(new Map([['sync', mockQueue]]));
+  mockQueueService.listWorkers.mockResolvedValue({ data: [] });
+  mockQueueService.listJobs.mockResolvedValue({ data: [] });
+  mockQueueService.pauseQueue.mockResolvedValue({ data: { ok: true } });
+  mockQueueService.resumeQueue.mockResolvedValue({ data: { ok: true } });
+  mockQueueService.cleanQueue.mockResolvedValue({ data: { ok: true, removed: 2 } });
+  mockQueueService.retryJob.mockResolvedValue({ data: { ok: true } });
+  mockQueueService.removeJob.mockResolvedValue({ data: { ok: true } });
+  mockQueueService.listFailedJobs.mockResolvedValue({ data: [] });
+  mockQueueService.getFailedJob.mockResolvedValue({ error: 'Not found' });
+  mockQueueService.deleteFailedJob.mockResolvedValue({ data: { ok: true } });
 
   const { queueRoutes } = await import('./queues');
-  // biome-ignore lint/suspicious/noExplicitAny: test setup
   app = mountRoutes(queueRoutes as any);
 });
 
@@ -162,8 +80,11 @@ beforeEach(async () => {
 
 describe('GET /v1/queues', () => {
   it('returns list of queues with job counts and pause state', async () => {
-    mockQueue.getJobCounts.mockResolvedValue({ waiting: 3, active: 1, completed: 10, failed: 0, delayed: 2 });
-    mockQueue.isPaused.mockResolvedValue(false);
+    mockQueueService.listQueues.mockResolvedValue({
+      data: [
+        { name: 'sync', isPaused: false, counts: { waiting: 3, active: 1, completed: 10, failed: 0, delayed: 2 } },
+      ],
+    });
 
     const res = await app.request('/v1/queues', { method: 'GET' });
 
@@ -178,7 +99,9 @@ describe('GET /v1/queues', () => {
   });
 
   it('reflects isPaused=true when queue is paused', async () => {
-    mockQueue.isPaused.mockResolvedValue(true);
+    mockQueueService.listQueues.mockResolvedValue({
+      data: [{ name: 'sync', isPaused: true, counts: { waiting: 0, active: 0, completed: 0, failed: 0, delayed: 0 } }],
+    });
 
     const res = await app.request('/v1/queues', { method: 'GET' });
 
@@ -188,7 +111,7 @@ describe('GET /v1/queues', () => {
   });
 
   it('returns empty array when no queues exist', async () => {
-    mockGetAllQueues.mockReturnValue(new Map());
+    mockQueueService.listQueues.mockResolvedValue({ data: [] });
 
     const res = await app.request('/v1/queues', { method: 'GET' });
 
@@ -198,13 +121,12 @@ describe('GET /v1/queues', () => {
   });
 
   it('returns multiple queues when several are registered', async () => {
-    const otherQueue = makeMockQueue({ isPausedResult: true });
-    mockGetAllQueues.mockReturnValue(
-      new Map([
-        ['sync', mockQueue],
-        ['other', otherQueue],
-      ]),
-    );
+    mockQueueService.listQueues.mockResolvedValue({
+      data: [
+        { name: 'sync', isPaused: false, counts: { waiting: 1, active: 0, completed: 5, failed: 2, delayed: 0 } },
+        { name: 'other', isPaused: true, counts: { waiting: 0, active: 0, completed: 0, failed: 0, delayed: 0 } },
+      ],
+    });
 
     const res = await app.request('/v1/queues', { method: 'GET' });
 
@@ -223,10 +145,12 @@ describe('GET /v1/queues', () => {
 
 describe('GET /v1/queues/:name/workers', () => {
   it('returns workers array with serialized fields', async () => {
-    mockQueue.getWorkers.mockResolvedValue([
-      { id: 'w-1', addr: '127.0.0.1:6379', name: 'worker-1', age: BigInt(42), idle: BigInt(5) },
-      { id: 'w-2', addr: '127.0.0.1:6380', name: 'worker-2', age: BigInt(100), idle: BigInt(0) },
-    ]);
+    mockQueueService.listWorkers.mockResolvedValue({
+      data: [
+        { id: 'w-1', addr: '127.0.0.1:6379', name: 'worker-1', age: 42, idle: 5 },
+        { id: 'w-2', addr: '127.0.0.1:6380', name: 'worker-2', age: 100, idle: 0 },
+      ],
+    });
 
     const res = await app.request('/v1/queues/sync/workers', { method: 'GET' });
 
@@ -238,7 +162,7 @@ describe('GET /v1/queues/:name/workers', () => {
   });
 
   it('returns empty workers array when no workers connected', async () => {
-    mockQueue.getWorkers.mockResolvedValue([]);
+    mockQueueService.listWorkers.mockResolvedValue({ data: [] });
 
     const res = await app.request('/v1/queues/sync/workers', { method: 'GET' });
 
@@ -247,21 +171,9 @@ describe('GET /v1/queues/:name/workers', () => {
     expect(json).toEqual([]);
   });
 
-  it('converts BigInt age and idle to Number', async () => {
-    mockQueue.getWorkers.mockResolvedValue([
-      { id: 'w-1', addr: '0.0.0.0:0', name: 'w', age: BigInt(9999), idle: BigInt(1234) },
-    ]);
-
-    const res = await app.request('/v1/queues/sync/workers', { method: 'GET' });
-
-    const json = await res.json();
-    expect(typeof json[0].age).toBe('number');
-    expect(typeof json[0].idle).toBe('number');
-    expect(json[0].age).toBe(9999);
-    expect(json[0].idle).toBe(1234);
-  });
-
   it('returns 404 for unknown queue name', async () => {
+    mockQueueService.listWorkers.mockResolvedValue({ error: 'Queue not found' });
+
     const res = await app.request('/v1/queues/unknown/workers', { method: 'GET' });
 
     expect(res.status).toBe(404);
@@ -274,12 +186,24 @@ describe('GET /v1/queues/:name/workers', () => {
 
 describe('GET /v1/queues/:name/jobs', () => {
   it('returns jobs with serialized fields', async () => {
-    const job = makeMockJob({ id: 'job-42', name: 'ingest', state: 'completed' });
-    job.processedOn = 1700000001000 as never;
-    job.finishedOn = 1700000002000 as never;
-    job.returnvalue = { result: 'ok' } as never;
-    job.progress = 100 as never;
-    mockQueue.getJobs.mockResolvedValue([job]);
+    mockQueueService.listJobs.mockResolvedValue({
+      data: [
+        {
+          id: 'job-42',
+          name: 'ingest',
+          data: { some: 'data' },
+          state: 'completed',
+          attemptsMade: 1,
+          timestamp: 1700000000000,
+          processedOn: 1700000001000,
+          finishedOn: 1700000002000,
+          failedReason: null,
+          returnvalue: { result: 'ok' },
+          stacktrace: [],
+          progress: 100,
+        },
+      ],
+    });
 
     const res = await app.request('/v1/queues/sync/jobs', { method: 'GET' });
 
@@ -298,86 +222,24 @@ describe('GET /v1/queues/:name/jobs', () => {
     });
   });
 
-  it('fetches all states by default when state param is omitted', async () => {
-    mockQueue.getJobs.mockResolvedValue([]);
+  it('passes state, start, and pageSize to service', async () => {
+    mockQueueService.listJobs.mockResolvedValue({ data: [] });
+
+    await app.request('/v1/queues/sync/jobs?state=failed&start=10&pageSize=25', { method: 'GET' });
+
+    expect(mockQueueService.listJobs).toHaveBeenCalledWith('sync', 'failed', 10, 25);
+  });
+
+  it('uses defaults for state, start, and pageSize', async () => {
+    mockQueueService.listJobs.mockResolvedValue({ data: [] });
 
     await app.request('/v1/queues/sync/jobs', { method: 'GET' });
 
-    expect(mockQueue.getJobs).toHaveBeenCalledWith(['waiting', 'active', 'completed', 'failed', 'delayed'], 0, 49);
-  });
-
-  it('uses default start=0 and pageSize=50', async () => {
-    mockQueue.getJobs.mockResolvedValue([]);
-
-    await app.request('/v1/queues/sync/jobs', { method: 'GET' });
-
-    expect(mockQueue.getJobs).toHaveBeenCalledWith(expect.any(Array), 0, 49);
-  });
-
-  it('respects custom start and pageSize query params', async () => {
-    mockQueue.getJobs.mockResolvedValue([]);
-
-    await app.request('/v1/queues/sync/jobs?start=10&pageSize=25', { method: 'GET' });
-
-    expect(mockQueue.getJobs).toHaveBeenCalledWith(expect.any(Array), 10, 34);
-  });
-
-  it('caps pageSize at 200', async () => {
-    mockQueue.getJobs.mockResolvedValue([]);
-
-    await app.request('/v1/queues/sync/jobs?pageSize=500', { method: 'GET' });
-
-    expect(mockQueue.getJobs).toHaveBeenCalledWith(expect.any(Array), 0, 199);
-  });
-
-  it('filters by specific state when state param is provided', async () => {
-    mockQueue.getJobs.mockResolvedValue([]);
-
-    await app.request('/v1/queues/sync/jobs?state=failed', { method: 'GET' });
-
-    expect(mockQueue.getJobs).toHaveBeenCalledWith(['failed'], 0, 49);
-  });
-
-  it('maps null processedOn and finishedOn', async () => {
-    const job = makeMockJob({ state: 'waiting' });
-    mockQueue.getJobs.mockResolvedValue([job]);
-
-    const res = await app.request('/v1/queues/sync/jobs', { method: 'GET' });
-
-    const json = await res.json();
-    expect(json[0].processedOn).toBeNull();
-    expect(json[0].finishedOn).toBeNull();
-  });
-
-  it('maps null failedReason and returnvalue when absent', async () => {
-    const job = makeMockJob({ state: 'completed' });
-    // biome-ignore lint/suspicious/noExplicitAny: test override
-    (job as any).failedReason = undefined;
-    // biome-ignore lint/suspicious/noExplicitAny: test override
-    (job as any).returnvalue = undefined;
-    mockQueue.getJobs.mockResolvedValue([job]);
-
-    const res = await app.request('/v1/queues/sync/jobs', { method: 'GET' });
-
-    const json = await res.json();
-    expect(json[0].failedReason).toBeNull();
-    expect(json[0].returnvalue).toBeNull();
-  });
-
-  it('defaults stacktrace to empty array when absent', async () => {
-    const job = makeMockJob({ state: 'completed' });
-    // biome-ignore lint/suspicious/noExplicitAny: test override
-    (job as any).stacktrace = undefined;
-    mockQueue.getJobs.mockResolvedValue([job]);
-
-    const res = await app.request('/v1/queues/sync/jobs', { method: 'GET' });
-
-    const json = await res.json();
-    expect(json[0].stacktrace).toEqual([]);
+    expect(mockQueueService.listJobs).toHaveBeenCalledWith('sync', 'all', 0, 50);
   });
 
   it('returns empty array when queue has no jobs', async () => {
-    mockQueue.getJobs.mockResolvedValue([]);
+    mockQueueService.listJobs.mockResolvedValue({ data: [] });
 
     const res = await app.request('/v1/queues/sync/jobs', { method: 'GET' });
 
@@ -387,6 +249,8 @@ describe('GET /v1/queues/:name/jobs', () => {
   });
 
   it('returns 404 for unknown queue', async () => {
+    mockQueueService.listJobs.mockResolvedValue({ error: 'Queue not found' });
+
     const res = await app.request('/v1/queues/unknown/jobs', { method: 'GET' });
 
     expect(res.status).toBe(404);
@@ -398,52 +262,54 @@ describe('GET /v1/queues/:name/jobs', () => {
 // ── POST /v1/queues/:name/pause ──────────────────────────────────────
 
 describe('POST /v1/queues/:name/pause', () => {
-  it('calls queue.pause() and returns { ok: true }', async () => {
+  it('calls pauseQueue and returns { ok: true }', async () => {
     const res = await app.request('/v1/queues/sync/pause', { method: 'POST' });
 
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json).toEqual({ ok: true });
-    expect(mockQueue.pause).toHaveBeenCalledOnce();
+    expect(mockQueueService.pauseQueue).toHaveBeenCalledWith('sync');
   });
 
   it('returns 404 for unknown queue', async () => {
+    mockQueueService.pauseQueue.mockResolvedValue({ error: 'Queue not found' });
+
     const res = await app.request('/v1/queues/unknown/pause', { method: 'POST' });
 
     expect(res.status).toBe(404);
     const json = await res.json();
     expect(json.error).toBe('Queue not found');
-    expect(mockQueue.pause).not.toHaveBeenCalled();
   });
 });
 
 // ── POST /v1/queues/:name/resume ─────────────────────────────────────
 
 describe('POST /v1/queues/:name/resume', () => {
-  it('calls queue.resume() and returns { ok: true }', async () => {
+  it('calls resumeQueue and returns { ok: true }', async () => {
     const res = await app.request('/v1/queues/sync/resume', { method: 'POST' });
 
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json).toEqual({ ok: true });
-    expect(mockQueue.resume).toHaveBeenCalledOnce();
+    expect(mockQueueService.resumeQueue).toHaveBeenCalledWith('sync');
   });
 
   it('returns 404 for unknown queue', async () => {
+    mockQueueService.resumeQueue.mockResolvedValue({ error: 'Queue not found' });
+
     const res = await app.request('/v1/queues/unknown/resume', { method: 'POST' });
 
     expect(res.status).toBe(404);
     const json = await res.json();
     expect(json.error).toBe('Queue not found');
-    expect(mockQueue.resume).not.toHaveBeenCalled();
   });
 });
 
 // ── POST /v1/queues/:name/clean ──────────────────────────────────────
 
 describe('POST /v1/queues/:name/clean', () => {
-  it('calls queue.clean() with correct args and returns { ok, removed }', async () => {
-    mockQueue.clean.mockResolvedValue(['id1', 'id2', 'id3']);
+  it('calls cleanQueue with correct args and returns { ok, removed }', async () => {
+    mockQueueService.cleanQueue.mockResolvedValue({ data: { ok: true, removed: 3 } });
 
     const res = await app.request('/v1/queues/sync/clean', {
       method: 'POST',
@@ -454,11 +320,11 @@ describe('POST /v1/queues/:name/clean', () => {
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json).toEqual({ ok: true, removed: 3 });
-    expect(mockQueue.clean).toHaveBeenCalledWith(5000, 100, 'completed');
+    expect(mockQueueService.cleanQueue).toHaveBeenCalledWith('sync', { state: 'completed', grace: 5000, limit: 100 });
   });
 
   it('uses default grace=0 and limit=1000 when not provided', async () => {
-    mockQueue.clean.mockResolvedValue([]);
+    mockQueueService.cleanQueue.mockResolvedValue({ data: { ok: true, removed: 0 } });
 
     await app.request('/v1/queues/sync/clean', {
       method: 'POST',
@@ -466,26 +332,14 @@ describe('POST /v1/queues/:name/clean', () => {
       body: JSON.stringify({ state: 'failed' }),
     });
 
-    expect(mockQueue.clean).toHaveBeenCalledWith(0, 1000, 'failed');
-  });
-
-  it('returns correct removed count from clean result', async () => {
-    mockQueue.clean.mockResolvedValue(['a', 'b']);
-
-    const res = await app.request('/v1/queues/sync/clean', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ state: 'completed' }),
-    });
-
-    const json = await res.json();
-    expect(json.removed).toBe(2);
+    expect(mockQueueService.cleanQueue).toHaveBeenCalledWith('sync', { state: 'failed', grace: 0, limit: 1000 });
   });
 
   it('accepts all valid state enum values', async () => {
-    mockQueue.clean.mockResolvedValue([]);
+    mockQueueService.cleanQueue.mockResolvedValue({ data: { ok: true, removed: 0 } });
 
     for (const state of ['completed', 'failed', 'delayed', 'wait']) {
+      // oxlint-disable-next-line no-await-in-loop -- test: sequential validation of each state
       const res = await app.request('/v1/queues/sync/clean', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -541,6 +395,8 @@ describe('POST /v1/queues/:name/clean', () => {
   });
 
   it('returns 404 for unknown queue', async () => {
+    mockQueueService.cleanQueue.mockResolvedValue({ error: 'Queue not found' });
+
     const res = await app.request('/v1/queues/unknown/clean', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -557,32 +413,28 @@ describe('POST /v1/queues/:name/clean', () => {
 
 describe('POST /v1/queues/:name/jobs/:jobId/retry', () => {
   it('returns { ok: true } for a failed job', async () => {
-    const job = makeMockJob({ id: 'job-1', state: 'failed' });
-    mockQueue.getJob.mockResolvedValue(job);
+    mockQueueService.retryJob.mockResolvedValue({ data: { ok: true } });
 
     const res = await app.request('/v1/queues/sync/jobs/job-1/retry', { method: 'POST' });
 
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json).toEqual({ ok: true });
-    expect(job.retry).toHaveBeenCalledOnce();
+    expect(mockQueueService.retryJob).toHaveBeenCalledWith('sync', 'job-1');
   });
 
   it('returns 400 when job is not in failed state', async () => {
-    const job = makeMockJob({ id: 'job-2', state: 'completed' });
-    mockQueue.getJob.mockResolvedValue(job);
+    mockQueueService.retryJob.mockResolvedValue({ error: 'Cannot retry job in state "completed" — must be failed' });
 
     const res = await app.request('/v1/queues/sync/jobs/job-2/retry', { method: 'POST' });
 
     expect(res.status).toBe(400);
     const json = await res.json();
     expect(json.error).toMatch(/completed/);
-    expect(job.retry).not.toHaveBeenCalled();
   });
 
   it('returns 400 when job is in active state', async () => {
-    const job = makeMockJob({ id: 'job-3', state: 'active' });
-    mockQueue.getJob.mockResolvedValue(job);
+    mockQueueService.retryJob.mockResolvedValue({ error: 'Cannot retry job in state "active" — must be failed' });
 
     const res = await app.request('/v1/queues/sync/jobs/job-3/retry', { method: 'POST' });
 
@@ -592,7 +444,7 @@ describe('POST /v1/queues/:name/jobs/:jobId/retry', () => {
   });
 
   it('returns 404 when job is not found', async () => {
-    mockQueue.getJob.mockResolvedValue(null);
+    mockQueueService.retryJob.mockResolvedValue({ error: 'Job not found' });
 
     const res = await app.request('/v1/queues/sync/jobs/missing-job/retry', { method: 'POST' });
 
@@ -602,6 +454,8 @@ describe('POST /v1/queues/:name/jobs/:jobId/retry', () => {
   });
 
   it('returns 404 for unknown queue', async () => {
+    mockQueueService.retryJob.mockResolvedValue({ error: 'Queue not found' });
+
     const res = await app.request('/v1/queues/unknown/jobs/job-1/retry', { method: 'POST' });
 
     expect(res.status).toBe(404);
@@ -614,33 +468,30 @@ describe('POST /v1/queues/:name/jobs/:jobId/retry', () => {
 
 describe('DELETE /v1/queues/:name/jobs/:jobId', () => {
   it('returns { ok: true } for a non-active job', async () => {
-    const job = makeMockJob({ id: 'job-1', state: 'completed' });
-    mockQueue.getJob.mockResolvedValue(job);
+    mockQueueService.removeJob.mockResolvedValue({ data: { ok: true } });
 
     const res = await app.request('/v1/queues/sync/jobs/job-1', { method: 'DELETE' });
 
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json).toEqual({ ok: true });
-    expect(job.remove).toHaveBeenCalledOnce();
+    expect(mockQueueService.removeJob).toHaveBeenCalledWith('sync', 'job-1');
   });
 
   it('returns 409 when job is in active state', async () => {
-    const job = makeMockJob({ id: 'job-active', state: 'active' });
-    mockQueue.getJob.mockResolvedValue(job);
+    mockQueueService.removeJob.mockResolvedValue({
+      error: 'Cannot remove an active job. Wait for it to finish or stop the worker.',
+    });
 
     const res = await app.request('/v1/queues/sync/jobs/job-active', { method: 'DELETE' });
 
     expect(res.status).toBe(409);
     const json = await res.json();
     expect(json.error).toMatch(/active/i);
-    expect(job.remove).not.toHaveBeenCalled();
   });
 
-  it('returns 409 when job.remove() throws an Error', async () => {
-    const removeFn = vi.fn().mockRejectedValue(new Error('Cannot remove: already locked'));
-    const job = makeMockJob({ id: 'job-locked', state: 'failed', removeFn });
-    mockQueue.getJob.mockResolvedValue(job);
+  it('returns 409 when job removal fails', async () => {
+    mockQueueService.removeJob.mockResolvedValue({ error: 'Cannot remove: already locked' });
 
     const res = await app.request('/v1/queues/sync/jobs/job-locked', { method: 'DELETE' });
 
@@ -649,10 +500,8 @@ describe('DELETE /v1/queues/:name/jobs/:jobId', () => {
     expect(json.error).toBe('Cannot remove: already locked');
   });
 
-  it('returns 409 with generic message when job.remove() throws a non-Error', async () => {
-    const removeFn = vi.fn().mockRejectedValue('unexpected string error');
-    const job = makeMockJob({ id: 'job-err', state: 'failed', removeFn });
-    mockQueue.getJob.mockResolvedValue(job);
+  it('returns 409 with generic message when removal fails', async () => {
+    mockQueueService.removeJob.mockResolvedValue({ error: 'Failed to remove job' });
 
     const res = await app.request('/v1/queues/sync/jobs/job-err', { method: 'DELETE' });
 
@@ -662,7 +511,7 @@ describe('DELETE /v1/queues/:name/jobs/:jobId', () => {
   });
 
   it('returns 404 when job is not found', async () => {
-    mockQueue.getJob.mockResolvedValue(null);
+    mockQueueService.removeJob.mockResolvedValue({ error: 'Job not found' });
 
     const res = await app.request('/v1/queues/sync/jobs/missing-job', { method: 'DELETE' });
 
@@ -672,31 +521,13 @@ describe('DELETE /v1/queues/:name/jobs/:jobId', () => {
   });
 
   it('returns 404 for unknown queue', async () => {
+    mockQueueService.removeJob.mockResolvedValue({ error: 'Queue not found' });
+
     const res = await app.request('/v1/queues/unknown/jobs/job-1', { method: 'DELETE' });
 
     expect(res.status).toBe(404);
     const json = await res.json();
     expect(json.error).toBe('Queue not found');
-  });
-
-  it('removes a failed job successfully', async () => {
-    const job = makeMockJob({ id: 'job-failed', state: 'failed' });
-    mockQueue.getJob.mockResolvedValue(job);
-
-    const res = await app.request('/v1/queues/sync/jobs/job-failed', { method: 'DELETE' });
-
-    expect(res.status).toBe(200);
-    expect(job.remove).toHaveBeenCalledOnce();
-  });
-
-  it('removes a waiting job successfully', async () => {
-    const job = makeMockJob({ id: 'job-waiting', state: 'waiting' });
-    mockQueue.getJob.mockResolvedValue(job);
-
-    const res = await app.request('/v1/queues/sync/jobs/job-waiting', { method: 'DELETE' });
-
-    expect(res.status).toBe(200);
-    expect(job.remove).toHaveBeenCalledOnce();
   });
 });
 
@@ -704,9 +535,7 @@ describe('DELETE /v1/queues/:name/jobs/:jobId', () => {
 
 describe('GET /v1/queues/failed-jobs', () => {
   it('returns list of failed jobs', async () => {
-    mockDbChain._result = [{ id: 'fj-1', queue: 'sync', jobName: 'scan' }];
-    // Reset offset to resolve with _result
-    mockDbChain.offset.mockImplementation(() => Promise.resolve(mockDbChain._result));
+    mockQueueService.listFailedJobs.mockResolvedValue({ data: [{ id: 'fj-1', queue: 'sync', jobName: 'scan' }] });
 
     const res = await app.request('/v1/queues/failed-jobs', { method: 'GET' });
 
@@ -717,8 +546,7 @@ describe('GET /v1/queues/failed-jobs', () => {
   });
 
   it('returns empty list when no failed jobs', async () => {
-    mockDbChain._result = [];
-    mockDbChain.offset.mockImplementation(() => Promise.resolve([]));
+    mockQueueService.listFailedJobs.mockResolvedValue({ data: [] });
 
     const res = await app.request('/v1/queues/failed-jobs', { method: 'GET' });
 
@@ -732,7 +560,7 @@ describe('GET /v1/queues/failed-jobs', () => {
 
 describe('GET /v1/queues/failed-jobs/:id', () => {
   it('returns a specific failed job', async () => {
-    mockDbChain.where.mockResolvedValueOnce([{ id: 'fj-1', queue: 'sync' }]);
+    mockQueueService.getFailedJob.mockResolvedValue({ data: { id: 'fj-1', queue: 'sync' } });
 
     const res = await app.request('/v1/queues/failed-jobs/fj-1', { method: 'GET' });
 
@@ -742,7 +570,7 @@ describe('GET /v1/queues/failed-jobs/:id', () => {
   });
 
   it('returns 404 when not found', async () => {
-    mockDbChain.where.mockResolvedValueOnce([]);
+    mockQueueService.getFailedJob.mockResolvedValue({ error: 'Not found' });
 
     const res = await app.request('/v1/queues/failed-jobs/missing', { method: 'GET' });
 
@@ -754,6 +582,8 @@ describe('GET /v1/queues/failed-jobs/:id', () => {
 
 describe('DELETE /v1/queues/failed-jobs/:id', () => {
   it('deletes a failed job and returns ok', async () => {
+    mockQueueService.deleteFailedJob.mockResolvedValue({ data: { ok: true } });
+
     const res = await app.request('/v1/queues/failed-jobs/fj-1', { method: 'DELETE' });
 
     expect(res.status).toBe(200);
@@ -782,7 +612,7 @@ describe('GET /v1/queues/events', () => {
     });
 
     expect(res.body).not.toBeNull();
-    // biome-ignore lint/style/noNonNullAssertion: body existence asserted above
+    // oxlint-disable-next-line @typescript-eslint/no-non-null-assertion -- body existence asserted above
     const reader = res.body!.getReader();
     const decoder = new TextDecoder();
     const { value } = await reader.read();
@@ -806,7 +636,7 @@ describe('GET /v1/queues/events', () => {
     });
 
     expect(res.body).not.toBeNull();
-    // biome-ignore lint/style/noNonNullAssertion: body existence asserted above
+    // oxlint-disable-next-line @typescript-eslint/no-non-null-assertion -- body existence asserted above
     const reader = res.body!.getReader();
     const decoder = new TextDecoder();
 
@@ -815,7 +645,7 @@ describe('GET /v1/queues/events', () => {
 
     // Emit a queue event
     expect(eventHandler).toBeDefined();
-    // biome-ignore lint/style/noNonNullAssertion: handler existence asserted above
+    // oxlint-disable-next-line @typescript-eslint/no-non-null-assertion -- handler existence asserted above
     eventHandler!({ queue: 'sync', type: 'completed' });
 
     // Read the event

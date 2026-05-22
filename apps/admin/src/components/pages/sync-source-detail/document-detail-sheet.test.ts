@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+
 import { coerceMetadataValue } from './document-detail-sheet';
 
 describe('coerceMetadataValue', () => {

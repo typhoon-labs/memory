@@ -11,9 +11,9 @@
   "dependencies": {
     "@typhoon/config": "workspace:*",
     "@typhoon/db": "workspace:*",
-    "@typhoon/queue": "workspace:*",
     "@typhoon/ingestion": "workspace:*",
     "@typhoon/logger": "workspace:*",
+    "@typhoon/queue": "workspace:*",
     "@typhoon/telemetry": "workspace:*",
     "bullmq": "^5.34.0",
     "croner": "^10.0.1",

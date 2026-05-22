@@ -1,4 +1,5 @@
 import { createAppLogger } from '@typhoon/logger';
+
 import type { SourceObject } from './providers/types';
 
 const log = createAppLogger('sync');
@@ -7,13 +8,15 @@ export interface SyncDiff {
   newFiles: SourceObject[];
   updatedFiles: SourceObject[];
   deletedDocumentIds: string[];
+  metaRefreshFiles: ExistingDoc[];
 }
 
-interface ExistingDoc {
+export interface ExistingDoc {
   id: string;
   sourceKey: string;
   sourceEtag: string | null;
   status: string;
+  searchMetaDirty?: boolean;
 }
 
 export function computeSyncDiff(
@@ -27,8 +30,9 @@ export function computeSyncDiff(
   const newFiles: SourceObject[] = [];
   const updatedFiles: SourceObject[] = [];
   const deletedDocumentIds: string[] = [];
+  const metaRefreshFiles: ExistingDoc[] = [];
 
-  const retryStatuses = new Set(['parse_error', 'embed_error', 'deleted']);
+  const retryStatuses = new Set(['error', 'deleted']);
 
   for (const obj of sourceObjects) {
     const existing = existingByKey.get(obj.key);
@@ -40,6 +44,8 @@ export function computeSyncDiff(
       updatedFiles.push(obj);
     } else if (retryStatuses.has(existing.status)) {
       updatedFiles.push(obj);
+    } else if (existing.searchMetaDirty) {
+      metaRefreshFiles.push(existing);
     }
   }
 
@@ -53,7 +59,8 @@ export function computeSyncDiff(
     new: newFiles.length,
     updated: updatedFiles.length,
     deleted: deletedDocumentIds.length,
+    metaRefresh: metaRefreshFiles.length,
   });
 
-  return { newFiles, updatedFiles, deletedDocumentIds };
+  return { newFiles, updatedFiles, deletedDocumentIds, metaRefreshFiles };
 }

@@ -1,12 +1,18 @@
+import type { Mock } from 'vitest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { RerankerScorer } from './reranker-scorer';
+
+/** Cast globalThis.fetch to a vitest Mock for stubbing. */
+function fetchMock(): Mock {
+  return globalThis.fetch as unknown as Mock;
+}
 
 describe('RerankerScorer', () => {
   const originalFetch = globalThis.fetch;
 
   beforeEach(() => {
-    globalThis.fetch = vi.fn();
+    globalThis.fetch = vi.fn() as unknown as typeof fetch;
   });
 
   afterEach(() => {
@@ -14,11 +20,12 @@ describe('RerankerScorer', () => {
   });
 
   function mockFetchResponse(body: unknown, status = 200) {
-    (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+    fetchMock().mockResolvedValue({
       ok: status >= 200 && status < 300,
       status,
       statusText: status === 200 ? 'OK' : 'Bad Request',
       json: () => Promise.resolve(body),
+      headers: new Headers(),
     });
   }
 
@@ -102,7 +109,7 @@ describe('RerankerScorer', () => {
     expect(s2).toBe(0.7);
     expect(s3).toBe(0.5);
 
-    const body = JSON.parse((globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][1].body);
+    const body = JSON.parse(fetchMock().mock.calls[0][1].body);
     expect(body.documents).toEqual([{ text: 'doc A' }, { text: 'doc B' }, { text: 'doc C' }]);
     expect(body.top_n).toBe(3);
   });
@@ -144,12 +151,13 @@ describe('RerankerScorer', () => {
 
   it('getMetrics isolates concurrent queries', async () => {
     let callCount = 0;
-    (globalThis.fetch as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+    fetchMock().mockImplementation(async () => {
       callCount++;
       const score = callCount === 1 ? 0.9 : 0.4;
       return {
         ok: true,
         json: () => Promise.resolve({ results: [{ index: 0, relevance_score: score }] }),
+        headers: new Headers(),
       };
     });
 
@@ -175,11 +183,12 @@ describe('RerankerScorer', () => {
 
   it('separates batches for different queries', async () => {
     let callCount = 0;
-    (globalThis.fetch as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+    fetchMock().mockImplementation(async () => {
       callCount++;
       return {
         ok: true,
         json: () => Promise.resolve({ results: [{ index: 0, relevance_score: 0.8 }] }),
+        headers: new Headers(),
       };
     });
 
@@ -189,8 +198,22 @@ describe('RerankerScorer', () => {
     expect(callCount).toBe(2);
   });
 
-  it('rejects all promises in batch on fetch error', async () => {
-    (globalThis.fetch as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('Network error'));
+  it('rejects all promises in batch on fetch error (no retries)', async () => {
+    fetchMock().mockRejectedValue(new Error('Network error'));
+
+    // maxRetries=0 to test immediate failure
+    const scorer = new RerankerScorer('http://localhost:8787/v1', 'key', 'model', 15_000, 0);
+    const results = await Promise.allSettled([
+      scorer.getRelevanceScore('query', 'doc A'),
+      scorer.getRelevanceScore('query', 'doc B'),
+    ]);
+
+    expect(results[0].status).toBe('rejected');
+    expect(results[1].status).toBe('rejected');
+  });
+
+  it('rejects all promises in batch on non-retryable response (400)', async () => {
+    mockFetchResponse({}, 400);
 
     const scorer = new RerankerScorer('http://localhost:8787/v1', 'key', 'model');
     const results = await Promise.allSettled([
@@ -202,21 +225,8 @@ describe('RerankerScorer', () => {
     expect(results[1].status).toBe('rejected');
   });
 
-  it('rejects all promises in batch on non-OK response', async () => {
-    mockFetchResponse({}, 429);
-
-    const scorer = new RerankerScorer('http://localhost:8787/v1', 'key', 'model');
-    const results = await Promise.allSettled([
-      scorer.getRelevanceScore('query', 'doc A'),
-      scorer.getRelevanceScore('query', 'doc B'),
-    ]);
-
-    expect(results[0].status).toBe('rejected');
-    expect(results[1].status).toBe('rejected');
-  });
-
-  it('rejects all promises on fetch timeout', async () => {
-    (globalThis.fetch as ReturnType<typeof vi.fn>).mockImplementation(
+  it('rejects all promises on fetch timeout (no retries)', async () => {
+    fetchMock().mockImplementation(
       (_url: string, init?: { signal?: AbortSignal }) =>
         new Promise((_, reject) => {
           init?.signal?.addEventListener('abort', () => {
@@ -225,7 +235,8 @@ describe('RerankerScorer', () => {
         }),
     );
 
-    const scorer = new RerankerScorer('http://localhost:8787/v1', 'key', 'model', 50);
+    // timeoutMs=50, maxRetries=0 to test immediate timeout failure
+    const scorer = new RerankerScorer('http://localhost:8787/v1', 'key', 'model', 50, 0);
     const results = await Promise.allSettled([
       scorer.getRelevanceScore('query', 'doc A'),
       scorer.getRelevanceScore('query', 'doc B'),
@@ -233,5 +244,72 @@ describe('RerankerScorer', () => {
 
     expect(results[0].status).toBe('rejected');
     expect(results[1].status).toBe('rejected');
+  });
+
+  // ── Retry behavior ────────────────────────────────────────────────
+
+  it('retries on 429 and succeeds', async () => {
+    const mockFetch = fetchMock();
+    mockFetch
+      .mockResolvedValueOnce({ ok: false, status: 429, statusText: 'Too Many Requests', headers: new Headers() })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ results: [{ index: 0, relevance_score: 0.8 }] }),
+        headers: new Headers(),
+      });
+
+    const scorer = new RerankerScorer('http://localhost:8787/v1', 'key', 'model', 15_000, 2, 10, 100);
+    const score = await scorer.getRelevanceScore('query', 'doc');
+
+    expect(score).toBe(0.8);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries on 500 and succeeds', async () => {
+    const mockFetch = fetchMock();
+    mockFetch
+      .mockResolvedValueOnce({ ok: false, status: 500, statusText: 'Internal Server Error', headers: new Headers() })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ results: [{ index: 0, relevance_score: 0.7 }] }),
+        headers: new Headers(),
+      });
+
+    const scorer = new RerankerScorer('http://localhost:8787/v1', 'key', 'model', 15_000, 2, 10, 100);
+    const score = await scorer.getRelevanceScore('query', 'doc');
+
+    expect(score).toBe(0.7);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('extracts meta.billed_units.search_units from response', async () => {
+    mockFetchResponse({
+      results: [{ index: 0, relevance_score: 0.9 }],
+      meta: { billed_units: { search_units: 5 } },
+    });
+
+    const scorer = new RerankerScorer('http://localhost:8787/v1', 'key', 'model');
+    await scorer.getRelevanceScore('query', 'doc');
+
+    const m = scorer.getMetrics('query');
+    expect(m?.searchUnits).toBe(5);
+  });
+
+  it('rejects after all retries exhausted on 429', async () => {
+    fetchMock().mockResolvedValue({
+      ok: false,
+      status: 429,
+      statusText: 'Too Many Requests',
+      headers: new Headers(),
+    });
+
+    const scorer = new RerankerScorer('http://localhost:8787/v1', 'key', 'model', 15_000, 1, 10, 50);
+    const results = await Promise.allSettled([scorer.getRelevanceScore('query', 'doc')]);
+
+    expect(results[0].status).toBe('rejected');
+    // Initial + 1 retry = 2 calls
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
   });
 });

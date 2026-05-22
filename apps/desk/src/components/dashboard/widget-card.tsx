@@ -9,9 +9,9 @@ interface WidgetCardProps {
 /** Card wrapper for dashboard widgets. Matches admin dashboard style. */
 export function WidgetCard({ title, action, children }: WidgetCardProps) {
   return (
-    <div className="rounded-lg border border-border bg-card p-5">
+    <div className="border-border bg-card rounded-lg border p-5">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium text-muted-foreground">{title}</h3>
+        <h3 className="text-muted-foreground text-sm font-medium">{title}</h3>
         {action}
       </div>
       <div className="mt-3">{children}</div>

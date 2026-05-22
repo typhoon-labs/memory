@@ -13,6 +13,7 @@ import {
   SearchIcon,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
+
 import { usePageTitle } from '../../hooks/use-page-title';
 import { LatencyChart } from '../charts/latency-chart';
 import { ScoreTrendChart } from '../charts/score-trend-chart';
@@ -80,7 +81,7 @@ const DATE_RANGE_OPTIONS: { value: DateRange; label: string }[] = [
 
 function DateRangeTabs({ value, onChange }: { value: DateRange; onChange: (v: DateRange) => void }) {
   return (
-    <div className="flex gap-1 rounded-md border border-border p-0.5">
+    <div className="border-border flex gap-1 rounded-md border p-0.5">
       {DATE_RANGE_OPTIONS.map((opt) => (
         <button
           key={opt.value}
@@ -101,8 +102,8 @@ function DateRangeTabs({ value, onChange }: { value: DateRange; onChange: (v: Da
 
 function WidgetCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-lg border border-border bg-card p-5">
-      <h3 className="text-sm font-medium text-muted-foreground">{title}</h3>
+    <div className="border-border bg-card rounded-lg border p-5">
+      <h3 className="text-muted-foreground text-sm font-medium">{title}</h3>
       <div className="mt-3">{children}</div>
     </div>
   );
@@ -119,12 +120,12 @@ export function AdminDashboard() {
   // Existing data queries (retained from original dashboard)
   const docs = useQuery({
     queryKey: ['documents'],
-    queryFn: () => apiFetch('/api/v1/documents'),
+    queryFn: () => apiFetch<Array<{ status: string }>>('/api/v1/documents'),
   });
 
   const targets = useQuery({
     queryKey: ['sync-targets'],
-    queryFn: () => apiFetch('/api/v1/sync-targets'),
+    queryFn: () => apiFetch<Array<{ id: string }>>('/api/v1/sync-targets'),
   });
 
   // Analytics queries
@@ -158,20 +159,22 @@ export function AdminDashboard() {
   });
 
   // Derived stat values
-  const readyCount = docs.data?.filter((d: { status: string }) => d.status === 'ready').length ?? 0;
+  const readyCount = docs.data?.filter((d) => d.status === 'ready').length ?? 0;
   const docTotal = docs.data?.length ?? 0;
 
-  const scoreSeries = scores.data?.series ?? [];
-  const scoreBuckets = scores.data?.buckets ?? [];
-
   const { responseStats, retrievalStats } = useMemo(() => {
+    const series = scores.data?.series ?? [];
+    const buckets = scores.data?.buckets ?? [];
+
     function computeCategorySparkline(category: 'response' | 'retrieval') {
-      const scorerIds = Object.entries(SCORER_CATEGORIES)
-        .filter(([, c]) => c.category === category)
-        .map(([k]) => k);
+      const scorerIds = new Set(
+        Object.entries(SCORER_CATEGORIES)
+          .filter(([, c]) => c.category === category)
+          .map(([k]) => k),
+      );
 
       const byBucket = new Map<string, { total: number; count: number }>();
-      for (const p of scoreSeries.filter((s) => scorerIds.includes(s.scorerId))) {
+      for (const p of series.filter((s) => scorerIds.has(s.scorerId))) {
         const normalized = normalizeScoreForAvg(p.scorerId, p.avgScore);
         const existing = byBucket.get(p.date);
         if (existing) {
@@ -182,7 +185,7 @@ export function AdminDashboard() {
         }
       }
 
-      const sparkline = scoreBuckets.map((date) => {
+      const sparkline = buckets.map((date) => {
         const d = byBucket.get(date);
         return { value: d && d.count > 0 ? d.total / d.count : null };
       });
@@ -197,7 +200,7 @@ export function AdminDashboard() {
       responseStats: computeCategorySparkline('response'),
       retrievalStats: computeCategorySparkline('retrieval'),
     };
-  }, [scoreSeries, scoreBuckets]);
+  }, [scores.data]);
 
   // Thread table columns
   const threadColumns: ColumnDef<DashboardThread, unknown>[] = useMemo(
@@ -208,7 +211,7 @@ export function AdminDashboard() {
         cell: ({ row }) => (
           <div className="max-w-[200px] truncate font-medium">
             {row.original.title || (
-              <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{row.original.threadId.slice(0, 12)}</code>
+              <code className="bg-muted rounded px-1.5 py-0.5 text-xs">{row.original.threadId.slice(0, 12)}</code>
             )}
           </div>
         ),
@@ -303,13 +306,13 @@ export function AdminDashboard() {
             description={docTotal > 0 ? `${readyCount} ready` : undefined}
             icon={<FileTextIcon className="size-4" />}
           />
-          <div className="relative overflow-hidden rounded-lg border border-border bg-card">
+          <div className="border-border bg-card relative overflow-hidden rounded-lg border">
             <div className="px-5 pt-4 pb-10">
               <div className="flex items-start justify-between">
-                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Response Quality</p>
-                <GaugeIcon className="size-4 text-muted-foreground" />
+                <p className="text-muted-foreground text-xs font-medium tracking-wider uppercase">Response Quality</p>
+                <GaugeIcon className="text-muted-foreground size-4" />
               </div>
-              <span className="mt-1.5 block text-xl font-semibold leading-none tracking-tight text-foreground">
+              <span className="text-foreground mt-1.5 block text-xl leading-none font-semibold tracking-tight">
                 {responseStats.avg !== null ? responseStats.avg.toFixed(2) : '\u2014'}
               </span>
             </div>
@@ -319,13 +322,13 @@ export function AdminDashboard() {
               </div>
             )}
           </div>
-          <div className="relative overflow-hidden rounded-lg border border-border bg-card">
+          <div className="border-border bg-card relative overflow-hidden rounded-lg border">
             <div className="px-5 pt-4 pb-10">
               <div className="flex items-start justify-between">
-                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Retrieval Quality</p>
-                <SearchIcon className="size-4 text-muted-foreground" />
+                <p className="text-muted-foreground text-xs font-medium tracking-wider uppercase">Retrieval Quality</p>
+                <SearchIcon className="text-muted-foreground size-4" />
               </div>
-              <span className="mt-1.5 block text-xl font-semibold leading-none tracking-tight text-foreground">
+              <span className="text-foreground mt-1.5 block text-xl leading-none font-semibold tracking-tight">
                 {retrievalStats.avg !== null ? retrievalStats.avg.toFixed(2) : '\u2014'}
               </span>
             </div>

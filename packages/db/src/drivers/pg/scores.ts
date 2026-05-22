@@ -1,5 +1,6 @@
 import { ScoresStorage } from '@mastra/core/storage';
 import { and, desc, eq, sql } from 'drizzle-orm';
+
 import type { Db } from '../../client';
 import { scores } from '../../schema/scores';
 
@@ -47,14 +48,16 @@ export class DrizzleScoresStorage extends ScoresStorage {
     entityType: string;
     pagination: { page: number; perPage: number };
   }) {
-    return this.listScores(
-      and(eq(scores.entityId, args.entityId), eq(scores.entityType, args.entityType))!,
-      args.pagination,
-    );
+    const where = and(eq(scores.entityId, args.entityId), eq(scores.entityType, args.entityType));
+    if (!where) throw new Error('Unexpected undefined from and()');
+    return this.listScores(where, args.pagination);
   }
 
   private async listScores(where: ReturnType<typeof eq>, pagination: { page: number; perPage: number }) {
-    const [countRow] = await this.db.select({ count: sql<number>`count(*)::int` }).from(scores).where(where);
+    const [countRow] = await this.db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(scores)
+      .where(where);
     const total = countRow?.count ?? 0;
     const offset = pagination.page * pagination.perPage;
 

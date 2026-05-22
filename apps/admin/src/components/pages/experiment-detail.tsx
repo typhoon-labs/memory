@@ -29,7 +29,9 @@ import {
 } from '@typhoon/ui';
 import { ChevronRightIcon, FlaskConicalIcon, GitCompareArrowsIcon, InfoIcon, SquareIcon } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+
 import { detailTitle, usePageTitle } from '../../hooks/use-page-title';
+import { type SourceEntry, ResponseWithCitations } from '../shared/response-with-citations';
 
 // ---------- Types ----------
 
@@ -62,6 +64,7 @@ interface ExperimentResult {
   output: {
     responseText?: string;
     scores?: ScoreEntry[];
+    sources?: SourceEntry[];
   } | null;
   error: { message: string } | string | null;
 }
@@ -93,7 +96,7 @@ const STATUS_VARIANT: Record<Experiment['status'], 'pending' | 'info' | 'success
 };
 
 function truncateValue(value: unknown, maxLen = 60): string {
-  if (value == null) return '\u2014';
+  if (value === null || value === undefined) return '\u2014';
   if (typeof value === 'string') return value.length > maxLen ? `${value.slice(0, maxLen)}...` : value;
   if (typeof value === 'object') {
     const obj = value as Record<string, unknown>;
@@ -113,7 +116,7 @@ function truncateValue(value: unknown, maxLen = 60): string {
 function formatScorerId(id: string | undefined): string {
   if (!id) return 'Unknown';
   return id
-    .replace(/([A-Z])/g, ' $1')
+    .replaceAll(/([A-Z])/g, ' $1')
     .replace(/^./, (s) => s.toUpperCase())
     .trim();
 }
@@ -153,7 +156,7 @@ function ScorerTooltip({ description }: { description: string }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <InfoIcon className="ml-1 inline size-3 text-muted-foreground/60 hover:text-muted-foreground" />
+        <InfoIcon className="text-muted-foreground/60 hover:text-muted-foreground ml-1 inline size-3" />
       </TooltipTrigger>
       <TooltipContent className="max-w-xs text-xs">{description}</TooltipContent>
     </Tooltip>
@@ -174,7 +177,6 @@ function ResultDetailSheet({
   const scores = result?.output?.scores ?? [];
   const [selectedScorer, setSelectedScorer] = useState<string | undefined>();
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally reset when result ID changes
   useEffect(() => {
     setSelectedScorer(undefined);
   }, [result?.id]);
@@ -253,13 +255,13 @@ function ResultDetailSheet({
             <div className="space-y-5">
               <div>
                 <SectionLabel>Input</SectionLabel>
-                <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed">{truncateValue(result.input, 2000)}</p>
+                <p className="mt-2 text-sm leading-relaxed whitespace-pre-wrap">{truncateValue(result.input, 2000)}</p>
               </div>
 
-              {result.groundTruth != null && (
+              {result.groundTruth !== null && result.groundTruth !== undefined && (
                 <div>
                   <SectionLabel>Expected</SectionLabel>
-                  <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed">
+                  <p className="mt-2 text-sm leading-relaxed whitespace-pre-wrap">
                     {truncateValue(result.groundTruth, 2000)}
                   </p>
                 </div>
@@ -269,7 +271,7 @@ function ResultDetailSheet({
                 <SectionLabel>Response</SectionLabel>
                 <div className="mt-2 text-sm leading-relaxed">
                   {result.output?.responseText ? (
-                    <MarkdownContent text={result.output.responseText} />
+                    <ResponseWithCitations text={result.output.responseText} sources={result.output.sources} />
                   ) : (
                     <span className="text-muted-foreground">{'\u2014'}</span>
                   )}
@@ -295,11 +297,11 @@ function ResultDetailSheet({
               {responseScores.length > 0 && (
                 <div className="mb-3">
                   <div className="mb-1 flex items-center justify-between">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                    <span className="text-muted-foreground text-[10px] font-bold tracking-wider uppercase">
                       Response Quality
                     </span>
                     {avgs.responseAvg !== null && (
-                      <span className="flex items-center gap-1 text-[10px] font-bold tabular-nums text-muted-foreground">
+                      <span className="text-muted-foreground flex items-center gap-1 text-[10px] font-bold tabular-nums">
                         <span className={cn('size-1.5 rounded-full', scoreDotClass(avgs.responseAvg))} />
                         {avgs.responseAvg.toFixed(2)}
                       </span>
@@ -312,22 +314,22 @@ function ResultDetailSheet({
               {/* Retrieval Quality */}
               <div className="mb-3">
                 <div className="mb-1 flex items-center justify-between">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                  <span className="text-muted-foreground text-[10px] font-bold tracking-wider uppercase">
                     Retrieval Quality
                   </span>
                   {avgs.retrievalAvg !== null ? (
-                    <span className="flex items-center gap-1 text-[10px] font-bold tabular-nums text-muted-foreground">
+                    <span className="text-muted-foreground flex items-center gap-1 text-[10px] font-bold tabular-nums">
                       <span className={cn('size-1.5 rounded-full', scoreDotClass(avgs.retrievalAvg))} />
                       {avgs.retrievalAvg.toFixed(2)}
                     </span>
                   ) : (
-                    <span className="text-[10px] text-muted-foreground/60">N/A</span>
+                    <span className="text-muted-foreground/60 text-[10px]">N/A</span>
                   )}
                 </div>
                 {retrievalScores.filter((s) => s.status !== 'skipped').length > 0 ? (
                   <div className="flex flex-col gap-px">{retrievalScores.map(renderScoreRow)}</div>
                 ) : (
-                  <p className="text-[11px] text-muted-foreground/60">No retrieval context</p>
+                  <p className="text-muted-foreground/60 text-[11px]">No retrieval context</p>
                 )}
               </div>
 
@@ -335,7 +337,7 @@ function ResultDetailSheet({
               {otherScores.length > 0 && (
                 <div className="mb-3">
                   <div className="mb-1">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Other</span>
+                    <span className="text-muted-foreground text-[10px] font-bold tracking-wider uppercase">Other</span>
                   </div>
                   <div className="flex flex-col gap-px">{otherScores.map(renderScoreRow)}</div>
                 </div>
@@ -344,14 +346,14 @@ function ResultDetailSheet({
 
             {activeScore?.status === 'skipped' ? (
               <>
-                <hr className="my-3 border-border" />
-                <p className="text-sm text-muted-foreground">
+                <hr className="border-border my-3" />
+                <p className="text-muted-foreground text-sm">
                   This scorer was skipped because no retrieval context was available.
                 </p>
               </>
             ) : activeScore?.reason ? (
               <>
-                <hr className="my-3 border-border" />
+                <hr className="border-border my-3" />
                 <div className="text-sm leading-relaxed">
                   <MarkdownContent text={activeScore.reason} />
                 </div>
@@ -359,8 +361,8 @@ function ResultDetailSheet({
             ) : (
               activeScore && (
                 <>
-                  <hr className="my-3 border-border" />
-                  <p className="text-sm text-muted-foreground">No reasoning provided for this scorer.</p>
+                  <hr className="border-border my-3" />
+                  <p className="text-muted-foreground text-sm">No reasoning provided for this scorer.</p>
                 </>
               )
             )}
@@ -421,8 +423,8 @@ export function ExperimentDetailPage() {
 
   // Derive selected result from URL param
   const selectedResult = useMemo(
-    () => (resultId ? (results.find((r) => r.id === resultId) ?? null) : null),
-    [resultId, results],
+    () => (resultId ? ((resultsData?.results ?? []).find((r) => r.id === resultId) ?? null) : null),
+    [resultId, resultsData?.results],
   );
 
   const columns: ColumnDef<ExperimentResult, unknown>[] = useMemo(
@@ -446,7 +448,7 @@ export function ExperimentDetailPage() {
         accessorFn: (row) => truncateValue(row.output?.responseText, 9999),
         header: 'Response',
         cell: ({ row }) => (
-          <div className="max-w-[400px] truncate text-sm text-muted-foreground">
+          <div className="text-muted-foreground max-w-[400px] truncate text-sm">
             {truncateValue(row.original.output?.responseText, 200)}
           </div>
         ),
@@ -457,7 +459,11 @@ export function ExperimentDetailPage() {
         header: 'Response',
         cell: ({ row }) => {
           const avg = categoryAvgs(row.original).responseAvg;
-          return <span className="tabular-nums text-sm">{avg != null ? avg.toFixed(2) : '\u2014'}</span>;
+          return (
+            <span className="text-sm tabular-nums">
+              {avg !== null && avg !== undefined ? avg.toFixed(2) : '\u2014'}
+            </span>
+          );
         },
       },
       {
@@ -467,7 +473,9 @@ export function ExperimentDetailPage() {
         cell: ({ row }) => {
           const avg = categoryAvgs(row.original).retrievalAvg;
           return (
-            <span className="tabular-nums text-sm text-muted-foreground">{avg != null ? avg.toFixed(2) : 'N/A'}</span>
+            <span className="text-muted-foreground text-sm tabular-nums">
+              {avg !== null && avg !== undefined ? avg.toFixed(2) : 'N/A'}
+            </span>
           );
         },
       },
@@ -523,10 +531,10 @@ export function ExperimentDetailPage() {
         <PageHeader
           title={
             <span className="flex items-center gap-1.5">
-              <Link to="/experiments" className="text-muted-foreground transition-colors hover:text-foreground">
+              <Link to="/experiments" className="text-muted-foreground hover:text-foreground transition-colors">
                 Experiments
               </Link>
-              <ChevronRightIcon className="size-3.5 text-muted-foreground/50" />
+              <ChevronRightIcon className="text-muted-foreground/50 size-3.5" />
               {experiment.name || `Experiment ${experiment.id.slice(0, 8)}`}
               <StatusBadge variant={STATUS_VARIANT[experiment.status]} className="ml-1.5">
                 {experiment.status}
@@ -562,8 +570,8 @@ export function ExperimentDetailPage() {
         />
 
         {isRunning && (
-          <div className="mt-2 h-0.5 w-full overflow-hidden rounded-full bg-muted">
-            <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${progressPct}%` }} />
+          <div className="bg-muted mt-2 h-0.5 w-full overflow-hidden rounded-full">
+            <div className="bg-primary h-full rounded-full transition-all" style={{ width: `${progressPct}%` }} />
           </div>
         )}
 
@@ -583,7 +591,12 @@ export function ExperimentDetailPage() {
               showRowCount
               pageSize={25}
               getRowId={(row) => row.id}
-              onRowClick={(row) => navigate({ search: (prev) => ({ ...prev, result: row.id }), replace: true })}
+              onRowClick={(row) =>
+                navigate({
+                  search: ((prev: Record<string, unknown>) => ({ ...prev, result: row.id })) as never,
+                  replace: true,
+                })
+              }
             />
           )}
 
@@ -596,7 +609,7 @@ export function ExperimentDetailPage() {
           )}
 
           {!resultsLoading && results.length === 0 && isRunning && (
-            <div className="py-8 text-center text-sm text-muted-foreground">
+            <div className="text-muted-foreground py-8 text-center text-sm">
               Processing items... results will appear shortly.
             </div>
           )}
@@ -606,7 +619,11 @@ export function ExperimentDetailPage() {
           result={selectedResult}
           open={selectedResult !== null}
           onOpenChange={(open) => {
-            if (!open) navigate({ search: (prev) => ({ ...prev, result: undefined }), replace: true });
+            if (!open)
+              navigate({
+                search: ((prev: Record<string, unknown>) => ({ ...prev, result: undefined })) as never,
+                replace: true,
+              });
           }}
           scorerDescriptions={scorerDescriptions}
         />

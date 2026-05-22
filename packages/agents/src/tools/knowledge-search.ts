@@ -3,6 +3,7 @@ import { createObservabilityContext, SpanType } from '@mastra/core/observability
 import type { ToolExecutionContext } from '@mastra/core/tools';
 import { createTool } from '@mastra/core/tools';
 import { rerankWithScorer } from '@mastra/rag';
+import type { LanguageModel } from '@typhoon/ai';
 import {
   createCitationModel,
   createRerankerScorer,
@@ -12,8 +13,9 @@ import {
 } from '@typhoon/ai';
 import { type PgVector, refineResults } from '@typhoon/db/drivers/pg';
 import { createAppLogger } from '@typhoon/logger';
-import { generateText } from 'ai';
+import { generateText, Output } from 'ai';
 import { z } from 'zod';
+
 import { emitToolProgress } from './with-progress';
 
 const log = createAppLogger('knowledge-search');
@@ -87,7 +89,7 @@ export function createKnowledgeSearchTool(knowledgeAgent: Agent, options?: Knowl
       // can access the vector store (pgVector). Without this, vector queries
       // return empty results.
       if (context?.mastra) {
-        // biome-ignore lint/suspicious/noExplicitAny: __registerMastra is internal but necessary for sub-agent tool context
+        // oxlint-disable-next-line @typescript-eslint/no-explicit-any -- __registerMastra is internal but necessary for sub-agent tool context
         (knowledgeAgent as any).__registerMastra(context.mastra);
       }
 
@@ -237,7 +239,7 @@ export function createKnowledgeSearchTool(knowledgeAgent: Agent, options?: Knowl
         },
       });
 
-      const filtered = refined.map((r) => ({ ...(r.metadata as Record<string, unknown>), score: r.score }));
+      const filtered = refined.map((r) => Object.assign({}, r.metadata as Record<string, unknown>, { score: r.score }));
 
       log.debug('filtered', {
         dedupCount: uniqueSources.length,
@@ -310,9 +312,17 @@ export function createKnowledgeSearchTool(knowledgeAgent: Agent, options?: Knowl
         attributes: { model: 'citation' } as never,
       });
 
-      const { text, usage: citationUsage } = await generateText({
-        model: createCitationModel(),
+      const citationSchema = z.object({
+        answer: z.string().describe('The synthesized answer with inline [Source: N] or [Source: N.M] citation markers'),
+        citedRefs: z
+          .array(z.string())
+          .describe('All source reference indices actually used in the answer (e.g. ["1", "2.1", "2.3"])'),
+      });
+
+      const { output: citationOutput, usage: citationUsage } = await generateText({
+        model: createCitationModel() as unknown as LanguageModel,
         temperature: 0,
+        output: Output.object({ schema: citationSchema }),
         system: CITATION_SYSTEM,
         prompt: `User question: ${prompt}\n\nSearch results:\n${summaryParts.join('\n\n')}`,
         experimental_telemetry: {
@@ -321,22 +331,18 @@ export function createKnowledgeSearchTool(knowledgeAgent: Agent, options?: Knowl
         },
       });
 
+      const text = citationOutput?.answer ?? '';
+
       citationSpan?.end({
         output: {
           textLength: text.length,
-          inputTokens: citationUsage?.promptTokens,
-          outputTokens: citationUsage?.completionTokens,
+          inputTokens: citationUsage?.inputTokens,
+          outputTokens: citationUsage?.outputTokens,
         },
       });
 
-      // Parse which references the LLM actually cited
-      const citedRefs = new Set<string>();
-      const refPattern = /\[Source:\s*([\d.]+(?:\s*,\s*[\d.]+)*)\s*\]/g;
-      for (const refMatch of text.matchAll(refPattern)) {
-        for (const ref of refMatch[1].split(/\s*,\s*/)) {
-          citedRefs.add(ref.trim());
-        }
-      }
+      // Cited refs come directly from structured output
+      const citedRefs = new Set<string>(citationOutput?.citedRefs ?? []);
 
       // Reassign sequential displayIndex only to cited chunks
       const oldToNew = new Map<string, string>();
@@ -366,6 +372,7 @@ export function createKnowledgeSearchTool(knowledgeAgent: Agent, options?: Knowl
       }
 
       // Rewrite [Source: X] markers in the text with new sequential indices
+      const refPattern = /\[Source:\s*([\d.]+(?:\s*,\s*[\d.]+)*)\s*\]/g;
       const rewrittenText = text.replace(refPattern, (_match, captured: string) => {
         const refs = (captured as string).split(/\s*,\s*/);
         const mapped = refs.map((r: string) => oldToNew.get(r.trim()) ?? r.trim());
@@ -411,7 +418,7 @@ export function createKnowledgeSearchTool(knowledgeAgent: Agent, options?: Knowl
       const realIdLookup = new Map<string, string>();
       for (const s of sources) {
         const id = s.chunkId as string;
-        if (id && !/^\d+$/.test(id) && s.documentId && s.startIndex != null) {
+        if (id && !/^\d+$/.test(id) && s.documentId && s.startIndex !== null && s.startIndex !== undefined) {
           realIdLookup.set(`${s.documentId}::${s.startIndex}`, id);
         }
       }
@@ -429,9 +436,12 @@ export function createKnowledgeSearchTool(knowledgeAgent: Agent, options?: Knowl
       if (unresolved.length > 0 && context?.mastra) {
         const vs = context.mastra.getVector('pgVector') as PgVector | undefined;
         if (vs) {
-          for (const cs of unresolved) {
-            const realId = await vs.getChunkIdByDocumentAndIndex('knowledge_base', cs.documentId, cs.startIndex);
-            if (realId) cs.chunkId = realId;
+          const realIds = await Promise.all(
+            unresolved.map((cs) => vs.getChunkIdByDocumentAndIndex('knowledge_base', cs.documentId, cs.startIndex)),
+          );
+          for (let i = 0; i < unresolved.length; i++) {
+            const id = realIds[i];
+            if (id) unresolved[i].chunkId = id;
           }
         }
       }

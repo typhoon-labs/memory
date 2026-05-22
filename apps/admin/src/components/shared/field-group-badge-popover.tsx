@@ -1,5 +1,6 @@
 import { Badge, Popover, PopoverContent, PopoverTrigger } from '@typhoon/ui';
 import { useState } from 'react';
+
 import type { MetadataSchema } from './field-schema-editor';
 
 interface FieldGroupInfo {
@@ -36,10 +37,10 @@ export function FieldGroupBadgePopover({ group }: { group: FieldGroupInfo }) {
       >
         <div className="space-y-2">
           <span className="font-medium">{group.name}</span>
-          {group.description && <p className="text-xs text-muted-foreground">{group.description}</p>}
+          {group.description && <p className="text-muted-foreground text-xs">{group.description}</p>}
 
           <div className="border-t pt-2">
-            <span className="text-xs text-muted-foreground">
+            <span className="text-muted-foreground text-xs">
               {fieldEntries.length} {fieldEntries.length === 1 ? 'field' : 'fields'}
             </span>
             {fieldEntries.length > 0 && (
@@ -48,7 +49,7 @@ export function FieldGroupBadgePopover({ group }: { group: FieldGroupInfo }) {
                   <Badge key={name} variant="outline" className="text-2xs">
                     {name}
                     {field.required && '*'}
-                    <span className="ml-1 text-muted-foreground">{field.type}</span>
+                    <span className="text-muted-foreground ml-1">{field.type}</span>
                   </Badge>
                 ))}
               </div>

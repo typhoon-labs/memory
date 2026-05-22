@@ -7,7 +7,7 @@ export function ChartLegend({ payload }: { payload?: LegendPayload[] }) {
   return (
     <div className="mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
       {payload.map((entry) => (
-        <span key={entry.value} className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+        <span key={entry.value} className="text-muted-foreground inline-flex items-center gap-1.5 text-xs">
           <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: entry.color }} />
           {entry.value}
         </span>

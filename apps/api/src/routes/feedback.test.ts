@@ -21,7 +21,7 @@ const mockDb = vi.hoisted(() => {
     chain.set = vi.fn(self);
     chain.returning = vi.fn().mockResolvedValue(result);
     // Make the chain itself awaitable (for queries without .returning()).
-    // biome-ignore lint/suspicious/noThenProperty: drizzle query builders are thenable
+    // oxlint-disable-next-line unicorn/no-thenable -- drizzle query builders are thenable
     chain.then = vi.fn((resolve: (v: unknown) => void) => resolve(result));
     return chain;
   }
@@ -35,7 +35,11 @@ const mockDb = vi.hoisted(() => {
   };
 });
 
-vi.mock('../db', () => ({ db: mockDb }));
+vi.mock('../infra/db', () => ({ db: mockDb, sql: {} }));
+
+vi.mock('@typhoon/db/drivers/pg', () => ({
+  PgVector: class MockPgVector {},
+}));
 
 vi.mock('@typhoon/db', () => ({
   messages: { id: 'messages.id', externalId: 'messages.externalId', threadId: 'messages.threadId' },
@@ -73,7 +77,6 @@ function mountRoutes(routes: Array<Record<string, unknown>>) {
   const app = new Hono();
   for (const route of routes) {
     const mid = Array.isArray(route.middleware) ? route.middleware : route.middleware ? [route.middleware] : [];
-    // biome-ignore lint/suspicious/noExplicitAny: test helper
     (app as any)[String(route.method).toLowerCase()](route.path, ...mid, route.handler);
   }
   return app;
@@ -83,7 +86,6 @@ let app: Hono;
 
 beforeEach(() => {
   vi.clearAllMocks();
-  // biome-ignore lint/suspicious/noExplicitAny: test helper
   app = mountRoutes(feedbackRoutes as any);
 });
 
@@ -224,7 +226,7 @@ describe('POST /v1/feedback', () => {
 
     expect(res.status).toBe(404);
     const json = await res.json();
-    expect(json).toEqual({ error: 'Message not found' });
+    expect(json).toEqual({ error: 'Not found' });
   });
 
   it('rejects request with missing messageId (Zod validation)', async () => {

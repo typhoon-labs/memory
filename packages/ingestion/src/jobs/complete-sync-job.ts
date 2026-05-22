@@ -1,7 +1,5 @@
-import type { Db } from '@typhoon/db';
-import { syncJobs } from '@typhoon/db';
+import type { SyncJobRepo } from '@typhoon/db/repos';
 import { createAppLogger } from '@typhoon/logger';
-import { eq, sql } from 'drizzle-orm';
 
 const log = createAppLogger('complete-sync-job');
 
@@ -15,24 +13,13 @@ const log = createAppLogger('complete-sync-job');
  * guard to prevent double-completion races.
  */
 export async function incrementSyncJobCompletion(
-  db: Db,
+  syncJobRepo: SyncJobRepo,
   syncJobId: string | undefined,
   failed: boolean,
 ): Promise<void> {
   if (!syncJobId) return;
 
-  const [updated] = await db
-    .update(syncJobs)
-    .set({
-      childJobsCompleted: sql`${syncJobs.childJobsCompleted} + 1`,
-      filesErrored: failed ? sql`${syncJobs.filesErrored} + 1` : syncJobs.filesErrored,
-    })
-    .where(eq(syncJobs.id, syncJobId))
-    .returning({
-      childJobsTotal: syncJobs.childJobsTotal,
-      childJobsCompleted: syncJobs.childJobsCompleted,
-      status: syncJobs.status,
-    });
+  const updated = await syncJobRepo.incrementCompletion(syncJobId, failed);
 
   if (!updated) {
     log.warn('Sync job not found for completion increment', { syncJobId });
@@ -40,7 +27,7 @@ export async function incrementSyncJobCompletion(
   }
 
   if (updated.childJobsCompleted >= updated.childJobsTotal && updated.status === 'running') {
-    await db.update(syncJobs).set({ status: 'completed', completedAt: new Date() }).where(eq(syncJobs.id, syncJobId));
+    await syncJobRepo.markCompleted(syncJobId);
 
     log.info('Sync job completed', {
       syncJobId,

@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from 'react';
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+
 import { ChartLegend } from './chart-legend';
 import { createChartTooltip } from './chart-tooltip';
 import { type DateRange, formatDateForRange, getTimeTicks } from './chart-utils';
@@ -85,7 +86,7 @@ export function ScoreTrendChart({ data, range, buckets }: ScoreTrendChartProps) 
 
   if (rows.length === 0) {
     return (
-      <div className="flex h-[300px] items-center justify-center text-sm text-muted-foreground">No score data yet</div>
+      <div className="text-muted-foreground flex h-[300px] items-center justify-center text-sm">No score data yet</div>
     );
   }
 

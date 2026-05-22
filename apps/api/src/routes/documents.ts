@@ -1,47 +1,19 @@
 import { registerApiRoute } from '@mastra/core/server';
-import { documents, metadataFieldGroups, metadataTemplates, syncTargets } from '@typhoon/db';
-import { PgVector } from '@typhoon/db/drivers/pg';
-import {
-  deleteDocumentVectors,
-  getParser,
-  getProvider,
-  needsCustomParser,
-  updateDocumentVectorMetadata,
-  updateDocumentVectorSource,
-  updateDocumentVectorTitle,
-} from '@typhoon/ingestion';
-import type { ProcessFileJobData } from '@typhoon/queue';
-import { resolveTemplateSchema, validateCustomMetadata } from '@typhoon/types';
-import { sql as drizzleSql, eq, inArray } from 'drizzle-orm';
+import { isError } from '@typhoon/services';
 import { z } from 'zod';
-import { db, sql } from '../db';
+
+import { errorResponse } from '../lib/error-response';
 import { requireAuth } from '../middleware/require-auth';
-import { getSyncQueue } from '../queue';
-
-const vectorStore = new PgVector({ id: 'typhoon-vectors', sql });
-
-async function resolveEffectiveSchemaForTarget(templateId: string) {
-  const [template] = await db.select().from(metadataTemplates).where(eq(metadataTemplates.id, templateId));
-  if (!template) return null;
-
-  const groups =
-    template.fieldGroupIds.length > 0
-      ? await db.select().from(metadataFieldGroups).where(inArray(metadataFieldGroups.id, template.fieldGroupIds))
-      : [];
-
-  // biome-ignore lint/suspicious/noExplicitAny: JSONB types from Drizzle
-  return resolveTemplateSchema(template as any, groups as any);
-}
+import { getDocumentService } from '../services';
 
 export const documentRoutes = [
   registerApiRoute('/v1/documents', {
     method: 'GET',
     middleware: [requireAuth],
     handler: async (c) => {
-      const syncTargetId = c.req.query('syncTargetId');
-      const query = db.select().from(documents);
-      const docs = syncTargetId ? await query.where(eq(documents.syncTargetId, syncTargetId)) : await query;
-      return c.json(docs);
+      const result = await getDocumentService().list(c.req.query('syncTargetId'));
+      if (isError(result)) return errorResponse(c, result);
+      return c.json(result.data);
     },
   }),
 
@@ -49,10 +21,9 @@ export const documentRoutes = [
     method: 'GET',
     middleware: [requireAuth],
     handler: async (c) => {
-      const id = c.req.param('id');
-      const [doc] = await db.select().from(documents).where(eq(documents.id, id));
-      if (!doc) return c.json({ error: 'Not found' }, 404);
-      return c.json(doc);
+      const result = await getDocumentService().getById(c.req.param('id'));
+      if (isError(result)) return errorResponse(c, result);
+      return c.json(result.data);
     },
   }),
 
@@ -60,19 +31,9 @@ export const documentRoutes = [
     method: 'GET',
     middleware: [requireAuth],
     handler: async (c) => {
-      const id = c.req.param('id');
-
-      const [doc] = await db.select().from(documents).where(eq(documents.id, id));
-      if (!doc) return c.json({ error: 'Not found' }, 404);
-
-      const chunkRows = await vectorStore.getChunksByDocumentId('knowledge_base', id);
-
-      const chunks = chunkRows.map((row) => ({
-        text: row.metadata.text ?? '',
-        startIndex: row.metadata.startIndex ?? null,
-      }));
-
-      return c.json({ document: doc, chunks });
+      const result = await getDocumentService().getChunks(c.req.param('id'));
+      if (isError(result)) return errorResponse(c, result);
+      return c.json(result.data);
     },
   }),
 
@@ -80,36 +41,15 @@ export const documentRoutes = [
     method: 'GET',
     middleware: [requireAuth],
     handler: async (c) => {
-      const id = c.req.param('id');
-      const [doc] = await db.select().from(documents).where(eq(documents.id, id));
-      if (!doc) return c.json({ error: 'Not found' }, 404);
-
-      // If client has a cached version matching the current content hash, skip S3 download
       const clientEtag = c.req.header('If-None-Match');
-      if (doc.contentHash && clientEtag === doc.contentHash) {
+      const result = await getDocumentService().getParsedContent(c.req.param('id'), clientEtag);
+      if (isError(result)) return errorResponse(c, result);
+      if ('notModified' in result.data) {
         return new Response(null, { status: 304 });
       }
-
-      const [target] = await db.select().from(syncTargets).where(eq(syncTargets.id, doc.syncTargetId));
-      if (!target) return c.json({ error: 'Sync target not found' }, 404);
-
-      const provider = getProvider(target.sourceType);
-      const config = target.config as Record<string, unknown>;
-      const content = await provider.download(config, doc.sourceKey, target.source ?? undefined);
-
-      let text: string;
-      if (needsCustomParser(doc.sourceKey)) {
-        const parser = getParser(doc.sourceKey);
-        if (!parser) return c.json({ error: 'No parser available' }, 400);
-        const result = await parser(Buffer.from(content), doc.sourceKey);
-        text = result.text;
-      } else {
-        text = Buffer.from(content).toString('utf-8');
-      }
-
-      return c.json({ text }, 200, {
+      return c.json({ text: result.data.text }, 200, {
         'Cache-Control': 'private, max-age=300',
-        ...(doc.contentHash && { ETag: doc.contentHash }),
+        ...(result.data.contentHash && { ETag: result.data.contentHash }),
       });
     },
   }),
@@ -118,21 +58,12 @@ export const documentRoutes = [
     method: 'GET',
     middleware: [requireAuth],
     handler: async (c) => {
-      const id = c.req.param('id');
-      const [doc] = await db.select().from(documents).where(eq(documents.id, id));
-      if (!doc) return c.json({ error: 'Not found' }, 404);
-
-      const [target] = await db.select().from(syncTargets).where(eq(syncTargets.id, doc.syncTargetId));
-      if (!target) return c.json({ error: 'Sync target not found' }, 404);
-
-      const provider = getProvider(target.sourceType);
-      const config = target.config as Record<string, unknown>;
-      const content = await provider.download(config, doc.sourceKey, target.source ?? undefined);
-      const filename = doc.sourceKey.split('/').pop() ?? 'download';
-
+      const result = await getDocumentService().download(c.req.param('id'));
+      if (isError(result)) return errorResponse(c, result);
+      const { content, mimeType, filename } = result.data;
       return new Response(content.buffer as ArrayBuffer, {
         headers: {
-          'Content-Type': doc.mimeType ?? 'application/octet-stream',
+          'Content-Type': mimeType ?? 'application/octet-stream',
           'Content-Disposition': `attachment; filename="${filename}"`,
           'Content-Length': String(content.byteLength),
         },
@@ -144,86 +75,26 @@ export const documentRoutes = [
     method: 'POST',
     middleware: [requireAuth],
     handler: async (c) => {
-      const id = c.req.param('id');
-      const [doc] = await db.select().from(documents).where(eq(documents.id, id));
-      if (!doc) return c.json({ error: 'Not found' }, 404);
-
-      if (doc.status !== 'parse_error' && doc.status !== 'embed_error') {
-        return c.json({ error: 'Document is not in an error state' }, 400);
-      }
-
-      const [target] = await db.select().from(syncTargets).where(eq(syncTargets.id, doc.syncTargetId));
-      if (!target) return c.json({ error: 'Sync target not found' }, 404);
-
-      const [updated] = await db
-        .update(documents)
-        .set({ status: 'processing', errorMessage: null, updatedAt: new Date() })
-        .where(eq(documents.id, id))
-        .returning();
-
-      const syncQueue = getSyncQueue();
-      await syncQueue.add('process-file', {
-        syncTargetId: doc.syncTargetId,
-        documentId: doc.id,
-        sourceKey: doc.sourceKey,
-        sourceEtag: doc.sourceEtag ?? '',
-        sourceType: target.sourceType,
-        sourceName: target.source ?? undefined,
-        isUpdate: true,
-      } satisfies ProcessFileJobData);
-
-      return c.json(updated);
+      const result = await getDocumentService().retryFailed(c.req.param('id'));
+      if (isError(result)) return errorResponse(c, result);
+      return c.json(result.data);
     },
   }),
 
-  // ── Force re-sync a single document ───────────────────────────
-  // Like /retry but without the error-status gate. Re-fetches the
-  // file from its source, re-parses, re-chunks, and re-embeds.
   registerApiRoute('/v1/documents/:id/resync', {
     method: 'POST',
     middleware: [requireAuth],
     handler: async (c) => {
-      const id = c.req.param('id');
-      const [doc] = await db.select().from(documents).where(eq(documents.id, id));
-      if (!doc) return c.json({ error: 'Not found' }, 404);
-
-      if (doc.status === 'deleted') {
-        return c.json({ error: 'Cannot re-sync a deleted document' }, 400);
-      }
-      if (doc.status === 'processing' || doc.status === 'pending') {
-        return c.json({ error: 'Document is already being processed' }, 409);
-      }
-
-      const [target] = await db.select().from(syncTargets).where(eq(syncTargets.id, doc.syncTargetId));
-      if (!target) return c.json({ error: 'Sync target not found' }, 404);
-
-      const [updated] = await db
-        .update(documents)
-        .set({ status: 'processing', errorMessage: null, updatedAt: new Date() })
-        .where(eq(documents.id, id))
-        .returning();
-
-      const syncQueue = getSyncQueue();
-      await syncQueue.add('process-file', {
-        syncTargetId: doc.syncTargetId,
-        documentId: doc.id,
-        sourceKey: doc.sourceKey,
-        sourceEtag: doc.sourceEtag ?? '',
-        sourceType: target.sourceType,
-        sourceName: target.source ?? undefined,
-        isUpdate: true,
-      } satisfies ProcessFileJobData);
-
-      return c.json(updated);
+      const result = await getDocumentService().resync(c.req.param('id'));
+      if (isError(result)) return errorResponse(c, result);
+      return c.json(result.data);
     },
   }),
 
-  // ── Update document metadata ──────────────────────────────────
   registerApiRoute('/v1/documents/:id', {
     method: 'PATCH',
     middleware: [requireAuth],
     handler: async (c) => {
-      const id = c.req.param('id');
       const body = z
         .object({
           title: z.string().nullable().optional(),
@@ -232,45 +103,12 @@ export const documentRoutes = [
         })
         .parse(await c.req.json());
 
-      const [doc] = await db.select().from(documents).where(eq(documents.id, id));
-      if (!doc) return c.json({ error: 'Not found' }, 404);
-
-      // Validate customMetadata against template schema if present
-      if (body.customMetadata) {
-        const [target] = await db.select().from(syncTargets).where(eq(syncTargets.id, doc.syncTargetId));
-        if (target?.metadataTemplateId) {
-          const schema = await resolveEffectiveSchemaForTarget(target.metadataTemplateId);
-          if (schema) {
-            const merged = { ...doc.customMetadata, ...body.customMetadata };
-            const result = validateCustomMetadata(merged, schema);
-            if (!result.valid) {
-              return c.json({ error: 'Metadata validation failed', details: result.errors }, 400);
-            }
-            body.customMetadata = result.normalized;
-          }
-        }
-      }
-
-      const updateData: Record<string, unknown> = { updatedAt: new Date() };
-      if (body.title !== undefined) updateData.title = body.title;
-      if (body.description !== undefined) updateData.description = body.description;
-      if (body.customMetadata !== undefined) updateData.customMetadata = body.customMetadata;
-
-      const [updated] = await db.update(documents).set(updateData).where(eq(documents.id, id)).returning();
-
-      // Propagate changes to vector chunk metadata
-      if (body.title !== undefined && body.title !== doc.title) {
-        await updateDocumentVectorTitle(sql, id, body.title ?? '');
-      }
-      if (body.customMetadata !== undefined) {
-        await updateDocumentVectorMetadata(sql, id, body.customMetadata);
-      }
-
-      return c.json(updated);
+      const result = await getDocumentService().updateMetadata(c.req.param('id'), body);
+      if (isError(result)) return errorResponse(c, result);
+      return c.json(result.data);
     },
   }),
 
-  // ── Bulk update metadata ─────────────────────────────────────
   registerApiRoute('/v1/documents/bulk-metadata', {
     method: 'POST',
     middleware: [requireAuth],
@@ -283,219 +121,62 @@ export const documentRoutes = [
         })
         .parse(await c.req.json());
 
-      const docs = await db.select().from(documents).where(inArray(documents.id, body.ids));
-      if (docs.length === 0) return c.json({ ok: true, updated: 0 });
-
-      // Group documents by sync target to resolve schemas efficiently
-      const targetIds = [...new Set(docs.map((d) => d.syncTargetId))];
-      const targets = await db.select().from(syncTargets).where(inArray(syncTargets.id, targetIds));
-      const targetMap = new Map(targets.map((t) => [t.id, t]));
-
-      // Resolve effective schemas for all referenced templates
-      const templateIds = [...new Set(targets.map((t) => t.metadataTemplateId).filter(Boolean))] as string[];
-      const schemaMap = new Map<string, Awaited<ReturnType<typeof resolveEffectiveSchemaForTarget>>>();
-      for (const tid of templateIds) {
-        schemaMap.set(tid, await resolveEffectiveSchemaForTarget(tid));
-      }
-
-      let updatedCount = 0;
-      const errors: string[] = [];
-
-      for (const doc of docs) {
-        const target = targetMap.get(doc.syncTargetId);
-        const schema = target?.metadataTemplateId ? schemaMap.get(target.metadataTemplateId) : null;
-
-        let newMetadata: Record<string, unknown>;
-        if (schema) {
-          const merged = body.merge ? { ...doc.customMetadata, ...body.customMetadata } : body.customMetadata;
-          const result = validateCustomMetadata(merged, schema);
-          if (!result.valid) {
-            errors.push(`Document ${doc.id}: ${result.errors.join(', ')}`);
-            continue;
-          }
-          newMetadata = result.normalized;
-        } else {
-          // No template — strip all custom metadata
-          newMetadata = {};
-        }
-
-        await db
-          .update(documents)
-          .set({ customMetadata: newMetadata, updatedAt: new Date() })
-          .where(eq(documents.id, doc.id));
-
-        await updateDocumentVectorMetadata(sql, doc.id, newMetadata);
-        updatedCount++;
-      }
-
-      return c.json({ ok: true, updated: updatedCount, errors: errors.length > 0 ? errors : undefined });
+      const result = await getDocumentService().bulkUpdateMetadata(body);
+      if (isError(result)) return errorResponse(c, result);
+      return c.json(result.data);
     },
   }),
 
-  // ── Introspect metadata fields ───────────────────────────────
   registerApiRoute('/v1/documents/metadata-fields', {
     method: 'GET',
     middleware: [requireAuth],
     handler: async (c) => {
-      const syncTargetId = c.req.query('syncTargetId');
-
-      // Query distinct metadata keys and their value distributions
-      const whereClause = syncTargetId
-        ? drizzleSql`WHERE d.sync_target_id = ${syncTargetId} AND d.custom_metadata != '{}'::jsonb`
-        : drizzleSql`WHERE d.custom_metadata != '{}'::jsonb`;
-
-      const rows = await db.execute(drizzleSql`
-        SELECT
-          kv.key,
-          jsonb_agg(DISTINCT kv.value) FILTER (WHERE jsonb_typeof(kv.value) != 'null') AS "values",
-          COUNT(DISTINCT d.id)::int AS count
-        FROM documents d,
-             jsonb_each(d.custom_metadata) AS kv(key, value)
-        ${whereClause}
-          AND d.status != 'deleted'
-        GROUP BY kv.key
-        ORDER BY count DESC
-      `);
-
-      const fields = (rows as unknown as Array<{ key: string; values: unknown[]; count: number }>).map((row) => ({
-        key: row.key,
-        values: row.values ?? [],
-        count: row.count,
-      }));
-
-      return c.json({ fields });
+      const result = await getDocumentService().getMetadataFields(c.req.query('syncTargetId'));
+      if (isError(result)) return errorResponse(c, result);
+      return c.json(result.data);
     },
   }),
 
-  // ── Delete single document ────────────────────────────────────
   registerApiRoute('/v1/documents/:id', {
     method: 'DELETE',
     middleware: [requireAuth],
     handler: async (c) => {
-      const id = c.req.param('id');
-      const [doc] = await db.select().from(documents).where(eq(documents.id, id));
-      if (!doc) return c.json({ error: 'Not found' }, 404);
-
-      const [target] = await db.select().from(syncTargets).where(eq(syncTargets.id, doc.syncTargetId));
-
-      // Delete vectors
-      await deleteDocumentVectors(vectorStore, doc.id);
-
-      // Delete source object if provider supports it
-      if (target) {
-        try {
-          const provider = getProvider(target.sourceType);
-          if (provider.deleteObject) {
-            await provider.deleteObject(
-              target.config as Record<string, unknown>,
-              doc.sourceKey,
-              target.source ?? undefined,
-            );
-          }
-        } catch {
-          // Source object deletion is best-effort
-        }
-      }
-
-      // Remove DB record
-      await db.update(documents).set({ status: 'deleted', updatedAt: new Date() }).where(eq(documents.id, id));
-
-      return c.json({ ok: true });
+      const result = await getDocumentService().deleteDocument(c.req.param('id'));
+      if (isError(result)) return errorResponse(c, result);
+      return c.json(result.data);
     },
   }),
 
-  // ── Bulk delete documents ─────────────────────────────────────
   registerApiRoute('/v1/documents/bulk-delete', {
     method: 'POST',
     middleware: [requireAuth],
     handler: async (c) => {
       const body = z.object({ ids: z.array(z.string().uuid()).max(100) }).parse(await c.req.json());
-
-      const docs = await db.select().from(documents).where(inArray(documents.id, body.ids));
-      if (docs.length === 0) return c.json({ ok: true, deleted: 0 });
-
-      // Group by sync target for efficient provider resolution
-      const byTarget = new Map<string, typeof docs>();
-      for (const doc of docs) {
-        const list = byTarget.get(doc.syncTargetId) ?? [];
-        list.push(doc);
-        byTarget.set(doc.syncTargetId, list);
-      }
-
-      let deleted = 0;
-      for (const [syncTargetId, targetDocs] of byTarget) {
-        const [target] = await db.select().from(syncTargets).where(eq(syncTargets.id, syncTargetId));
-
-        for (const doc of targetDocs) {
-          await deleteDocumentVectors(vectorStore, doc.id);
-
-          if (target) {
-            try {
-              const provider = getProvider(target.sourceType);
-              if (provider.deleteObject) {
-                await provider.deleteObject(
-                  target.config as Record<string, unknown>,
-                  doc.sourceKey,
-                  target.source ?? undefined,
-                );
-              }
-            } catch {
-              // Best-effort
-            }
-          }
-          deleted++;
-        }
-
-        const docIds = targetDocs.map((d) => d.id);
-        await db
-          .update(documents)
-          .set({ status: 'deleted', updatedAt: new Date() })
-          .where(inArray(documents.id, docIds));
-      }
-
-      return c.json({ ok: true, deleted });
+      const result = await getDocumentService().bulkDelete(body.ids);
+      if (isError(result)) return errorResponse(c, result);
+      return c.json(result.data);
     },
   }),
 
-  // ── Move/rename document (S3 only) ────────────────────────────
+  registerApiRoute('/v1/documents/bulk-purge', {
+    method: 'POST',
+    middleware: [requireAuth],
+    handler: async (c) => {
+      const body = z.object({ ids: z.array(z.string().uuid()).max(100) }).parse(await c.req.json());
+      const result = await getDocumentService().bulkPurge(body.ids);
+      if (isError(result)) return errorResponse(c, result);
+      return c.json(result.data);
+    },
+  }),
+
   registerApiRoute('/v1/documents/:id/move', {
     method: 'POST',
     middleware: [requireAuth],
     handler: async (c) => {
-      const id = c.req.param('id');
       const body = z.object({ newSourceKey: z.string().min(1) }).parse(await c.req.json());
-
-      const [doc] = await db.select().from(documents).where(eq(documents.id, id));
-      if (!doc) return c.json({ error: 'Not found' }, 404);
-
-      const [target] = await db.select().from(syncTargets).where(eq(syncTargets.id, doc.syncTargetId));
-      if (!target) return c.json({ error: 'Sync target not found' }, 404);
-
-      const provider = getProvider(target.sourceType);
-      if (!provider.copyObject || !provider.deleteObject) {
-        return c.json({ error: 'Move is not supported for this source type' }, 400);
-      }
-
-      const config = target.config as Record<string, unknown>;
-      const sourceName = target.source ?? undefined;
-
-      // Copy to new key
-      await provider.copyObject(config, doc.sourceKey, body.newSourceKey, sourceName);
-
-      // Update DB record
-      const [updated] = await db
-        .update(documents)
-        .set({ sourceKey: body.newSourceKey, updatedAt: new Date() })
-        .where(eq(documents.id, id))
-        .returning();
-
-      // Update vector metadata
-      await updateDocumentVectorSource(sql, id, body.newSourceKey);
-
-      // Delete old source object
-      await provider.deleteObject(config, doc.sourceKey, sourceName);
-
-      return c.json(updated);
+      const result = await getDocumentService().move(c.req.param('id'), body.newSourceKey);
+      if (isError(result)) return errorResponse(c, result);
+      return c.json(result.data);
     },
   }),
 ];

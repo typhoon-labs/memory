@@ -7,6 +7,7 @@ import {
   createHallucinationScorer,
 } from '@mastra/evals/scorers/prebuilt';
 import { createAppLogger } from '@typhoon/logger';
+
 import { RETRIEVAL_SCORERS } from './scorer-categories';
 
 const log = createAppLogger('scorer-loader');
@@ -24,7 +25,7 @@ export interface ScorerDefinitionVersion {
   type: string;
   /** Description of what this scorer evaluates. */
   description: string | null;
-  /** Model config override (unused for prebuilt types). */
+  /** Pinned model override — when set, scoring uses this model instead of the system default. */
   model: Record<string, unknown> | null;
   /** LLM-as-judge instructions (used for custom type only). */
   instructions: string | null;
@@ -48,19 +49,33 @@ const PREBUILT_TYPES = new Set([
 /** Scorers that require non-empty context — only retrieval quality scorers. */
 const CONTEXT_DEPENDENT = RETRIEVAL_SCORERS;
 
+/** Extract a model ID string from the stored JSONB model object. */
+function extractModelId(model: Record<string, unknown> | null): string | undefined {
+  if (!model) return undefined;
+  if (typeof model.id === 'string') return model.id;
+  if (typeof model.name === 'string') return model.name;
+  return undefined;
+}
+
+/** A factory that creates a model config, optionally for a specific model ID. */
+export type ModelFactory = (modelId?: string) => MastraModelConfig;
+
 /**
  * Construct a Mastra scorer from a database definition version.
  *
  * For prebuilt types, delegates to the corresponding factory from `@mastra/evals/scorers/prebuilt`.
  * For custom types, creates an LLM-as-judge scorer using `createScorer()` from Mastra.
  *
+ * When `definition.model` contains a pinned model ID, `createModel` is called with that ID.
+ * Otherwise it is called with no arguments, falling back to the system default.
+ *
  * @returns `{ id, scorer }` or `null` if the scorer cannot be constructed.
  */
 export function constructScorer(
   definition: ScorerDefinitionVersion,
-  model: MastraModelConfig,
+  createModel: ModelFactory,
   context: string[],
-  // biome-ignore lint/suspicious/noExplicitAny: Scorer generics vary between prebuilt scorer types
+  // oxlint-disable-next-line @typescript-eslint/no-explicit-any -- Scorer generics vary between prebuilt scorer types
 ): { id: string; scorer: any } | null {
   const { type, name } = definition;
   const id = name;
@@ -68,6 +83,8 @@ export function constructScorer(
   if (CONTEXT_DEPENDENT.has(type) && context.length === 0) {
     return null;
   }
+
+  const model = createModel(extractModelId(definition.model));
 
   if (PREBUILT_TYPES.has(type)) {
     return constructPrebuiltScorer(type, id, model, context);
@@ -86,7 +103,7 @@ function constructPrebuiltScorer(
   id: string,
   model: MastraModelConfig,
   context: string[],
-  // biome-ignore lint/suspicious/noExplicitAny: Scorer generics vary between prebuilt scorer types
+  // oxlint-disable-next-line @typescript-eslint/no-explicit-any -- Scorer generics vary between prebuilt scorer types
 ): { id: string; scorer: any } | null {
   switch (type) {
     case 'faithfulness':
@@ -107,7 +124,7 @@ function constructPrebuiltScorer(
 function constructCustomScorer(
   definition: ScorerDefinitionVersion,
   model: MastraModelConfig,
-  // biome-ignore lint/suspicious/noExplicitAny: Scorer generics vary between prebuilt scorer types
+  // oxlint-disable-next-line @typescript-eslint/no-explicit-any -- Scorer generics vary between prebuilt scorer types
 ): { id: string; scorer: any } | null {
   if (!definition.instructions) {
     log.warn('Custom scorer missing instructions, skipping', { name: definition.name });
@@ -117,7 +134,7 @@ function constructCustomScorer(
   // Dynamic import to avoid bundling @mastra/core/evals in the agents package at module level.
   // createScorer is re-exported from @mastra/core/evals.
   const { createScorer } = require('@mastra/core/evals') as {
-    // biome-ignore lint/suspicious/noExplicitAny: Dynamic import of Mastra createScorer
+    // oxlint-disable-next-line @typescript-eslint/no-explicit-any -- Dynamic import of Mastra createScorer
     createScorer: (config: any) => any;
   };
 
@@ -141,8 +158,6 @@ function constructCustomScorer(
           `User Input: ${JSON.stringify(run.input)}`,
           '',
           `Agent Response: ${JSON.stringify(run.output)}`,
-          '',
-          'Respond with ONLY a number between 0 and 1.',
         ].join('\n');
       },
     })
@@ -163,29 +178,6 @@ function constructCustomScorer(
 
   return { id: definition.name, scorer };
 }
-
-/**
- * SQL query to fetch all published scorer definitions with their active versions.
- * Used by both the worker (periodic refresh) and the API (preview route).
- *
- * Callers provide their own `sql` instance and map the raw rows using `mapScorerRows()`.
- */
-export const PUBLISHED_SCORERS_QUERY = `
-  SELECT
-    d.id,
-    v.name,
-    v.type,
-    v.description,
-    v.model,
-    v.instructions,
-    v.score_range,
-    v.preset_config,
-    v.default_sampling
-  FROM scorer_definitions d
-  JOIN scorer_definition_versions v ON v.id = d.active_version_id
-  WHERE d.status = 'active'
-  ORDER BY v.name ASC
-`;
 
 /** Map raw SQL rows to `ScorerDefinitionVersion` objects. */
 export function mapScorerRows(rows: Array<Record<string, unknown>>): ScorerDefinitionVersion[] {

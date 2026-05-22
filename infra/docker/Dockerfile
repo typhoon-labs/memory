@@ -6,7 +6,7 @@
 # ---------------------------------------------------------------------------
 # deps: shared dependency installation (layer cache)
 # ---------------------------------------------------------------------------
-FROM oven/bun:1.3.11-alpine AS deps
+FROM oven/bun:1.3.14-slim AS deps
 
 WORKDIR /app
 
@@ -27,10 +27,12 @@ COPY packages/evals/package.json packages/evals/
 COPY packages/ingestion/package.json packages/ingestion/
 COPY packages/logger/package.json packages/logger/
 COPY packages/queue/package.json packages/queue/
-COPY packages/storage/package.json packages/storage/
+COPY packages/blob-store/package.json packages/blob-store/
 COPY packages/telemetry/package.json packages/telemetry/
 COPY packages/types/package.json packages/types/
 COPY packages/ui/package.json packages/ui/
+COPY packages/services/package.json packages/services/
+COPY packages/api-client/package.json packages/api-client/
 COPY scripts/postinstall.sh scripts/
 
 RUN --mount=type=cache,target=/root/.bun/install/cache \
@@ -39,7 +41,9 @@ RUN --mount=type=cache,target=/root/.bun/install/cache \
 # ---------------------------------------------------------------------------
 # dev: hot-reload target (source mounted via volumes at runtime)
 # ---------------------------------------------------------------------------
-FROM oven/bun:1.3.11-alpine AS dev
+FROM oven/bun:1.3.14-slim AS dev
+
+RUN apt-get update -qq && apt-get install -y --no-install-recommends curl ca-certificates && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
@@ -52,7 +56,9 @@ ENTRYPOINT ["dev-entrypoint"]
 # ---------------------------------------------------------------------------
 # api: production API server
 # ---------------------------------------------------------------------------
-FROM oven/bun:1.3.11-alpine AS api
+FROM oven/bun:1.3.14-slim AS api
+
+RUN apt-get update -qq && apt-get install -y --no-install-recommends curl ca-certificates && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -64,14 +70,16 @@ COPY packages/ packages/
 EXPOSE 5172
 
 HEALTHCHECK --interval=10s --timeout=5s --retries=5 \
-  CMD wget -qO/dev/null http://127.0.0.1:5172/api/v1/auth/ok || exit 1
+  CMD curl -fsS http://127.0.0.1:5172/api/v1/auth/ok || exit 1
 
 CMD ["bun", "run", "apps/api/src/index.ts"]
 
 # ---------------------------------------------------------------------------
 # worker: BullMQ job consumer
 # ---------------------------------------------------------------------------
-FROM oven/bun:1.3.11-alpine AS worker
+FROM oven/bun:1.3.14-slim AS worker
+
+RUN apt-get update -qq && apt-get install -y --no-install-recommends curl ca-certificates && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -83,14 +91,16 @@ COPY packages/ packages/
 EXPOSE 5170
 
 HEALTHCHECK --interval=10s --timeout=5s --retries=3 \
-  CMD wget -qO/dev/null http://127.0.0.1:5170/healthz || exit 1
+  CMD curl -fsS http://127.0.0.1:5170/healthz || exit 1
 
 CMD ["bun", "run", "apps/worker/src/index.ts"]
 
 # ---------------------------------------------------------------------------
 # scheduler: cron job producer
 # ---------------------------------------------------------------------------
-FROM oven/bun:1.3.11-alpine AS scheduler
+FROM oven/bun:1.3.14-slim AS scheduler
+
+RUN apt-get update -qq && apt-get install -y --no-install-recommends curl ca-certificates && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -102,14 +112,14 @@ COPY packages/ packages/
 EXPOSE 5171
 
 HEALTHCHECK --interval=10s --timeout=5s --retries=3 \
-  CMD wget -qO/dev/null http://127.0.0.1:5171/healthz || exit 1
+  CMD curl -fsS http://127.0.0.1:5171/healthz || exit 1
 
 CMD ["bun", "run", "apps/scheduler/src/index.ts"]
 
 # ---------------------------------------------------------------------------
 # frontend-build: compile frontend app with Vite
 # ---------------------------------------------------------------------------
-FROM oven/bun:1.3.11-alpine AS frontend-build
+FROM oven/bun:1.3.14-slim AS frontend-build
 
 ARG APP_NAME
 RUN test -n "$APP_NAME" || (echo "ERROR: APP_NAME build arg is required" && exit 1)
@@ -117,7 +127,7 @@ RUN test -n "$APP_NAME" || (echo "ERROR: APP_NAME build arg is required" && exit
 WORKDIR /app
 
 COPY --from=deps /app/node_modules ./node_modules
-COPY package.json bun.lock turbo.json tsconfig.json biome.json ./
+COPY package.json bun.lock turbo.json tsconfig.json .oxlintrc.json .oxfmtrc.json ./
 COPY apps/${APP_NAME}/ apps/${APP_NAME}/
 COPY apps/api/ apps/api/
 COPY packages/ packages/
@@ -128,7 +138,7 @@ RUN bunx vite build
 # ---------------------------------------------------------------------------
 # frontend: serve built SPA via nginx
 # ---------------------------------------------------------------------------
-FROM nginx:1.27-alpine AS frontend
+FROM nginx:1.27-bookworm AS frontend
 
 ARG APP_NAME
 
@@ -140,6 +150,6 @@ COPY --from=frontend-build /app/apps/${APP_NAME}/dist /usr/share/nginx/html
 EXPOSE 80
 
 HEALTHCHECK --interval=10s --timeout=5s --retries=3 \
-  CMD wget -qO/dev/null http://127.0.0.1:80/ || exit 1
+  CMD curl -fsS http://127.0.0.1:80/ || exit 1
 
 CMD ["nginx", "-g", "daemon off;"]

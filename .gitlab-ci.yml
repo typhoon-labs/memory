@@ -1,0 +1,400 @@
+# =============================================================================
+# Ursa — GitLab CI/CD Pipeline
+# =============================================================================
+#
+#   check → test → build + integration → e2e → deploy
+#
+# Designed for the Kubernetes executor (EKS). No DinD or privileged mode:
+#   - Integration & E2E use GitLab services (sidecar containers in the pod)
+#   - Build uses Kaniko (rootless image builder, no Docker daemon)
+#   - E2E runs app processes directly via Bun alongside infra sidecars
+#
+# On the K8s executor, services share the pod's network namespace —
+# all containers (job + sidecars) communicate via localhost.
+# =============================================================================
+
+stages:
+  - check
+  - test
+  - build        # Kaniko image builds + integration tests (parallel)
+  - e2e
+  - deploy
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
+
+variables:
+  BUN_VERSION: '1.3.14'
+
+# Uncomment to enable GitLab security scanning templates:
+# include:
+#   - template: Security/SAST.gitlab-ci.yml
+#   - template: Security/Secret-Detection.gitlab-ci.yml
+#   - template: Security/Dependency-Scanning.gitlab-ci.yml
+#   - template: Security/Container-Scanning.gitlab-ci.yml
+
+# =============================================================================
+# Reusable hidden jobs
+# =============================================================================
+
+.bun-job:
+  image: oven/bun:${BUN_VERSION}-slim
+  interruptible: true
+  before_script:
+    - bun install --frozen-lockfile
+
+# =============================================================================
+# Stage: check — format, lint, typecheck (3 parallel jobs)
+# =============================================================================
+
+format-check:
+  extends: .bun-job
+  stage: check
+  script:
+    - bunx oxfmt --check .
+
+lint:
+  extends: .bun-job
+  stage: check
+  script:
+    - bunx oxlint .
+
+typecheck:
+  extends: .bun-job
+  stage: check
+  script:
+    - bun run typecheck
+
+# =============================================================================
+# Stage: test — unit tests with coverage
+# =============================================================================
+
+test:
+  extends: .bun-job
+  stage: test
+  script:
+    - bun run test:coverage --reporter=default --reporter=junit --outputFile=test-results.xml
+  artifacts:
+    when: always
+    paths:
+      - coverage/
+    reports:
+      junit: test-results.xml
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage/cobertura-coverage.xml
+    expire_in: 7 days
+  coverage: '/All files\s*\|\s*[\d.]+\s*\|\s*[\d.]+\s*\|\s*[\d.]+\s*\|\s*([\d.]+)/'
+
+# =============================================================================
+# Stage: build — Kaniko image builds + integration tests (parallel)
+#
+# Both jobs gate on check + test via stage ordering. Integration tests and
+# Docker image builds are independent — running them together saves time.
+# =============================================================================
+
+# -- Integration tests (postgres + redis via GitLab services) -----------------
+
+integration:
+  extends: .bun-job
+  stage: build
+  services:
+    - name: pgvector/pgvector:pg17
+      alias: postgres
+      variables:
+        POSTGRES_USER: ursa
+        POSTGRES_PASSWORD: ursa
+        POSTGRES_DB: ursa
+    - name: redis:8-bookworm
+      alias: redis
+  variables:
+    DATABASE_URL: postgresql://ursa:ursa@localhost:5432/ursa
+    REDIS_URL: redis://localhost:6379
+  before_script:
+    - bun install --frozen-lockfile
+    - apt-get update -qq && apt-get install -y --no-install-recommends postgresql-client
+    - until pg_isready -h localhost -U ursa; do echo "Waiting for Postgres..."; sleep 2; done
+    - PGPASSWORD=ursa psql -h localhost -U ursa -d ursa -c "CREATE EXTENSION IF NOT EXISTS vector;"
+    - bun run db:migrate
+  script:
+    - bun run test:integration
+
+# -- Kaniko image builds (6 parallel jobs) ------------------------------------
+
+.kaniko-build:
+  stage: build
+  image:
+    name: gcr.io/kaniko-project/executor:v1.23.2-debug
+    entrypoint: ['']
+  interruptible: true
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  before_script:
+    - mkdir -p /kaniko/.docker
+    - |
+      echo "{\"auths\":{\"${CI_REGISTRY}\":{\"auth\":\"$(printf '%s:%s' "${CI_REGISTRY_USER}" "${CI_REGISTRY_PASSWORD}" | base64)\"}}}" \
+        > /kaniko/.docker/config.json
+
+build-api:
+  extends: .kaniko-build
+  script:
+    - >-
+      /kaniko/executor
+      --context "$CI_PROJECT_DIR"
+      --dockerfile infra/docker/Dockerfile
+      --target api
+      --destination "$CI_REGISTRY_IMAGE/api:$CI_COMMIT_SHA"
+      --destination "$CI_REGISTRY_IMAGE/api:latest"
+      --cache=true
+      --cache-repo "$CI_REGISTRY_IMAGE/cache"
+
+build-worker:
+  extends: .kaniko-build
+  script:
+    - >-
+      /kaniko/executor
+      --context "$CI_PROJECT_DIR"
+      --dockerfile infra/docker/Dockerfile
+      --target worker
+      --destination "$CI_REGISTRY_IMAGE/worker:$CI_COMMIT_SHA"
+      --destination "$CI_REGISTRY_IMAGE/worker:latest"
+      --cache=true
+      --cache-repo "$CI_REGISTRY_IMAGE/cache"
+
+build-scheduler:
+  extends: .kaniko-build
+  script:
+    - >-
+      /kaniko/executor
+      --context "$CI_PROJECT_DIR"
+      --dockerfile infra/docker/Dockerfile
+      --target scheduler
+      --destination "$CI_REGISTRY_IMAGE/scheduler:$CI_COMMIT_SHA"
+      --destination "$CI_REGISTRY_IMAGE/scheduler:latest"
+      --cache=true
+      --cache-repo "$CI_REGISTRY_IMAGE/cache"
+
+build-desk:
+  extends: .kaniko-build
+  script:
+    - >-
+      /kaniko/executor
+      --context "$CI_PROJECT_DIR"
+      --dockerfile infra/docker/Dockerfile
+      --target frontend
+      --build-arg APP_NAME=desk
+      --destination "$CI_REGISTRY_IMAGE/desk:$CI_COMMIT_SHA"
+      --destination "$CI_REGISTRY_IMAGE/desk:latest"
+      --cache=true
+      --cache-repo "$CI_REGISTRY_IMAGE/cache"
+
+build-admin:
+  extends: .kaniko-build
+  script:
+    - >-
+      /kaniko/executor
+      --context "$CI_PROJECT_DIR"
+      --dockerfile infra/docker/Dockerfile
+      --target frontend
+      --build-arg APP_NAME=admin
+      --destination "$CI_REGISTRY_IMAGE/admin:$CI_COMMIT_SHA"
+      --destination "$CI_REGISTRY_IMAGE/admin:latest"
+      --cache=true
+      --cache-repo "$CI_REGISTRY_IMAGE/cache"
+
+build-widget:
+  extends: .kaniko-build
+  script:
+    - >-
+      /kaniko/executor
+      --context "$CI_PROJECT_DIR"
+      --dockerfile infra/docker/Dockerfile
+      --target frontend
+      --build-arg APP_NAME=widget
+      --destination "$CI_REGISTRY_IMAGE/widget:$CI_COMMIT_SHA"
+      --destination "$CI_REGISTRY_IMAGE/widget:latest"
+      --cache=true
+      --cache-repo "$CI_REGISTRY_IMAGE/cache"
+
+# =============================================================================
+# Stage: e2e — full-stack Playwright tests
+#
+# K8s executor: postgres, redis, minio run as sidecar containers in the pod.
+# App processes (API, worker, scheduler) and Vite dev servers (desk, admin)
+# run directly in the job container via Bun.
+#
+# All containers share the pod's network namespace — everything is on
+# localhost. Session cookies (domain: localhost), CORS origins, and test
+# URLs match local dev with zero code changes.
+#
+# Dex (OIDC) is not available — auth.e2e.ts is excluded. All other E2E
+# tests use injectTestSession() which creates sessions programmatically
+# via Better Auth, bypassing OIDC entirely.
+# =============================================================================
+
+e2e:
+  extends: .bun-job
+  stage: e2e
+  services:
+    - name: pgvector/pgvector:pg17
+      alias: postgres
+      variables:
+        POSTGRES_USER: ursa
+        POSTGRES_PASSWORD: ursa
+        POSTGRES_DB: ursa
+    - name: redis:8-bookworm
+      alias: redis
+    - name: minio/minio:latest
+      alias: minio
+      command: ['server', '/data', '--console-address', ':9001']
+      variables:
+        MINIO_ROOT_USER: minioadmin
+        MINIO_ROOT_PASSWORD: minioadmin
+  variables:
+    # Infrastructure — localhost because K8s pods share network namespace
+    DATABASE_URL: postgresql://ursa:ursa@localhost:5432/ursa
+    REDIS_URL: redis://localhost:6379
+    S3_ENDPOINT: http://localhost:9000
+    S3_REGION: us-east-1
+    S3_ACCESS_KEY: minioadmin
+    S3_SECRET_KEY: minioadmin
+    S3_BUCKET: ursa-documents
+    # Auth (no OIDC — sessions are injected programmatically)
+    AUTH_SECRET: ci-test-secret-do-not-use-in-production
+    AUTH_URL: http://localhost:5172
+    TRUSTED_ORIGINS: http://localhost:5173,http://localhost:5174
+    OIDC_CLIENT_ID: ursa
+    OIDC_CLIENT_SECRET: ursa-secret
+    ADMIN_ROLES: admin
+    REP_ROLES: rep
+    # LLM / Embeddings — dummy values (E2E tests that need real LLM calls
+    # require ANTHROPIC_API_KEY / AWS creds set as CI/CD variables)
+    LLM_BASE_URL: http://localhost:18787
+    LLM_API_KEY: ci-placeholder
+    LLM_CHAT_MODEL: bedrock/us.anthropic.claude-sonnet-4-6
+    EMBEDDING_BASE_URL: http://localhost:18787
+    EMBEDDING_API_KEY: ci-placeholder
+    EMBEDDING_MODEL: bedrock/amazon.titan-embed-text-v2:0
+    EMBEDDING_DIMENSION: '1024'
+    RERANKER_BASE_URL: http://localhost:18787
+    RERANKER_MODEL: bedrock/arn:aws:bedrock:us-east-1::foundation-model/cohere.rerank-v3-5:0
+    # Server
+    PORT: '5172'
+    HOST: 0.0.0.0
+    LOG_LEVEL: info
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      allow_failure: true
+  before_script:
+    # Install deps + system packages for Playwright and psql
+    - bun install --frozen-lockfile
+    - apt-get update -qq && apt-get install -y --no-install-recommends postgresql-client curl ca-certificates
+
+    # Wait for Postgres, enable pgvector, run migrations
+    - until pg_isready -h localhost -U ursa; do echo "Waiting for Postgres..."; sleep 2; done
+    - PGPASSWORD=ursa psql -h localhost -U ursa -d ursa -c "CREATE EXTENSION IF NOT EXISTS vector;"
+    - bun run db:migrate
+
+    # Wait for MinIO, create bucket
+    - |
+      echo "Waiting for MinIO..."
+      timeout 30 sh -c 'until curl -sf http://localhost:9000/minio/health/live; do sleep 1; done'
+    - curl -fsSL https://dl.min.io/client/mc/release/linux-amd64/mc -o /usr/local/bin/mc && chmod +x /usr/local/bin/mc
+    - mc alias set ci http://localhost:9000 minioadmin minioadmin
+    - mc mb --ignore-existing ci/ursa-documents
+
+    # Install Playwright (Debian-based image — --with-deps uses apt)
+    - bunx playwright install --with-deps chromium
+
+    # Start backend services in background and capture PIDs for health checks
+    - bun run apps/api/src/index.ts &
+    - API_PID=$!
+    - bun run apps/worker/src/index.ts &
+    - bun run apps/scheduler/src/index.ts &
+
+    # Start Vite dev servers for frontends (proxy /api → localhost:5172)
+    - |
+      (cd apps/desk && API_PROXY_TARGET=http://localhost:5172 bunx --bun vite --host 0.0.0.0 --port 5173 &)
+      (cd apps/admin && API_PROXY_TARGET=http://localhost:5172 bunx --bun vite --host 0.0.0.0 --port 5174 &)
+
+    # Wait for API health check (fail fast if process died)
+    - |
+      echo "Waiting for API..."
+      timeout 60 sh -c '
+        while kill -0 '"$API_PID"' 2>/dev/null; do
+          curl -sf http://localhost:5172/api/v1/auth/ok && exit 0
+          sleep 2
+        done
+        echo "ERROR: API process exited unexpectedly"
+        exit 1
+      '
+      echo "API is healthy."
+
+    # Wait for frontends
+    - |
+      echo "Waiting for frontends..."
+      timeout 60 sh -c 'until curl -sf http://localhost:5173; do sleep 2; done'
+      timeout 60 sh -c 'until curl -sf http://localhost:5174; do sleep 2; done'
+      echo "Frontends are ready."
+
+  script:
+    # Run all E2E tests except auth.e2e.ts (requires Dex OIDC provider).
+    # All other tests use injectTestSession() — no OIDC dependency.
+    - bunx vitest run --config vitest.e2e.config.ts --exclude '**/auth.e2e.ts'
+  artifacts:
+    when: always
+    paths:
+      - playwright-report/
+      - test-results/
+    expire_in: 7 days
+
+# =============================================================================
+# Stage: deploy
+# =============================================================================
+
+deploy:staging:
+  stage: deploy
+  needs:
+    - integration
+    - e2e
+    - build-api
+    - build-worker
+    - build-scheduler
+    - build-desk
+    - build-admin
+    - build-widget
+  image: alpine:latest
+  environment:
+    name: staging
+    url: https://staging.ursa.example.com
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  script:
+    - echo "Deploying $CI_COMMIT_SHA to staging..."
+    # TODO: Add deployment commands (Helm upgrade, ECS deploy, etc.)
+    # Images are available at:
+    #   $CI_REGISTRY_IMAGE/api:$CI_COMMIT_SHA
+    #   $CI_REGISTRY_IMAGE/worker:$CI_COMMIT_SHA
+    #   $CI_REGISTRY_IMAGE/scheduler:$CI_COMMIT_SHA
+    #   $CI_REGISTRY_IMAGE/desk:$CI_COMMIT_SHA
+    #   $CI_REGISTRY_IMAGE/admin:$CI_COMMIT_SHA
+    #   $CI_REGISTRY_IMAGE/widget:$CI_COMMIT_SHA
+
+deploy:production:
+  stage: deploy
+  needs: [deploy:staging]
+  image: alpine:latest
+  environment:
+    name: production
+    url: https://ursa.example.com
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+  script:
+    - echo "Deploying $CI_COMMIT_SHA to production..."
+    # TODO: Add production deployment commands

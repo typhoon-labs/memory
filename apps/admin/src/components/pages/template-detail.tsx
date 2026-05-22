@@ -20,8 +20,9 @@ import {
   Separator,
   Textarea,
 } from '@typhoon/ui';
-import { ChevronRightIcon, Trash2Icon } from 'lucide-react';
+import { AlertTriangleIcon, ChevronRightIcon, Trash2Icon } from 'lucide-react';
 import { useEffect, useState } from 'react';
+
 import { detailTitle, usePageTitle } from '../../hooks/use-page-title';
 import { FieldBadgePopover } from '../shared/field-badge-popover';
 import { FieldSchemaEditor, type MetadataSchema } from '../shared/field-schema-editor';
@@ -98,9 +99,11 @@ export function MetadataTemplateDetailPage() {
     },
   });
 
+  const [affectedSyncTargetCount, setAffectedSyncTargetCount] = useState(0);
+
   const updateMutation = useMutation({
     mutationFn: () =>
-      apiFetch(`/api/v1/metadata-templates/${templateId}`, {
+      apiFetch<{ syncTargetCount?: number }>(`/api/v1/metadata-templates/${templateId}`, {
         method: 'PATCH',
         body: JSON.stringify({
           name: name.trim(),
@@ -109,9 +112,10 @@ export function MetadataTemplateDetailPage() {
           customFields,
         }),
       }),
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['metadata-templates'] });
       queryClient.invalidateQueries({ queryKey: ['metadata-templates', templateId] });
+      setAffectedSyncTargetCount(data?.syncTargetCount ?? 0);
     },
   });
 
@@ -134,6 +138,13 @@ export function MetadataTemplateDetailPage() {
 
   const isPending = createMutation.isPending || updateMutation.isPending;
 
+  const hasChanges = isCreateMode
+    ? true
+    : name.trim() !== (template?.name ?? '') ||
+      (description.trim() || '') !== (template?.description ?? '') ||
+      JSON.stringify(selectedGroupIds) !== JSON.stringify(template?.fieldGroupIds ?? []) ||
+      JSON.stringify(customFields) !== JSON.stringify(template?.customFields ?? {});
+
   if (!isCreateMode && templateLoading) {
     return (
       <div className="flex justify-center py-12">
@@ -148,10 +159,10 @@ export function MetadataTemplateDetailPage() {
         <PageHeader
           title={
             <span className="flex items-center gap-1.5">
-              <Link to="/metadata/templates" className="text-muted-foreground transition-colors hover:text-foreground">
+              <Link to="/metadata/templates" className="text-muted-foreground hover:text-foreground transition-colors">
                 Templates
               </Link>
-              <ChevronRightIcon className="size-3.5 text-muted-foreground/50" />
+              <ChevronRightIcon className="text-muted-foreground/50 size-3.5" />
               {isCreateMode ? 'Create' : (template?.name ?? '...')}
             </span>
           }
@@ -181,10 +192,19 @@ export function MetadataTemplateDetailPage() {
           }
         />
 
+        {updateMutation.isSuccess && affectedSyncTargetCount > 0 && (
+          <div className="mt-6 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+            <div className="flex items-center gap-2">
+              <AlertTriangleIcon className="size-4 shrink-0" />
+              <p>{affectedSyncTargetCount} sync source(s) affected. Run a sync to apply search index changes.</p>
+            </div>
+          </div>
+        )}
+
         <div className="mt-6 space-y-5">
           <div>
             <h2 className="text-sm font-semibold">Details</h2>
-            <p className="mt-0.5 text-sm text-muted-foreground">Basic information about this template.</p>
+            <p className="text-muted-foreground mt-0.5 text-sm">Basic information about this template.</p>
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="template-name">Name</Label>
@@ -208,10 +228,10 @@ export function MetadataTemplateDetailPage() {
 
           <div className="pt-4">
             <h2 className="text-sm font-semibold">Field Groups</h2>
-            <p className="mt-0.5 text-sm text-muted-foreground">Include fields from existing groups.</p>
+            <p className="text-muted-foreground mt-0.5 text-sm">Include fields from existing groups.</p>
           </div>
           {groups.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No field groups exist yet. Create one first.</p>
+            <p className="text-muted-foreground text-sm">No field groups exist yet. Create one first.</p>
           ) : (
             <div className="space-y-4">
               {groups.map((group) => (
@@ -227,7 +247,7 @@ export function MetadataTemplateDetailPage() {
                     <Label htmlFor={`group-${group.id}`} className="cursor-pointer leading-5">
                       {group.name}
                     </Label>
-                    {group.description && <p className="mt-0.5 text-sm text-muted-foreground">{group.description}</p>}
+                    {group.description && <p className="text-muted-foreground mt-0.5 text-sm">{group.description}</p>}
                     <div className="mt-1 flex flex-wrap gap-1">
                       {Object.entries(group.fields).map(([f, def]) => (
                         <FieldBadgePopover key={f} name={f} field={def} />
@@ -241,7 +261,7 @@ export function MetadataTemplateDetailPage() {
 
           <div className="pt-4">
             <h2 className="text-sm font-semibold">Custom Fields</h2>
-            <p className="mt-0.5 text-sm text-muted-foreground">Additional fields specific to this template.</p>
+            <p className="text-muted-foreground mt-0.5 text-sm">Additional fields specific to this template.</p>
           </div>
           <FieldSchemaEditor fields={customFields} onChange={setCustomFields} />
 
@@ -251,7 +271,7 @@ export function MetadataTemplateDetailPage() {
             <Button variant="outline" onClick={() => navigate({ to: '/metadata/templates' })}>
               Cancel
             </Button>
-            <Button onClick={handleSubmit} disabled={!name.trim() || isPending}>
+            <Button onClick={handleSubmit} disabled={!name.trim() || isPending || (!isCreateMode && !hasChanges)}>
               {isPending ? 'Saving...' : isCreateMode ? 'Create' : 'Save'}
             </Button>
           </div>

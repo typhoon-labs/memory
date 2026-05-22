@@ -18,6 +18,7 @@ import {
 } from '@typhoon/ui';
 import { ClipboardCheckIcon, SearchIcon, ThumbsDownIcon, ThumbsUpIcon } from 'lucide-react';
 import { useMemo } from 'react';
+
 import { usePageTitle } from '../../hooks/use-page-title';
 
 interface ReviewThread {
@@ -125,6 +126,9 @@ export function ReviewsPage() {
     return threads;
   }, [data?.threads, feedbackStatus, search]);
 
+  const hasAnyFilter = annotationStatus !== 'all' || feedbackStatus !== 'all' || !!search;
+  const showEmptyState = data?.threads?.length === 0 && !hasAnyFilter;
+
   const columns: ColumnDef<ReviewThread, unknown>[] = useMemo(
     () => [
       {
@@ -138,7 +142,7 @@ export function ReviewsPage() {
         cell: ({ row }) => (
           <div className="max-w-[300px] truncate font-medium">
             {row.original.title || (
-              <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{row.original.id.slice(0, 12)}</code>
+              <code className="bg-muted rounded px-1.5 py-0.5 text-xs">{row.original.id.slice(0, 12)}</code>
             )}
           </div>
         ),
@@ -222,7 +226,17 @@ export function ReviewsPage() {
           </div>
         )}
 
-        {!isLoading && data?.threads && (
+        {!isLoading && data?.threads && showEmptyState && (
+          <div className="mt-6">
+            <EmptyState
+              icon={<ClipboardCheckIcon className="size-8" />}
+              title="No conversations yet"
+              description="Conversations from the rep desk and customer widget will appear here for quality review, annotation, and feedback tracking."
+            />
+          </div>
+        )}
+
+        {!isLoading && data?.threads && !showEmptyState && (
           <div className="mt-6">
             <DataTable
               data={filteredThreads}
@@ -277,7 +291,7 @@ export function ReviewsPage() {
                     </SelectContent>
                   </Select>
                   <div className="relative ml-auto">
-                    <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                    <SearchIcon className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" />
                     <Input
                       className="h-8 w-[220px] pl-8 text-sm"
                       placeholder="Search..."
@@ -290,20 +304,6 @@ export function ReviewsPage() {
                 </div>
               }
             />
-
-            {filteredThreads.length === 0 && (
-              <div className="mt-4">
-                <EmptyState
-                  icon={<ClipboardCheckIcon className="size-8" />}
-                  title="No conversations"
-                  description={
-                    annotationStatus !== 'all' || feedbackStatus !== 'all' || search
-                      ? 'No conversations match the current filters.'
-                      : 'Conversations will appear here once users start chatting.'
-                  }
-                />
-              </div>
-            )}
           </div>
         )}
       </div>

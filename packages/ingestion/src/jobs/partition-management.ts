@@ -1,9 +1,4 @@
-/** Minimal SQL interface compatible with postgres.js Sql. */
-interface SqlClient {
-  unsafe: (query: string) => Promise<unknown[]>;
-  // biome-ignore lint/suspicious/noExplicitAny: Tagged template literal
-  (strings: TemplateStringsArray, ...values: unknown[]): Promise<any[]>;
-}
+import type { PartitionRepo } from '@typhoon/db/repos';
 
 /**
  * Manages daily partitions for the `ai_spans` table.
@@ -13,7 +8,7 @@ interface SqlClient {
  * 2. Drops partitions older than `retentionDays`
  */
 export async function managePartitions(
-  sql: SqlClient,
+  partitionRepo: PartitionRepo,
   opts: { retentionDays: number; daysAhead?: number },
 ): Promise<{ created: string[]; dropped: string[] }> {
   const daysAhead = opts.daysAhead ?? 7;
@@ -24,7 +19,7 @@ export async function managePartitions(
   for (let d = 0; d <= daysAhead; d++) {
     const date = new Date();
     date.setDate(date.getDate() + d);
-    const dateStr = date.toISOString().slice(0, 10).replace(/-/g, '_');
+    const dateStr = date.toISOString().slice(0, 10).replaceAll('-', '_');
     const partitionName = `ai_spans_${dateStr}`;
 
     const fromDate = date.toISOString().slice(0, 10);
@@ -33,16 +28,13 @@ export async function managePartitions(
     const toDateStr = toDate.toISOString().slice(0, 10);
 
     // Check if partition exists
-    const [existing] = await sql`
-      SELECT 1 FROM pg_tables WHERE tablename = ${partitionName}
-    `;
+    // oxlint-disable-next-line no-await-in-loop -- sequential DDL: check then create partitions
+    const existing = await partitionRepo.exists(partitionName);
 
     if (!existing) {
       try {
-        await sql.unsafe(
-          `CREATE TABLE IF NOT EXISTS "${partitionName}" PARTITION OF ai_spans
-           FOR VALUES FROM ('${fromDate}') TO ('${toDateStr}')`,
-        );
+        // oxlint-disable-next-line no-await-in-loop -- sequential DDL: partition creation is order-dependent
+        await partitionRepo.create(partitionName, 'ai_spans', fromDate, toDateStr);
         created.push(partitionName);
       } catch {
         // Partition may already exist from a concurrent run — safe to ignore
@@ -54,20 +46,16 @@ export async function managePartitions(
   if (opts.retentionDays > 0) {
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - opts.retentionDays);
-    const cutoffStr = cutoff.toISOString().slice(0, 10).replace(/-/g, '_');
+    const cutoffStr = cutoff.toISOString().slice(0, 10).replaceAll('-', '_');
 
-    const partitions = await sql`
-      SELECT inhrelid::regclass::text AS partition_name
-      FROM pg_inherits
-      WHERE inhparent = 'ai_spans'::regclass
-    `;
+    const partitions = await partitionRepo.listPartitions('ai_spans');
 
-    for (const row of partitions) {
-      const name = row.partition_name as string;
+    for (const name of partitions) {
       // Extract date from partition name (ai_spans_YYYY_MM_DD)
       const match = name.match(/ai_spans_(\d{4}_\d{2}_\d{2})/);
       if (match && match[1] < cutoffStr) {
-        await sql.unsafe(`DROP TABLE IF EXISTS "${name}"`);
+        // oxlint-disable-next-line no-await-in-loop -- sequential DDL: drop partitions one at a time
+        await partitionRepo.drop(name);
         dropped.push(name);
       }
     }

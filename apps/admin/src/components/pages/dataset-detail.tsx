@@ -13,6 +13,7 @@ import {
 } from '@typhoon/ui';
 import { ChevronRightIcon, DownloadIcon, PencilIcon, PlusIcon, Trash2Icon, UploadIcon } from 'lucide-react';
 import { useCallback, useMemo, useRef, useState } from 'react';
+
 import { detailTitle, usePageTitle } from '../../hooks/use-page-title';
 
 interface Dataset {
@@ -125,7 +126,7 @@ export function DatasetDetailPage() {
 
   function escapeCsvField(value: string): string {
     if (value.includes(',') || value.includes('"') || value.includes('\n')) {
-      return `"${value.replace(/"/g, '""')}"`;
+      return `"${value.replaceAll('"', '""')}"`;
     }
     return value;
   }
@@ -201,7 +202,7 @@ export function DatasetDetailPage() {
                 });
               }}
             >
-              <PencilIcon className="size-3.5 text-muted-foreground" />
+              <PencilIcon className="text-muted-foreground size-3.5" />
             </Button>
             <Button
               variant="ghost"
@@ -211,7 +212,7 @@ export function DatasetDetailPage() {
                 handleDeleteItem(row.original.id);
               }}
             >
-              <Trash2Icon className="size-3.5 text-muted-foreground" />
+              <Trash2Icon className="text-muted-foreground size-3.5" />
             </Button>
           </div>
         ),
@@ -224,7 +225,7 @@ export function DatasetDetailPage() {
     return (
       <div className="overflow-y-auto p-4 sm:p-6 md:p-8">
         <div className="mx-auto max-w-5xl">
-          <div className="p-8 text-center text-muted-foreground">
+          <div className="text-muted-foreground p-8 text-center">
             {datasetError instanceof Error ? datasetError.message : 'Failed to load dataset.'}
           </div>
         </div>
@@ -246,10 +247,10 @@ export function DatasetDetailPage() {
             <PageHeader
               title={
                 <span className="flex items-center gap-1.5">
-                  <Link to="/datasets" className="text-muted-foreground transition-colors hover:text-foreground">
+                  <Link to="/datasets" className="text-muted-foreground hover:text-foreground transition-colors">
                     Datasets
                   </Link>
-                  <ChevronRightIcon className="size-3.5 text-muted-foreground/50" />
+                  <ChevronRightIcon className="text-muted-foreground/50 size-3.5" />
                   {dataset.name}
                 </span>
               }
@@ -263,7 +264,14 @@ export function DatasetDetailPage() {
                     </Link>
                   </Button>
 
-                  <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={handleImport} />
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".csv"
+                    className="hidden"
+                    onChange={handleImport}
+                    aria-label="Import CSV file"
+                  />
                   <Button
                     variant="outline"
                     size="sm"

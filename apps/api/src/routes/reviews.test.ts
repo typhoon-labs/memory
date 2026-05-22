@@ -2,27 +2,21 @@ import { APP_ROLES } from '@typhoon/config';
 import { Hono } from 'hono';
 import { createMiddleware } from 'hono/factory';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { chainable } from '../../../../tests/helpers/api-test-utils';
 
 // ---------- Hoisted mocks ----------
-const { mockSelect, mockSqlUnsafe, mockHydrateChunkSources } = vi.hoisted(() => ({
-  mockSelect: vi.fn(),
-  mockSqlUnsafe: vi.fn().mockResolvedValue([]),
-  mockHydrateChunkSources: vi.fn().mockResolvedValue(undefined),
+const { mockReviewService } = vi.hoisted(() => ({
+  mockReviewService: {
+    listThreadsForReview: vi.fn(),
+    getThreadDetail: vi.fn(),
+    createAnnotation: vi.fn(),
+    updateAnnotation: vi.fn(),
+    deleteAnnotation: vi.fn(),
+  },
 }));
 
 // ---------- Module mocks ----------
-vi.mock('../db', () => ({
-  db: { select: mockSelect },
-  sql: { unsafe: mockSqlUnsafe },
-}));
-
-vi.mock('./hydrate-chunks', () => ({
-  hydrateChunkSources: mockHydrateChunkSources,
-}));
-
-vi.mock('@typhoon/db/drivers/pg', () => ({
-  PgVector: class MockPgVector {},
+vi.mock('../services', () => ({
+  getReviewService: () => mockReviewService,
 }));
 
 const mockAdminUser = { id: 'admin-1', email: 'admin@test.example', role: APP_ROLES.ADMIN };
@@ -40,27 +34,6 @@ vi.mock('../middleware/require-admin', () => ({
   }),
 }));
 
-vi.mock('./threads', () => ({
-  isSystemReminder: (msg: Record<string, unknown>) => {
-    const content = msg.content as { metadata?: { systemReminder?: unknown } } | undefined;
-    return content?.metadata?.systemReminder != null;
-  },
-  toUIMessage: (msg: Record<string, unknown>) => ({
-    id: msg.externalId,
-    role: msg.role,
-    parts: [{ type: 'text', text: 'content' }],
-    createdAt: msg.createdAt,
-  }),
-  toThreadResponse: (row: Record<string, unknown>) => ({
-    id: row.externalId,
-    resourceId: row.resourceId,
-    title: row.title,
-    metadata: row.metadata,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
-  }),
-}));
-
 // ---------- Import module under test ----------
 import { reviewRoutes } from './reviews';
 
@@ -70,56 +43,12 @@ function mountRoutes(routes: Record<string, unknown>[]) {
   for (const route of routes) {
     const mid = Array.isArray(route.middleware) ? route.middleware : route.middleware ? [route.middleware] : [];
     const method = (route.method as string).toLowerCase();
-    // biome-ignore lint/suspicious/noExplicitAny: dynamic route mounting for tests
     (app as any).on(method, route.path as string, ...mid, route.handler);
   }
   return app;
 }
 
 const now = new Date('2026-01-15T10:00:00Z');
-
-function makeThreadRow(overrides: Record<string, unknown> = {}) {
-  return {
-    id: 'internal-uuid-1',
-    externalId: 'ext-thread-1',
-    resourceId: 'user-1',
-    title: 'Chat Thread',
-    metadata: {},
-    createdAt: now,
-    updatedAt: now,
-    ...overrides,
-  };
-}
-
-function makeMessageRow(overrides: Record<string, unknown> = {}) {
-  return {
-    id: 'msg-internal-1',
-    externalId: 'msg-ext-1',
-    threadId: 'internal-uuid-1',
-    role: 'assistant',
-    type: 'text',
-    content: { content: 'Answer' },
-    createdAt: now,
-    ...overrides,
-  };
-}
-
-function makeScoreRow(overrides: Record<string, unknown> = {}) {
-  return {
-    id: 'score-1',
-    scorer_id: 'faithfulness',
-    entity_type: 'message',
-    entity_id: 'msg-ext-1',
-    thread_id: 'ext-thread-1',
-    score: 0.85,
-    reason: 'Well grounded',
-    metadata: { scorerVersion: 1 },
-    resource_id: null,
-    created_at: now.toISOString(),
-    updated_at: now.toISOString(),
-    ...overrides,
-  };
-}
 
 // ---------- Tests ----------
 
@@ -128,8 +57,6 @@ describe('reviewRoutes', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    // Default: mockSqlUnsafe resolves to empty array
-    mockSqlUnsafe.mockResolvedValue([]);
     app = mountRoutes(reviewRoutes as unknown as Record<string, unknown>[]);
   });
 
@@ -177,19 +104,39 @@ describe('reviewRoutes', () => {
   describe('GET /v1/admin/reviews', () => {
     it('returns thread list with category score averages and feedback counts', async () => {
       const threads = [
-        { id: 'ext-1', resource_id: 'u1', title: 'Chat 1', created_at: now, updated_at: now, message_count: 3 },
-        { id: 'ext-2', resource_id: 'u2', title: 'Chat 2', created_at: now, updated_at: now, message_count: 1 },
+        {
+          id: 'ext-1',
+          resource_id: 'u1',
+          title: 'Chat 1',
+          created_at: now,
+          updated_at: now,
+          message_count: 3,
+          responseAvg: 0.8,
+          retrievalAvg: 0.6,
+          scoreCount: 5,
+          annotationCount: 1,
+          feedbackCount: 3,
+          negativeFeedbackCount: 1,
+        },
+        {
+          id: 'ext-2',
+          resource_id: 'u2',
+          title: 'Chat 2',
+          created_at: now,
+          updated_at: now,
+          message_count: 1,
+          responseAvg: null,
+          retrievalAvg: null,
+          scoreCount: 0,
+          annotationCount: 0,
+          feedbackCount: 0,
+          negativeFeedbackCount: 0,
+        },
       ];
-      const aggregates = [
-        { thread_id: 'ext-1', response_avg: 0.8, retrieval_avg: 0.6, score_count: 5, annotation_count: 1 },
-      ];
-      const feedbackCounts = [{ thread_id: 'ext-1', feedback_count: 3, negative_feedback_count: 1 }];
 
-      // Calls: thread list, score aggregates, feedback counts
-      mockSqlUnsafe
-        .mockResolvedValueOnce(threads)
-        .mockResolvedValueOnce(aggregates)
-        .mockResolvedValueOnce(feedbackCounts);
+      mockReviewService.listThreadsForReview.mockResolvedValueOnce({
+        data: { threads, total: 2 },
+      });
 
       const res = await app.request('/v1/admin/reviews');
       expect(res.status).toBe(200);
@@ -207,7 +154,9 @@ describe('reviewRoutes', () => {
     });
 
     it('returns empty list when no threads exist', async () => {
-      mockSqlUnsafe.mockResolvedValueOnce([]);
+      mockReviewService.listThreadsForReview.mockResolvedValueOnce({
+        data: { threads: [], total: 0 },
+      });
 
       const res = await app.request('/v1/admin/reviews');
       const body = await res.json();
@@ -218,16 +167,38 @@ describe('reviewRoutes', () => {
 
     it('sorts by response score (lowest first, unscored last)', async () => {
       const threads = [
-        { id: 'ext-1', resource_id: 'u1', title: 'A', created_at: now, updated_at: now, message_count: 1 },
-        { id: 'ext-2', resource_id: 'u1', title: 'B', created_at: now, updated_at: now, message_count: 1 },
-        { id: 'ext-3', resource_id: 'u1', title: 'C', created_at: now, updated_at: now, message_count: 1 },
-      ];
-      const aggregates = [
-        { thread_id: 'ext-1', response_avg: 0.9, retrieval_avg: 0.8, score_count: 5, annotation_count: 0 },
-        { thread_id: 'ext-2', response_avg: 0.3, retrieval_avg: 0.5, score_count: 5, annotation_count: 0 },
+        {
+          id: 'ext-2',
+          resource_id: 'u1',
+          title: 'B',
+          responseAvg: 0.3,
+          retrievalAvg: 0.5,
+          scoreCount: 5,
+          annotationCount: 0,
+        },
+        {
+          id: 'ext-1',
+          resource_id: 'u1',
+          title: 'A',
+          responseAvg: 0.9,
+          retrievalAvg: 0.8,
+          scoreCount: 5,
+          annotationCount: 0,
+        },
+        {
+          id: 'ext-3',
+          resource_id: 'u1',
+          title: 'C',
+          responseAvg: null,
+          retrievalAvg: null,
+          scoreCount: 0,
+          annotationCount: 0,
+        },
       ];
 
-      mockSqlUnsafe.mockResolvedValueOnce(threads).mockResolvedValueOnce(aggregates).mockResolvedValueOnce([]);
+      mockReviewService.listThreadsForReview.mockResolvedValueOnce({
+        data: { threads, total: 3 },
+      });
 
       const res = await app.request('/v1/admin/reviews?sortBy=responseScore');
       const body = await res.json();
@@ -239,15 +210,20 @@ describe('reviewRoutes', () => {
 
     it('filters by annotation status', async () => {
       const threads = [
-        { id: 'ext-1', resource_id: 'u1', title: 'A', created_at: now, updated_at: now, message_count: 1 },
-        { id: 'ext-2', resource_id: 'u1', title: 'B', created_at: now, updated_at: now, message_count: 1 },
-      ];
-      const aggregates = [
-        { thread_id: 'ext-1', response_avg: 0.9, retrieval_avg: 0.8, score_count: 5, annotation_count: 2 },
-        { thread_id: 'ext-2', response_avg: 0.5, retrieval_avg: 0.3, score_count: 5, annotation_count: 0 },
+        {
+          id: 'ext-1',
+          resource_id: 'u1',
+          title: 'A',
+          responseAvg: 0.9,
+          retrievalAvg: 0.8,
+          scoreCount: 5,
+          annotationCount: 2,
+        },
       ];
 
-      mockSqlUnsafe.mockResolvedValueOnce(threads).mockResolvedValueOnce(aggregates).mockResolvedValueOnce([]); // feedback counts
+      mockReviewService.listThreadsForReview.mockResolvedValueOnce({
+        data: { threads, total: 1 },
+      });
 
       const res = await app.request('/v1/admin/reviews?annotationStatus=annotated');
       const body = await res.json();
@@ -263,23 +239,38 @@ describe('reviewRoutes', () => {
 
   describe('GET /v1/admin/reviews/:threadId', () => {
     it('returns thread with messages, scores, and feedback grouped by message', async () => {
-      const thread = makeThreadRow();
-      const msg = makeMessageRow();
-      const scores = [makeScoreRow()];
-      const feedback = [
-        {
-          rating: 'negative',
-          comment: 'Not helpful',
-          created_at: now.toISOString(),
-          user_name: 'Alice',
-          message_external_id: 'msg-ext-1',
+      mockReviewService.getThreadDetail.mockResolvedValueOnce({
+        data: {
+          id: 'ext-thread-1',
+          resourceId: 'user-1',
+          title: 'Chat Thread',
+          metadata: {},
+          createdAt: now,
+          updatedAt: now,
+          messages: [
+            { id: 'msg-ext-1', role: 'assistant', parts: [{ type: 'text', text: 'content' }], createdAt: now },
+          ],
+          scoresByMessage: {
+            'msg-ext-1': [
+              {
+                id: 'score-1',
+                scorer_id: 'faithfulness',
+                entity_type: 'message',
+                entity_id: 'msg-ext-1',
+                thread_id: 'ext-thread-1',
+                score: 0.85,
+                reason: 'Well grounded',
+                metadata: { scorerVersion: 1 },
+              },
+            ],
+          },
+          feedbackByMessage: {
+            'msg-ext-1': [
+              { rating: 'negative', comment: 'Not helpful', userName: 'Alice', createdAt: now.toISOString() },
+            ],
+          },
         },
-      ];
-
-      mockSelect.mockReturnValueOnce(chainable([thread]));
-      mockSelect.mockReturnValueOnce(chainable([msg]));
-      // SQL calls: scores, feedback
-      mockSqlUnsafe.mockResolvedValueOnce(scores).mockResolvedValueOnce(feedback);
+      });
 
       const res = await app.request('/v1/admin/reviews/ext-thread-1');
       expect(res.status).toBe(200);
@@ -292,26 +283,36 @@ describe('reviewRoutes', () => {
       expect(body.feedbackByMessage['msg-ext-1']).toHaveLength(1);
       expect(body.feedbackByMessage['msg-ext-1'][0].rating).toBe('negative');
       expect(body.feedbackByMessage['msg-ext-1'][0].userName).toBe('Alice');
-      expect(mockHydrateChunkSources).toHaveBeenCalledTimes(1);
     });
 
     it('enriches human-review scores with annotator names', async () => {
-      const thread = makeThreadRow();
-      const msg = makeMessageRow();
-      const scores = [
-        makeScoreRow({
-          id: 'score-hr',
-          scorer_id: 'human-review',
-          score: 0,
-          metadata: { source: 'human', tags: ['wrong-answer'], annotatorId: 'admin-1' },
-        }),
-      ];
-      const users = [{ id: 'admin-1', name: 'Admin User' }];
-
-      mockSelect.mockReturnValueOnce(chainable([thread]));
-      mockSelect.mockReturnValueOnce(chainable([msg]));
-      // SQL calls: scores, annotator names lookup, feedback
-      mockSqlUnsafe.mockResolvedValueOnce(scores).mockResolvedValueOnce(users).mockResolvedValueOnce([]);
+      mockReviewService.getThreadDetail.mockResolvedValueOnce({
+        data: {
+          id: 'ext-thread-1',
+          resourceId: 'user-1',
+          title: 'Chat Thread',
+          metadata: {},
+          createdAt: now,
+          updatedAt: now,
+          messages: [{ id: 'msg-ext-1', role: 'assistant', parts: [], createdAt: now }],
+          scoresByMessage: {
+            'msg-ext-1': [
+              {
+                id: 'score-hr',
+                scorer_id: 'human-review',
+                score: 0,
+                metadata: {
+                  source: 'human',
+                  tags: ['wrong-answer'],
+                  annotatorId: 'admin-1',
+                  annotatorName: 'Admin User',
+                },
+              },
+            ],
+          },
+          feedbackByMessage: {},
+        },
+      });
 
       const res = await app.request('/v1/admin/reviews/ext-thread-1');
       const body = await res.json();
@@ -322,20 +323,26 @@ describe('reviewRoutes', () => {
     });
 
     it('returns 404 when thread not found', async () => {
-      mockSelect.mockReturnValueOnce(chainable([]));
+      mockReviewService.getThreadDetail.mockResolvedValueOnce({ error: 'not-found' });
 
       const res = await app.request('/v1/admin/reviews/nonexistent');
       expect(res.status).toBe(404);
     });
 
     it('returns empty scoresByMessage and feedbackByMessage when none exist', async () => {
-      const thread = makeThreadRow();
-      const msg = makeMessageRow();
-
-      mockSelect.mockReturnValueOnce(chainable([thread]));
-      mockSelect.mockReturnValueOnce(chainable([msg]));
-      // SQL calls: scores (empty), feedback (empty)
-      mockSqlUnsafe.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+      mockReviewService.getThreadDetail.mockResolvedValueOnce({
+        data: {
+          id: 'ext-thread-1',
+          resourceId: 'user-1',
+          title: 'Chat Thread',
+          metadata: {},
+          createdAt: now,
+          updatedAt: now,
+          messages: [{ id: 'msg-ext-1', role: 'assistant', parts: [], createdAt: now }],
+          scoresByMessage: {},
+          feedbackByMessage: {},
+        },
+      });
 
       const res = await app.request('/v1/admin/reviews/ext-thread-1');
       const body = await res.json();
@@ -351,13 +358,9 @@ describe('reviewRoutes', () => {
 
   describe('POST /v1/admin/reviews/:threadId/messages/:messageId/annotate', () => {
     it('creates an annotation and returns 201', async () => {
-      const thread = { id: 'internal-uuid-1' };
-      const msg = { id: 'msg-internal-1' };
-
-      mockSelect.mockReturnValueOnce(chainable([thread]));
-      mockSelect.mockReturnValueOnce(chainable([msg]));
-      // Check existing annotation (none), then INSERT
-      mockSqlUnsafe.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+      mockReviewService.createAnnotation.mockResolvedValueOnce({
+        data: { id: 'new-uuid', scorerId: 'human-review', entityId: 'msg-ext-1', threadId: 'ext-thread-1' },
+      });
 
       const res = await app.request('/v1/admin/reviews/ext-thread-1/messages/msg-ext-1/annotate', {
         method: 'POST',
@@ -372,12 +375,7 @@ describe('reviewRoutes', () => {
     });
 
     it('returns 409 when annotation already exists', async () => {
-      const thread = { id: 'internal-uuid-1' };
-      const msg = { id: 'msg-internal-1' };
-
-      mockSelect.mockReturnValueOnce(chainable([thread]));
-      mockSelect.mockReturnValueOnce(chainable([msg]));
-      mockSqlUnsafe.mockResolvedValueOnce([{ id: 'existing-annotation-id' }]);
+      mockReviewService.createAnnotation.mockResolvedValueOnce({ error: 'conflict' });
 
       const res = await app.request('/v1/admin/reviews/ext-thread-1/messages/msg-ext-1/annotate', {
         method: 'POST',
@@ -389,7 +387,7 @@ describe('reviewRoutes', () => {
     });
 
     it('returns 404 when thread not found', async () => {
-      mockSelect.mockReturnValueOnce(chainable([]));
+      mockReviewService.createAnnotation.mockResolvedValueOnce({ error: 'thread-not-found' });
 
       const res = await app.request('/v1/admin/reviews/nonexistent/messages/msg-1/annotate', {
         method: 'POST',
@@ -401,9 +399,7 @@ describe('reviewRoutes', () => {
     });
 
     it('returns 404 when message not found', async () => {
-      const thread = { id: 'internal-uuid-1' };
-      mockSelect.mockReturnValueOnce(chainable([thread]));
-      mockSelect.mockReturnValueOnce(chainable([]));
+      mockReviewService.createAnnotation.mockResolvedValueOnce({ error: 'message-not-found' });
 
       const res = await app.request('/v1/admin/reviews/ext-thread-1/messages/nonexistent/annotate', {
         method: 'POST',
@@ -442,7 +438,9 @@ describe('reviewRoutes', () => {
 
   describe('PATCH /v1/admin/reviews/:threadId/messages/:messageId/annotate', () => {
     it('updates an existing annotation', async () => {
-      mockSqlUnsafe.mockResolvedValueOnce([{ id: 'existing-id' }]).mockResolvedValueOnce([]);
+      mockReviewService.updateAnnotation.mockResolvedValueOnce({
+        data: { id: 'existing-id', updated: true },
+      });
 
       const res = await app.request('/v1/admin/reviews/ext-thread-1/messages/msg-ext-1/annotate', {
         method: 'PATCH',
@@ -456,7 +454,7 @@ describe('reviewRoutes', () => {
     });
 
     it('returns 404 when no existing annotation', async () => {
-      mockSqlUnsafe.mockResolvedValueOnce([]);
+      mockReviewService.updateAnnotation.mockResolvedValueOnce({ error: 'not-found' });
 
       const res = await app.request('/v1/admin/reviews/ext-thread-1/messages/msg-ext-1/annotate', {
         method: 'PATCH',
@@ -474,7 +472,7 @@ describe('reviewRoutes', () => {
 
   describe('DELETE /v1/admin/reviews/:threadId/messages/:messageId/annotate', () => {
     it('deletes an annotation', async () => {
-      mockSqlUnsafe.mockResolvedValueOnce([{ id: 'existing-id' }]).mockResolvedValueOnce([]);
+      mockReviewService.deleteAnnotation.mockResolvedValueOnce({ data: { ok: true } });
 
       const res = await app.request('/v1/admin/reviews/ext-thread-1/messages/msg-ext-1/annotate', {
         method: 'DELETE',
@@ -486,7 +484,7 @@ describe('reviewRoutes', () => {
     });
 
     it('returns 404 when no annotation exists', async () => {
-      mockSqlUnsafe.mockResolvedValueOnce([]);
+      mockReviewService.deleteAnnotation.mockResolvedValueOnce({ error: 'not-found' });
 
       const res = await app.request('/v1/admin/reviews/ext-thread-1/messages/msg-ext-1/annotate', {
         method: 'DELETE',

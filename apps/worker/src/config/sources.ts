@@ -19,10 +19,14 @@ export function registerAllSources(): void {
     name: 's3-default',
     sourceType: 's3',
     credentials: {
-      endpoint: process.env.S3_ENDPOINT ?? 'http://localhost:9000',
+      endpoint: process.env.S3_ENDPOINT,
       region: process.env.S3_REGION ?? 'us-east-1',
-      accessKey: process.env.S3_ACCESS_KEY ?? '',
-      secretKey: process.env.S3_SECRET_KEY ?? '',
+      accessKey: process.env.S3_ACCESS_KEY || undefined,
+      secretKey: process.env.S3_SECRET_KEY || undefined,
+      forcePathStyle: process.env.S3_FORCE_PATH_STYLE !== 'false' && process.env.S3_FORCE_PATH_STYLE !== '0',
+    },
+    config: {
+      bucket: process.env.S3_BUCKET ?? 'typhoon-documents',
     },
   });
 }

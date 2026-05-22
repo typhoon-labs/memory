@@ -1,6 +1,7 @@
-import { createContext, useContext, useId } from 'react';
+import { createContext, useContext, useId, useMemo } from 'react';
 import type { ControllerProps, FieldPath, FieldValues } from 'react-hook-form';
 import { Controller, FormProvider, useFormContext } from 'react-hook-form';
+
 import { cn } from '../lib/utils';
 import { Label } from './ui/label';
 
@@ -12,8 +13,10 @@ export { Controller, FormProvider, useForm, useFormContext } from 'react-hook-fo
 // Form (root)
 // =============================================================================
 
-interface FormProps<TFieldValues extends FieldValues = FieldValues>
-  extends Omit<React.FormHTMLAttributes<HTMLFormElement>, 'onSubmit'> {
+interface FormProps<TFieldValues extends FieldValues = FieldValues> extends Omit<
+  React.FormHTMLAttributes<HTMLFormElement>,
+  'onSubmit'
+> {
   form: import('react-hook-form').UseFormReturn<TFieldValues>;
   onSubmit: (data: TFieldValues) => void;
 }
@@ -50,8 +53,9 @@ function FormField<
   TFieldValues extends FieldValues = FieldValues,
   TName extends FieldPath<TFieldValues> = FieldPath<TFieldValues>,
 >(props: ControllerProps<TFieldValues, TName>) {
+  const ctxValue = useMemo(() => ({ name: props.name }), [props.name]);
   return (
-    <FormFieldContext.Provider value={{ name: props.name }}>
+    <FormFieldContext.Provider value={ctxValue}>
       <Controller {...props} />
     </FormFieldContext.Provider>
   );
@@ -104,7 +108,7 @@ function FormMessage({ className, children, ...props }: React.HTMLAttributes<HTM
   if (!body) return null;
 
   return (
-    <p id={formMessageId} className={cn('text-xs font-medium text-destructive', className)} {...props}>
+    <p id={formMessageId} className={cn('text-destructive text-xs font-medium', className)} {...props}>
       {body}
     </p>
   );

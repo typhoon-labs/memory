@@ -9,9 +9,10 @@ const { mockEmitToolProgress, mockGenerateText, mockGetRelevanceScore, mockReran
     const mockGetRelevanceScore = vi.fn().mockResolvedValue(0.9);
     return {
       mockEmitToolProgress: vi.fn().mockResolvedValue(undefined),
-      mockGenerateText: vi
-        .fn()
-        .mockResolvedValue({ text: 'The answer [Source: 1].', usage: { promptTokens: 100, completionTokens: 50 } }),
+      mockGenerateText: vi.fn().mockResolvedValue({
+        output: { answer: 'The answer [Source: 1].', citedRefs: ['1'] },
+        usage: { promptTokens: 100, completionTokens: 50 },
+      }),
       mockGetRelevanceScore,
       mockRerankWithScorer: vi.fn().mockResolvedValue([]),
       mockRefineResults: vi
@@ -38,6 +39,7 @@ const { mockEmitToolProgress, mockGenerateText, mockGetRelevanceScore, mockReran
 
 vi.mock('ai', () => ({
   generateText: mockGenerateText,
+  Output: { object: vi.fn(() => ({})) },
 }));
 
 vi.mock('@typhoon/ai', () => ({
@@ -165,7 +167,6 @@ type ToolResult = {
     searchTool: string;
   }[];
 };
-// biome-ignore lint/suspicious/noExplicitAny: tool.execute is typed optional by Mastra but always present
 const runTool = (tool: any, prompt: string, ctx: unknown): Promise<ToolResult> => tool.execute({ prompt }, ctx);
 
 // ---------------------------------------------------------------------------
@@ -180,7 +181,7 @@ describe('createKnowledgeSearchTool', () => {
     mockAgent = makeMockAgent();
     // Default: generateText returns a single-source citation
     mockGenerateText.mockResolvedValue({
-      text: 'The answer [Source: 1].',
+      output: { answer: 'The answer [Source: 1].', citedRefs: ['1'] },
       usage: { promptTokens: 100, completionTokens: 50 },
     });
     // Default: reranker returns high relevance
@@ -195,7 +196,7 @@ describe('createKnowledgeSearchTool', () => {
     it('extracts sources from result.sources in tool results', async () => {
       const raw = makeRawSource();
       mockAgent.generate.mockResolvedValue(makeSearchResult([raw]));
-      mockGenerateText.mockResolvedValue({ text: 'Answer [Source: 1].' });
+      mockGenerateText.mockResolvedValue({ output: { answer: 'Answer [Source: 1].', citedRefs: ['1'] } });
 
       const tool = createKnowledgeSearchTool(mockAgent as never);
       const result = await runTool(tool, 'test', makeMockContext());
@@ -230,7 +231,7 @@ describe('createKnowledgeSearchTool', () => {
           },
         ],
       });
-      mockGenerateText.mockResolvedValue({ text: 'Answer [Source: 1].' });
+      mockGenerateText.mockResolvedValue({ output: { answer: 'Answer [Source: 1].', citedRefs: ['1'] } });
 
       const tool = createKnowledgeSearchTool(mockAgent as never);
       const result = await runTool(tool, 'test', makeMockContext());
@@ -293,7 +294,7 @@ describe('createKnowledgeSearchTool', () => {
       const rawWithId = makeRawSource({ id: 'chunk-real', score: 0.9 });
       const rawNoId = makeRawSource({ id: undefined, score: 0.9 });
       mockAgent.generate.mockResolvedValue(makeSearchResult([rawWithId, rawNoId]));
-      mockGenerateText.mockResolvedValue({ text: 'Answer [Source: 1].' });
+      mockGenerateText.mockResolvedValue({ output: { answer: 'Answer [Source: 1].', citedRefs: ['1'] } });
 
       const tool = createKnowledgeSearchTool(mockAgent as never);
       const result = await runTool(tool, 'test', makeMockContext());
@@ -313,7 +314,7 @@ describe('createKnowledgeSearchTool', () => {
       const low = makeRawSource({ id: 'chunk-same', score: 0.5, section: 'Low' });
       const high = makeRawSource({ id: 'chunk-same', score: 0.9, section: 'High' });
       mockAgent.generate.mockResolvedValue(makeSearchResult([low, high]));
-      mockGenerateText.mockResolvedValue({ text: 'Answer [Source: 1].' });
+      mockGenerateText.mockResolvedValue({ output: { answer: 'Answer [Source: 1].', citedRefs: ['1'] } });
 
       const tool = createKnowledgeSearchTool(mockAgent as never);
       const result = await runTool(tool, 'test', makeMockContext());
@@ -327,7 +328,7 @@ describe('createKnowledgeSearchTool', () => {
       const high = makeRawSource({ id: 'chunk-same', score: 0.9, section: 'High' });
       const low = makeRawSource({ id: 'chunk-same', score: 0.3, section: 'Low' });
       mockAgent.generate.mockResolvedValue(makeSearchResult([high, low]));
-      mockGenerateText.mockResolvedValue({ text: 'Answer [Source: 1].' });
+      mockGenerateText.mockResolvedValue({ output: { answer: 'Answer [Source: 1].', citedRefs: ['1'] } });
 
       const tool = createKnowledgeSearchTool(mockAgent as never);
       const result = await runTool(tool, 'test', makeMockContext());
@@ -358,7 +359,7 @@ describe('createKnowledgeSearchTool', () => {
       mockGetRelevanceScore.mockResolvedValue(0.1);
       const boundary = makeRawSource({ id: 'chunk-boundary', score: 0.1 });
       mockAgent.generate.mockResolvedValue(makeSearchResult([boundary]));
-      mockGenerateText.mockResolvedValue({ text: 'Answer [Source: 1].' });
+      mockGenerateText.mockResolvedValue({ output: { answer: 'Answer [Source: 1].', citedRefs: ['1'] } });
 
       const tool = createKnowledgeSearchTool(mockAgent as never);
       const result = await runTool(tool, 'test', makeMockContext());
@@ -373,7 +374,11 @@ describe('createKnowledgeSearchTool', () => {
       mockAgent.generate.mockResolvedValue(makeSearchResult(sources));
       // Cite all 10 sources (1 through 10)
       mockGenerateText.mockResolvedValue({
-        text: 'Answer [Source: 1] [Source: 2] [Source: 3] [Source: 4] [Source: 5] [Source: 6] [Source: 7] [Source: 8] [Source: 9] [Source: 10].',
+        output: {
+          answer:
+            'Answer [Source: 1] [Source: 2] [Source: 3] [Source: 4] [Source: 5] [Source: 6] [Source: 7] [Source: 8] [Source: 9] [Source: 10].',
+          citedRefs: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'],
+        },
       });
 
       const tool = createKnowledgeSearchTool(mockAgent as never);
@@ -428,7 +433,7 @@ describe('createKnowledgeSearchTool', () => {
     it('assigns displayIndex "1" for a single chunk from one document', async () => {
       const raw = makeRawSource({ id: 'chunk-a', score: 0.9, documentId: 'doc-1' });
       mockAgent.generate.mockResolvedValue(makeSearchResult([raw]));
-      mockGenerateText.mockResolvedValue({ text: 'Answer [Source: 1].' });
+      mockGenerateText.mockResolvedValue({ output: { answer: 'Answer [Source: 1].', citedRefs: ['1'] } });
 
       const tool = createKnowledgeSearchTool(mockAgent as never);
       const result = await runTool(tool, 'test', makeMockContext());
@@ -441,7 +446,9 @@ describe('createKnowledgeSearchTool', () => {
       const raw1 = makeRawSource({ id: 'chunk-a', score: 0.9, documentId: 'doc-1', section: 'Sec 1' });
       const raw2 = makeRawSource({ id: 'chunk-b', score: 0.85, documentId: 'doc-1', section: 'Sec 2' });
       mockAgent.generate.mockResolvedValue(makeSearchResult([raw1, raw2]));
-      mockGenerateText.mockResolvedValue({ text: 'Answer [Source: 1.1] and [Source: 1.2].' });
+      mockGenerateText.mockResolvedValue({
+        output: { answer: 'Answer [Source: 1.1] and [Source: 1.2].', citedRefs: ['1.1', '1.2'] },
+      });
 
       const tool = createKnowledgeSearchTool(mockAgent as never);
       const result = await runTool(tool, 'test', makeMockContext());
@@ -455,7 +462,9 @@ describe('createKnowledgeSearchTool', () => {
       const raw1 = makeRawSource({ id: 'chunk-a', score: 0.9, documentId: 'doc-1' });
       const raw2 = makeRawSource({ id: 'chunk-b', score: 0.85, documentId: 'doc-2' });
       mockAgent.generate.mockResolvedValue(makeSearchResult([raw1, raw2]));
-      mockGenerateText.mockResolvedValue({ text: 'Answer [Source: 1] and [Source: 2].' });
+      mockGenerateText.mockResolvedValue({
+        output: { answer: 'Answer [Source: 1] and [Source: 2].', citedRefs: ['1', '2'] },
+      });
 
       const tool = createKnowledgeSearchTool(mockAgent as never);
       const result = await runTool(tool, 'test', makeMockContext());
@@ -471,7 +480,7 @@ describe('createKnowledgeSearchTool', () => {
       const doc2 = makeRawSource({ id: 'chunk-c', score: 0.8, documentId: 'doc-2' });
       mockAgent.generate.mockResolvedValue(makeSearchResult([doc1a, doc1b, doc2]));
       mockGenerateText.mockResolvedValue({
-        text: 'Answer [Source: 1.1] [Source: 1.2] [Source: 2].',
+        output: { answer: 'Answer [Source: 1.1] [Source: 1.2] [Source: 2].', citedRefs: ['1.1', '1.2', '2'] },
       });
 
       const tool = createKnowledgeSearchTool(mockAgent as never);
@@ -494,7 +503,7 @@ describe('createKnowledgeSearchTool', () => {
       const raw2 = makeRawSource({ id: 'chunk-b', score: 0.85, documentId: 'doc-2' });
       mockAgent.generate.mockResolvedValue(makeSearchResult([raw1, raw2]));
       // LLM only cites source 1
-      mockGenerateText.mockResolvedValue({ text: 'Answer [Source: 1].' });
+      mockGenerateText.mockResolvedValue({ output: { answer: 'Answer [Source: 1].', citedRefs: ['1'] } });
 
       const tool = createKnowledgeSearchTool(mockAgent as never);
       const result = await runTool(tool, 'test', makeMockContext());
@@ -509,7 +518,7 @@ describe('createKnowledgeSearchTool', () => {
       const doc3 = makeRawSource({ id: 'chunk-c', score: 0.85, documentId: 'doc-3' });
       mockAgent.generate.mockResolvedValue(makeSearchResult([doc1, doc2, doc3]));
       // LLM cites source 3 only — should be reindexed to 1
-      mockGenerateText.mockResolvedValue({ text: 'Answer [Source: 3].' });
+      mockGenerateText.mockResolvedValue({ output: { answer: 'Answer [Source: 3].', citedRefs: ['3'] } });
 
       const tool = createKnowledgeSearchTool(mockAgent as never);
       const result = await runTool(tool, 'test', makeMockContext());
@@ -524,7 +533,9 @@ describe('createKnowledgeSearchTool', () => {
       const doc2 = makeRawSource({ id: 'chunk-b', score: 0.85, documentId: 'doc-2' });
       mockAgent.generate.mockResolvedValue(makeSearchResult([doc1, doc2]));
       // LLM cites 2 first, then 1 — reindexing should reassign sequentially
-      mockGenerateText.mockResolvedValue({ text: 'See doc two [Source: 2]. Also doc one [Source: 1].' });
+      mockGenerateText.mockResolvedValue({
+        output: { answer: 'See doc two [Source: 2]. Also doc one [Source: 1].', citedRefs: ['2', '1'] },
+      });
 
       const tool = createKnowledgeSearchTool(mockAgent as never);
       const result = await runTool(tool, 'test', makeMockContext());
@@ -539,7 +550,9 @@ describe('createKnowledgeSearchTool', () => {
       const doc1 = makeRawSource({ id: 'chunk-a', score: 0.9, documentId: 'doc-1' });
       const doc2 = makeRawSource({ id: 'chunk-b', score: 0.85, documentId: 'doc-2' });
       mockAgent.generate.mockResolvedValue(makeSearchResult([doc1, doc2]));
-      mockGenerateText.mockResolvedValue({ text: 'Combined answer [Source: 1, 2].' });
+      mockGenerateText.mockResolvedValue({
+        output: { answer: 'Combined answer [Source: 1, 2].', citedRefs: ['1', '2'] },
+      });
 
       const tool = createKnowledgeSearchTool(mockAgent as never);
       const result = await runTool(tool, 'test', makeMockContext());
@@ -584,7 +597,7 @@ describe('createKnowledgeSearchTool', () => {
     it('emits "Composing" progress before calling generateText', async () => {
       const raw = makeRawSource({ id: 'chunk-a', score: 0.9 });
       mockAgent.generate.mockResolvedValue(makeSearchResult([raw]));
-      mockGenerateText.mockResolvedValue({ text: 'Answer [Source: 1].' });
+      mockGenerateText.mockResolvedValue({ output: { answer: 'Answer [Source: 1].', citedRefs: ['1'] } });
 
       const callOrder: string[] = [];
       mockEmitToolProgress.mockImplementation(async (_ctx: unknown, msg: string) => {
@@ -592,7 +605,7 @@ describe('createKnowledgeSearchTool', () => {
       });
       mockGenerateText.mockImplementation(async () => {
         callOrder.push('generateText');
-        return { text: 'Answer [Source: 1].' };
+        return { output: { answer: 'Answer [Source: 1].', citedRefs: ['1'] } };
       });
 
       const tool = createKnowledgeSearchTool(mockAgent as never);
@@ -607,7 +620,7 @@ describe('createKnowledgeSearchTool', () => {
     it('emits "Composing answer with citations" message', async () => {
       const raw = makeRawSource({ id: 'chunk-a', score: 0.9 });
       mockAgent.generate.mockResolvedValue(makeSearchResult([raw]));
-      mockGenerateText.mockResolvedValue({ text: 'Answer [Source: 1].' });
+      mockGenerateText.mockResolvedValue({ output: { answer: 'Answer [Source: 1].', citedRefs: ['1'] } });
 
       const tool = createKnowledgeSearchTool(mockAgent as never);
       await runTool(tool, 'test', makeMockContext());
@@ -634,7 +647,7 @@ describe('createKnowledgeSearchTool', () => {
     it('passes experimental_telemetry to generateText', async () => {
       const raw = makeRawSource({ id: 'chunk-a', score: 0.9 });
       mockAgent.generate.mockResolvedValue(makeSearchResult([raw]));
-      mockGenerateText.mockResolvedValue({ text: 'Answer [Source: 1].' });
+      mockGenerateText.mockResolvedValue({ output: { answer: 'Answer [Source: 1].', citedRefs: ['1'] } });
 
       const tool = createKnowledgeSearchTool(mockAgent as never);
       await runTool(tool, 'test', makeMockContext());
@@ -720,21 +733,20 @@ describe('createKnowledgeSearchTool', () => {
           },
         ],
       });
-      mockGenerateText.mockResolvedValue({ text: 'Answer [Source: 1].' });
+      mockGenerateText.mockResolvedValue({ output: { answer: 'Answer [Source: 1].', citedRefs: ['1'] } });
 
       const ctx = makeMockContext(false);
       const tool = createKnowledgeSearchTool(mockAgent as never);
       const result = await runTool(tool, 'test', ctx);
 
-      // After dedup by chunkId: '99' (score 0.95) vs 'real-chunk-id' (score 0.9)
-      // They have different chunkIds so both survive dedup; the graph one ('99') has higher score
-      // The lookup resolves '99' to 'real-chunk-id' via documentId::startIndex
-      const graphChunk = result._chunkSources?.find(
-        (s) => s.documentId === 'doc-1' && s.startIndex === 42 && s.score === 0.95,
-      );
-      if (graphChunk) {
-        expect(graphChunk.chunkId).toBe('real-chunk-id');
-      }
+      // After dedup, the graph source ('99') and real source ('real-chunk-id')
+      // share the same documentId::startIndex. The graph ID resolution replaces
+      // '99' with 'real-chunk-id', causing a second dedup pass to merge them.
+      // With only citedRefs: ['1'], one source survives in _chunkSources.
+      // Verify no numeric fake IDs survive in the final output.
+      expect(result._chunkSources).toBeDefined();
+      const numericIdChunks = result._chunkSources?.filter((s) => /^\d+$/.test(s.chunkId)) ?? [];
+      expect(numericIdChunks).toHaveLength(0);
     });
 
     it('falls back to vector store query when lookup map misses', async () => {
@@ -746,7 +758,7 @@ describe('createKnowledgeSearchTool', () => {
         startIndex: 0,
       });
       mockAgent.generate.mockResolvedValue(makeSearchResult([graphSource]));
-      mockGenerateText.mockResolvedValue({ text: 'Answer [Source: 1].' });
+      mockGenerateText.mockResolvedValue({ output: { answer: 'Answer [Source: 1].', citedRefs: ['1'] } });
 
       const mockGetChunkId = vi.fn().mockResolvedValue('resolved-real-id');
       const ctx = {
@@ -765,15 +777,14 @@ describe('createKnowledgeSearchTool', () => {
 
       expect(mockGetChunkId).toHaveBeenCalledWith('knowledge_base', 'doc-orphan', 0);
       const chunk = result._chunkSources?.find((s) => s.documentId === 'doc-orphan');
-      if (chunk) {
-        expect(chunk.chunkId).toBe('resolved-real-id');
-      }
+      expect(chunk).toBeDefined();
+      expect(chunk?.chunkId).toBe('resolved-real-id');
     });
 
     it('leaves non-numeric chunkId unchanged', async () => {
       const raw = makeRawSource({ id: 'uuid-style-id', score: 0.9, documentId: 'doc-1' });
       mockAgent.generate.mockResolvedValue(makeSearchResult([raw]));
-      mockGenerateText.mockResolvedValue({ text: 'Answer [Source: 1].' });
+      mockGenerateText.mockResolvedValue({ output: { answer: 'Answer [Source: 1].', citedRefs: ['1'] } });
 
       const mockGetChunkId = vi.fn();
       const ctx = {
@@ -797,7 +808,7 @@ describe('createKnowledgeSearchTool', () => {
     it('does not query vector store when context has no mastra', async () => {
       const graphSource = makeRawSource({ id: '5', score: 0.9, documentId: 'doc-1' });
       mockAgent.generate.mockResolvedValue(makeSearchResult([graphSource]));
-      mockGenerateText.mockResolvedValue({ text: 'Answer [Source: 1].' });
+      mockGenerateText.mockResolvedValue({ output: { answer: 'Answer [Source: 1].', citedRefs: ['1'] } });
 
       const tool = createKnowledgeSearchTool(mockAgent as never);
       // Pass a context with no mastra — should not crash
@@ -910,7 +921,7 @@ describe('createKnowledgeSearchTool', () => {
     it('returns text and _chunkSources when results exist', async () => {
       const raw = makeRawSource({ id: 'chunk-a', score: 0.9 });
       mockAgent.generate.mockResolvedValue(makeSearchResult([raw]));
-      mockGenerateText.mockResolvedValue({ text: 'The answer [Source: 1].' });
+      mockGenerateText.mockResolvedValue({ output: { answer: 'The answer [Source: 1].', citedRefs: ['1'] } });
 
       const tool = createKnowledgeSearchTool(mockAgent as never);
       const result = await runTool(tool, 'test', makeMockContext());
@@ -923,7 +934,7 @@ describe('createKnowledgeSearchTool', () => {
     it('_chunkSources entries have required shape', async () => {
       const raw = makeRawSource({ id: 'chunk-a', score: 0.9 });
       mockAgent.generate.mockResolvedValue(makeSearchResult([raw]));
-      mockGenerateText.mockResolvedValue({ text: 'Answer [Source: 1].' });
+      mockGenerateText.mockResolvedValue({ output: { answer: 'Answer [Source: 1].', citedRefs: ['1'] } });
 
       const tool = createKnowledgeSearchTool(mockAgent as never);
       const result = await runTool(tool, 'test', makeMockContext());
@@ -948,7 +959,7 @@ describe('createKnowledgeSearchTool', () => {
       const longText = 'x'.repeat(500);
       const raw = makeRawSource({ id: 'chunk-long', score: 0.9, text: longText });
       mockAgent.generate.mockResolvedValue(makeSearchResult([raw]));
-      mockGenerateText.mockResolvedValue({ text: 'Answer [Source: 1].' });
+      mockGenerateText.mockResolvedValue({ output: { answer: 'Answer [Source: 1].', citedRefs: ['1'] } });
 
       const tool = createKnowledgeSearchTool(mockAgent as never);
       const result = await runTool(tool, 'test', makeMockContext());

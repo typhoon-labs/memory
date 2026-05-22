@@ -55,7 +55,7 @@ export function roundSize(size: number): number {
 }
 
 export function escapeHtml(text: string): string {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 }
 
 // ── Font analysis ──────────────────────────────────────────────
@@ -77,7 +77,10 @@ export function buildHeadingMap(items: TextItemLike[]): Map<number, string> {
     }
   }
 
-  const headingSizes = [...freq.keys()].filter((s) => s > bodySize + 0.3).sort((a, b) => b - a);
+  const headingSizes = [...freq.keys()]
+    .filter((s) => s > bodySize + 0.3)
+    .slice()
+    .sort((a, b) => b - a);
   const tags = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'] as const;
   const map = new Map<number, string>();
   for (let i = 0; i < Math.min(headingSizes.length, tags.length); i++) {
@@ -308,10 +311,12 @@ export async function parsePdf(buffer: Buffer, _filename: string): Promise<Parse
   const allItems: TextItemLike[] = [];
 
   for (let i = 1; i <= pdf.numPages; i++) {
+    // oxlint-disable-next-line no-await-in-loop -- sequential: PDF pages must be processed in order
     const page = await pdf.getPage(i);
+    // oxlint-disable-next-line no-await-in-loop -- sequential: depends on page above
     const content = await page.getTextContent();
     for (const item of content.items) {
-      if ('str' in item && item.str != null) {
+      if ('str' in item && item.str !== null && item.str !== undefined) {
         allItems.push(item as TextItemLike);
       }
     }
@@ -325,6 +330,7 @@ export async function parsePdf(buffer: Buffer, _filename: string): Promise<Parse
   const lines = groupIntoLines(allItems);
   const html = buildHtml(lines, headingMap);
 
+  // @ts-ignore — turndown-plugin-gfm has no type declarations; .d.ts not in scope for consumers
   const { gfm } = await import('turndown-plugin-gfm');
   const turndown = new TurndownService({
     headingStyle: 'atx',

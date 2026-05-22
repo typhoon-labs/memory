@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { ApiError, apiFetch } from './api-fetch';
 
 const mockFetch = vi.fn();
@@ -44,28 +45,20 @@ describe('apiFetch', () => {
   it('throws ApiError with JSON error message on non-OK response', async () => {
     mockFetch.mockResolvedValueOnce(jsonResponse({ error: 'Scorer not found' }, 404, 'Not Found'));
 
-    try {
-      await apiFetch('/api/test');
-      expect.unreachable('Should have thrown');
-    } catch (err) {
-      expect(err).toBeInstanceOf(ApiError);
-      const apiErr = err as ApiError;
-      expect(apiErr.status).toBe(404);
-      expect(apiErr.statusText).toBe('Not Found');
-      expect(apiErr.message).toBe('Scorer not found');
-    }
+    const err = await apiFetch('/api/test').catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    const apiErr = err as ApiError;
+    expect(apiErr.status).toBe(404);
+    expect(apiErr.statusText).toBe('Not Found');
+    expect(apiErr.message).toBe('Scorer not found');
   });
 
   it('throws ApiError with JSON message field on non-OK response', async () => {
     mockFetch.mockResolvedValueOnce(jsonResponse({ message: 'Rate limited' }, 429, 'Too Many Requests'));
 
-    try {
-      await apiFetch('/api/test');
-      expect.unreachable('Should have thrown');
-    } catch (err) {
-      const apiErr = err as ApiError;
-      expect(apiErr.message).toBe('Rate limited');
-    }
+    const err = await apiFetch('/api/test').catch((e: unknown) => e);
+    const apiErr = err as ApiError;
+    expect(apiErr.message).toBe('Rate limited');
   });
 
   it('falls back to status text when response body is not JSON', async () => {
@@ -73,26 +66,18 @@ describe('apiFetch', () => {
       new Response('Internal Server Error', { status: 500, statusText: 'Internal Server Error' }),
     );
 
-    try {
-      await apiFetch('/api/test');
-      expect.unreachable('Should have thrown');
-    } catch (err) {
-      const apiErr = err as ApiError;
-      expect(apiErr.status).toBe(500);
-      expect(apiErr.message).toBe('500 Internal Server Error');
-    }
+    const err = await apiFetch('/api/test').catch((e: unknown) => e);
+    const apiErr = err as ApiError;
+    expect(apiErr.status).toBe(500);
+    expect(apiErr.message).toBe('500 Internal Server Error');
   });
 
   it('falls back to status text when JSON has no error or message field', async () => {
     mockFetch.mockResolvedValueOnce(jsonResponse({ code: 'UNKNOWN' }, 400, 'Bad Request'));
 
-    try {
-      await apiFetch('/api/test');
-      expect.unreachable('Should have thrown');
-    } catch (err) {
-      const apiErr = err as ApiError;
-      expect(apiErr.message).toBe('400 Bad Request');
-    }
+    const err = await apiFetch('/api/test').catch((e: unknown) => e);
+    const apiErr = err as ApiError;
+    expect(apiErr.message).toBe('400 Bad Request');
   });
 });
 

@@ -1,8 +1,18 @@
 import { Badge, Popover, PopoverContent, PopoverTrigger } from '@typhoon/ui';
+import type { ReactNode } from 'react';
 import { useState } from 'react';
+
 import type { MetadataFieldDefinition } from './field-schema-editor';
 
-export function FieldBadgePopover({ name, field }: { name: string; field: MetadataFieldDefinition }) {
+export function FieldBadgePopover({
+  name,
+  field,
+  children,
+}: {
+  name: string;
+  field: MetadataFieldDefinition;
+  children?: ReactNode;
+}) {
   const [open, setOpen] = useState(false);
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -13,10 +23,12 @@ export function FieldBadgePopover({ name, field }: { name: string; field: Metada
           onMouseEnter={() => setOpen(true)}
           onMouseLeave={() => setOpen(false)}
         >
-          <Badge variant="outline" className="cursor-default text-xs">
-            {name}
-            {field.required && '*'}
-          </Badge>
+          {children ?? (
+            <Badge variant="outline" className="cursor-default text-xs">
+              {name}
+              {field.required && '*'}
+            </Badge>
+          )}
         </button>
       </PopoverTrigger>
       <PopoverContent
@@ -46,13 +58,19 @@ export function FieldBadgePopover({ name, field }: { name: string; field: Metada
               <dt className="text-muted-foreground">Required</dt>
               <dd className="mt-0.5">{field.required ? 'Yes' : 'No'}</dd>
             </div>
+            <div>
+              <dt className="text-muted-foreground">Searchable</dt>
+              <dd className="mt-0.5">
+                {field.searchable || field.searchPriority ? `Yes, ${field.searchPriority ?? 'moderate'} weight` : 'No'}
+              </dd>
+            </div>
             {field.allowedValues && field.allowedValues.length > 0 && (
               <div>
                 <dt className="text-muted-foreground">Allowed Values</dt>
                 <dd className="mt-0.5">{field.allowedValues.join(', ')}</dd>
               </div>
             )}
-            {field.default != null && (
+            {field.default !== null && field.default !== undefined && (
               <div>
                 <dt className="text-muted-foreground">Default</dt>
                 <dd className="mt-0.5">{String(field.default)}</dd>

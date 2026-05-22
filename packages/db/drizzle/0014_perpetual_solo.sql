@@ -1,0 +1,1 @@
+ALTER TABLE "documents" ADD COLUMN "search_meta_dirty" boolean DEFAULT false NOT NULL;

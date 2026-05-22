@@ -27,7 +27,7 @@ services:
   # ==========================================================================
   redis:
     profiles: [all, infra]
-    image: redis:8-alpine
+    image: redis:8-bookworm
     container_name: typhoon-redis
     restart: unless-stopped
     ports:
@@ -84,7 +84,7 @@ services:
   # ==========================================================================
   bifrost:
     profiles: [all, infra]
-    image: maximhq/bifrost:v1.5.0
+    image: maximhq/bifrost:v1.5.2
     container_name: typhoon-bifrost
     restart: unless-stopped
     ports:
@@ -172,22 +172,30 @@ services:
       LLM_API_KEY: ${LLM_API_KEY:-changeme}
       LLM_CHAT_MODEL: ${LLM_CHAT_MODEL:-bedrock/us.anthropic.claude-sonnet-4-6}
       LLM_TITLE_MODEL: ${LLM_TITLE_MODEL:-bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0}
-      RERANKER_MODEL: ${RERANKER_MODEL:-bedrock/arn:aws:bedrock:us-east-1::foundation-model/cohere.rerank-v3-5:0}
-      RERANKER_BASE_URL: ${RERANKER_BASE_URL:-http://bifrost:8787/v1}
-      LLM_EXTRACTION_MODEL: ${LLM_EXTRACTION_MODEL:-bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0}
+      LLM_METADATA_EXTRACTION_MODEL: ${LLM_METADATA_EXTRACTION_MODEL:-bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0}
       LLM_GUARDRAIL_MODEL: ${LLM_GUARDRAIL_MODEL:-bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0}
       LLM_KNOWLEDGE_MODEL: ${LLM_KNOWLEDGE_MODEL:-bedrock/us.anthropic.claude-sonnet-4-6}
       LLM_CITATION_MODEL: ${LLM_CITATION_MODEL:-bedrock/us.anthropic.claude-sonnet-4-6}
       LLM_SCORING_MODEL: ${LLM_SCORING_MODEL:-bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0}
       LLM_SCORING_MODEL_OPTIONS: ${LLM_SCORING_MODEL_OPTIONS:-bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0,bedrock/us.anthropic.claude-sonnet-4-6}
+      # Retry
+      LLM_MAX_RETRIES: ${LLM_MAX_RETRIES:-3}
+      LLM_RETRY_DELAY_MS: ${LLM_RETRY_DELAY_MS:-500}
+      LLM_RETRY_MAX_DELAY_MS: ${LLM_RETRY_MAX_DELAY_MS:-10000}
+      # Reranker
+      RERANKER_MODEL: ${RERANKER_MODEL:-bedrock/arn:aws:bedrock:us-east-1::foundation-model/cohere.rerank-v3-5:0}
+      RERANKER_BASE_URL: ${RERANKER_BASE_URL:-http://bifrost:8787/v1}
+      RERANKER_TIMEOUT_MS: ${RERANKER_TIMEOUT_MS:-15000}
       # Embeddings
       EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-http://bifrost:8787/v1}
       EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-bedrock}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-bedrock/amazon.titan-embed-text-v2:0}
       EMBEDDING_DIMENSION: ${EMBEDDING_DIMENSION:-1024}
-      EMBEDDING_MAX_CHARS: ${EMBEDDING_MAX_CHARS:-50000}
+      EMBEDDING_MAX_CHARS: ${EMBEDDING_MAX_CHARS:-2000}
       EMBEDDING_MAX_TOKENS: ${EMBEDDING_MAX_TOKENS:-8192}
       EMBEDDING_BATCH_SIZE: ${EMBEDDING_BATCH_SIZE:-1}
+      # Extraction
+      METADATA_EXTRACTION_MAX_CHARS: ${METADATA_EXTRACTION_MAX_CHARS:-8000}
       # Auth
       AUTH_SECRET: ${AUTH_SECRET:-change-me-in-production}
       AUTH_URL: ${AUTH_URL:-http://localhost:5172}
@@ -221,7 +229,7 @@ services:
       migrate:
         condition: service_completed_successfully
     healthcheck:
-      test: ['CMD', 'wget', '-qO/dev/null', 'http://127.0.0.1:${SERVER_PORT:-5172}/api/v1/auth/ok']
+      test: ['CMD', 'curl', '-fsS', 'http://127.0.0.1:${SERVER_PORT:-5172}/api/v1/auth/ok']
       interval: 10s
       timeout: 5s
       retries: 10
@@ -239,30 +247,36 @@ services:
     env_file:
       - ../../.env
     environment:
+      # Core
       DATABASE_URL: postgresql://typhoon:typhoon@postgres:5432/typhoon
       REDIS_URL: redis://redis:6379
+      NODE_ENV: production
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      SYNC_WORKER_CONCURRENCY: ${SYNC_WORKER_CONCURRENCY:-5}
+      # S3/MinIO
       S3_ENDPOINT: http://minio:9000
       S3_REGION: ${S3_REGION:-us-east-1}
       S3_ACCESS_KEY: ${S3_ACCESS_KEY:-minioadmin}
       S3_SECRET_KEY: ${S3_SECRET_KEY:-minioadmin}
       S3_BUCKET: ${S3_BUCKET:-typhoon-documents}
+      # LLM
       LLM_BASE_URL: ${LLM_BASE_URL:-http://bifrost:8787/v1}
       LLM_API_KEY: ${LLM_API_KEY:-changeme}
       LLM_CHAT_MODEL: ${LLM_CHAT_MODEL:-bedrock/us.anthropic.claude-sonnet-4-6}
-      LLM_EXTRACTION_MODEL: ${LLM_EXTRACTION_MODEL:-bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0}
+      LLM_METADATA_EXTRACTION_MODEL: ${LLM_METADATA_EXTRACTION_MODEL:-bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0}
       LLM_SCORING_MODEL: ${LLM_SCORING_MODEL:-bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0}
       LLM_SCORING_MODEL_OPTIONS: ${LLM_SCORING_MODEL_OPTIONS:-bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0,bedrock/us.anthropic.claude-sonnet-4-6}
       LLM_KNOWLEDGE_MODEL: ${LLM_KNOWLEDGE_MODEL:-bedrock/us.anthropic.claude-sonnet-4-6}
+      # Embeddings
       EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-http://bifrost:8787/v1}
       EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-bedrock}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-bedrock/amazon.titan-embed-text-v2:0}
       EMBEDDING_DIMENSION: ${EMBEDDING_DIMENSION:-1024}
-      EMBEDDING_MAX_CHARS: ${EMBEDDING_MAX_CHARS:-50000}
+      EMBEDDING_MAX_CHARS: ${EMBEDDING_MAX_CHARS:-2000}
       EMBEDDING_MAX_TOKENS: ${EMBEDDING_MAX_TOKENS:-8192}
       EMBEDDING_BATCH_SIZE: ${EMBEDDING_BATCH_SIZE:-1}
-      LOG_LEVEL: ${LOG_LEVEL:-info}
-      SYNC_WORKER_CONCURRENCY: ${SYNC_WORKER_CONCURRENCY:-5}
-      NODE_ENV: production
+      # Metadata
+      METADATA_EXTRACTION_MAX_CHARS: ${METADATA_EXTRACTION_MAX_CHARS:-8000}
       # OpenTelemetry
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4318
       OTEL_SERVICE_NAME: typhoon-worker
@@ -288,10 +302,11 @@ services:
     env_file:
       - ../../.env
     environment:
+      # Core
       DATABASE_URL: postgresql://typhoon:typhoon@postgres:5432/typhoon
       REDIS_URL: redis://redis:6379
-      LOG_LEVEL: ${LOG_LEVEL:-info}
       NODE_ENV: production
+      LOG_LEVEL: ${LOG_LEVEL:-info}
       # OpenTelemetry
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4318
       OTEL_SERVICE_NAME: typhoon-scheduler

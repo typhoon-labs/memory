@@ -10,8 +10,9 @@ import {
   RAG_RERANK_WEIGHTS,
 } from '@typhoon/ai';
 import { refineResults } from '@typhoon/db/drivers/pg';
-import { embed } from 'ai';
+import { embed, type EmbeddingModel } from 'ai';
 import { z } from 'zod';
+
 import { emitToolProgress } from './with-progress';
 
 export interface HybridSearchToolOptions {
@@ -66,7 +67,7 @@ export function createHybridSearchTool(options?: HybridSearchToolOptions) {
         attributes: { mode: 'query' },
       });
       const { embedding } = await embed({
-        model: createEmbeddingModel(),
+        model: createEmbeddingModel() as unknown as EmbeddingModel,
         value: queryText,
       });
       embedSpan?.end({ output: { dimensions: embedding.length } });
@@ -83,7 +84,7 @@ export function createHybridSearchTool(options?: HybridSearchToolOptions) {
         input: { queryText, topK: retrievalK, filter: filter ?? null },
         attributes: { operation: 'query', indexName: 'knowledge_base' },
       });
-      // biome-ignore lint/suspicious/noExplicitAny: hybridQuery is not on MastraVector base class
+      // oxlint-disable-next-line @typescript-eslint/no-explicit-any -- hybridQuery is not on MastraVector base class
       const results = await (vectorStore as any).hybridQuery({
         indexName: 'knowledge_base',
         queryText,

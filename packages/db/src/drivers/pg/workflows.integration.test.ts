@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+
 import { createTestConnection } from './test-utils';
 import { DrizzleWorkflowsStorage } from './workflows';
 
@@ -81,6 +82,7 @@ describe('DrizzleWorkflowsStorage (integration)', () => {
 
   it('listWorkflowRuns', async () => {
     for (let i = 0; i < 3; i++) {
+      // oxlint-disable-next-line no-await-in-loop -- test setup: sequential DB seeding
       await storage.persistWorkflowSnapshot({
         workflowName: 'wf',
         runId: `run-${i}`,
@@ -88,7 +90,10 @@ describe('DrizzleWorkflowsStorage (integration)', () => {
       });
     }
 
-    const result = await storage.listWorkflowRuns({ workflowName: 'wf' });
+    const result = (await storage.listWorkflowRuns({ workflowName: 'wf' })) as {
+      runs: unknown[];
+      total: number;
+    };
     expect(result.runs.length).toBe(3);
     expect(result.total).toBe(3);
   });

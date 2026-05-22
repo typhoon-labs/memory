@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '@typhoon/api-client';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -34,8 +35,10 @@ import {
   TabsTrigger,
   Textarea,
 } from '@typhoon/ui';
-import { PencilIcon, RefreshCwIcon, RotateCwIcon, SaveIcon, Trash2Icon } from 'lucide-react';
+import { InfoIcon, PencilIcon, RefreshCwIcon, RotateCwIcon, SaveIcon, Trash2Icon, XIcon } from 'lucide-react';
 import { type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+
+import { FieldBadgePopover } from '../../shared/field-badge-popover';
 import type { Document } from './shared';
 import { DOC_STATUS_MAP, formatBytes } from './shared';
 
@@ -64,7 +67,7 @@ export function DocumentDetailSheet({
   if (!initialDocument) return null;
 
   const document = freshDocument ?? initialDocument;
-  const hasError = document.status === 'parse_error' || document.status === 'embed_error';
+  const hasError = document.status === 'error';
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -75,8 +78,14 @@ export function DocumentDetailSheet({
       >
         <SheetHeader>
           <SheetTitle className="break-all">{document.title ?? document.sourceKey}</SheetTitle>
-          <div className="mt-1">
+          <div className="mt-1 flex items-center gap-2">
             <StatusBadge variant={DOC_STATUS_MAP[document.status]}>{document.status.replace('_', ' ')}</StatusBadge>
+            {document.searchMetaDirty && (
+              <span className="flex items-center gap-1 text-amber-500">
+                <RefreshCwIcon className="size-3" />
+                <span className="text-xs">needs sync</span>
+              </span>
+            )}
           </div>
         </SheetHeader>
 
@@ -119,7 +128,7 @@ function DetailsTab({ document, hasError, onClose }: { document: Document; hasEr
     mutationFn: () => apiFetch(`/api/v1/documents/${document.id}/resync`, { method: 'POST' }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['documents'] });
-      queryClient.invalidateQueries({ queryKey: ['browse'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.syncTargets.all });
     },
   });
 
@@ -130,13 +139,13 @@ function DetailsTab({ document, hasError, onClose }: { document: Document; hasEr
     if (!resyncMutation.isSuccess) return;
     const timer = setTimeout(() => resyncMutation.reset(), 2500);
     return () => clearTimeout(timer);
-  }, [resyncMutation.isSuccess, resyncMutation.reset]);
+  }, [resyncMutation]);
 
   const deleteMutation = useMutation({
     mutationFn: () => apiFetch(`/api/v1/documents/${document.id}`, { method: 'DELETE' }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['documents'] });
-      queryClient.invalidateQueries({ queryKey: ['browse'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.syncTargets.all });
       onClose();
     },
   });
@@ -144,7 +153,7 @@ function DetailsTab({ document, hasError, onClose }: { document: Document; hasEr
   return (
     <div className="space-y-5">
       {/* Description */}
-      {document.description && <p className="text-sm leading-relaxed text-muted-foreground">{document.description}</p>}
+      {document.description && <p className="text-muted-foreground text-sm leading-relaxed">{document.description}</p>}
 
       {/* Error Message */}
       {hasError && document.errorMessage && (
@@ -203,7 +212,7 @@ function DetailsTab({ document, hasError, onClose }: { document: Document; hasEr
         <dl className="mt-2 grid grid-cols-2 gap-3 text-sm">
           <div className="col-span-2">
             <dt className="text-muted-foreground">Source Key</dt>
-            <dd className="mt-0.5 break-all font-mono text-xs">{document.sourceKey}</dd>
+            <dd className="mt-0.5 font-mono text-xs break-all">{document.sourceKey}</dd>
           </div>
           <div>
             <dt className="text-muted-foreground">MIME Type</dt>
@@ -219,7 +228,7 @@ function DetailsTab({ document, hasError, onClose }: { document: Document; hasEr
               <dd className="mt-0.5">{document.author}</dd>
             </div>
           )}
-          {document.pageCount != null && (
+          {document.pageCount !== null && document.pageCount !== undefined && (
             <div>
               <dt className="text-muted-foreground">Pages</dt>
               <dd className="mt-0.5 tabular-nums">{document.pageCount}</dd>
@@ -352,11 +361,11 @@ function MetadataTab({ document }: { document: Document }) {
   // Build template fields: all schema keys, populated from metadata or undefined
   const templateFields = useMemo(() => {
     const fields: Record<string, string | undefined> = {};
-    for (const k of Object.keys(effectiveSchema)) {
-      fields[k] = metadata[k] != null ? String(metadata[k]) : undefined;
+    for (const k of Object.keys(template?.effectiveSchema ?? {})) {
+      fields[k] = metadata[k] !== null && metadata[k] !== undefined ? String(metadata[k]) : undefined;
     }
     return fields;
-  }, [metadata, effectiveSchema]);
+  }, [metadata, template?.effectiveSchema]);
 
   const updateMutation = useMutation({
     mutationFn: (data: {
@@ -366,7 +375,7 @@ function MetadataTab({ document }: { document: Document }) {
     }) => apiFetch<Document>(`/api/v1/documents/${document.id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     onSuccess: (updated: Document) => {
       queryClient.setQueryData(['document', document.id], updated);
-      for (const key of [['documents'], ['browse']]) {
+      for (const key of [queryKeys.documents.all, queryKeys.syncTargets.all]) {
         queryClient.setQueriesData<Document[]>({ queryKey: key }, (old) =>
           old?.map((d) => (d.id === updated.id ? updated : d)),
         );
@@ -379,11 +388,14 @@ function MetadataTab({ document }: { document: Document }) {
   }
 
   function handleSave() {
-    // Only send template-defined keys
+    // Send all template-defined keys; cleared values sent as null so server removes them
     const templateMetadata: Record<string, unknown> = {};
     for (const key of Object.keys(effectiveSchema)) {
-      if (metadata[key] != null) {
-        templateMetadata[key] = coerceMetadataValue(metadata[key], effectiveSchema[key]);
+      const v = metadata[key];
+      if (v !== null && v !== undefined && v !== '') {
+        templateMetadata[key] = coerceMetadataValue(v, effectiveSchema[key]);
+      } else {
+        templateMetadata[key] = null;
       }
     }
 
@@ -422,6 +434,7 @@ function MetadataTab({ document }: { document: Document }) {
         </div>
         {isEditingTitle ? (
           <Input
+            // oxlint-disable-next-line jsx-a11y/no-autofocus -- intentional focus for inline edit
             autoFocus
             value={title}
             onChange={(e) => setTitle(e.target.value)}
@@ -454,6 +467,7 @@ function MetadataTab({ document }: { document: Document }) {
         </div>
         {isEditingDescription ? (
           <Textarea
+            // oxlint-disable-next-line jsx-a11y/no-autofocus -- intentional focus for inline edit
             autoFocus
             value={description}
             onChange={(e) => setDescription(e.target.value)}
@@ -482,7 +496,7 @@ function MetadataTab({ document }: { document: Document }) {
           <SectionLabel>Metadata</SectionLabel>
           <div className="mt-2 rounded-lg border">
             <div
-              className={`${TABLE_GRID} border-b py-2 text-2xs font-semibold uppercase tracking-widest text-muted-foreground`}
+              className={`${TABLE_GRID} text-2xs text-muted-foreground border-b py-2 font-semibold tracking-widest uppercase`}
             >
               <span>Field</span>
               <span>Value</span>
@@ -506,7 +520,7 @@ function MetadataTab({ document }: { document: Document }) {
           </div>
         </div>
       ) : (
-        <p className="text-sm text-muted-foreground">No metadata template assigned to this sync source.</p>
+        <p className="text-muted-foreground text-sm">No metadata template assigned to this sync source.</p>
       )}
 
       <Button onClick={handleSave} disabled={!hasChanges || updateMutation.isPending} className="w-full">
@@ -520,6 +534,21 @@ function MetadataTab({ document }: { document: Document }) {
 // =============================================================================
 // Template Field Row
 // =============================================================================
+
+function FieldLabel({ fieldKey, fieldDef }: { fieldKey: string; fieldDef: MetadataFieldDefinition }) {
+  return (
+    <div>
+      <span className="inline-flex items-center gap-1 text-sm font-medium">
+        {fieldKey}
+        {fieldDef.required && '*'}
+        <FieldBadgePopover name={fieldKey} field={fieldDef as never}>
+          <InfoIcon className="text-muted-foreground hover:text-foreground size-3 cursor-help transition-colors" />
+        </FieldBadgePopover>
+      </span>
+      {fieldDef.description && <p className="text-muted-foreground mt-0.5 text-xs">{fieldDef.description}</p>}
+    </div>
+  );
+}
 
 function TemplateFieldRow({
   fieldKey,
@@ -556,19 +585,13 @@ function TemplateFieldRow({
   if (fieldDef.type === 'boolean') {
     return (
       <div className={`${TABLE_GRID} border-b py-2.5 last:border-b-0`}>
-        <div>
-          <span className="text-sm font-medium">
-            {fieldKey}
-            {fieldDef.required && '*'}
-          </span>
-          {fieldDef.description && <p className="mt-0.5 text-xs text-muted-foreground">{fieldDef.description}</p>}
-        </div>
+        <FieldLabel fieldKey={fieldKey} fieldDef={fieldDef} />
         <div className="flex items-center gap-2">
           <Checkbox
             checked={value === 'true'}
             onCheckedChange={(checked: boolean | 'indeterminate') => onChange(checked === true ? 'true' : 'false')}
           />
-          <span className="text-sm text-muted-foreground">{value === 'true' ? 'Yes' : 'No'}</span>
+          <span className="text-muted-foreground text-sm">{value === 'true' ? 'Yes' : 'No'}</span>
         </div>
         <span />
       </div>
@@ -579,18 +602,17 @@ function TemplateFieldRow({
   if (fieldDef.allowedValues && fieldDef.allowedValues.length > 0) {
     return (
       <div className={`${TABLE_GRID} border-b py-2.5 last:border-b-0`}>
-        <div>
-          <span className="text-sm font-medium">
-            {fieldKey}
-            {fieldDef.required && '*'}
-          </span>
-          {fieldDef.description && <p className="mt-0.5 text-xs text-muted-foreground">{fieldDef.description}</p>}
-        </div>
-        <Select value={value ?? ''} onValueChange={(v: string) => onChange(v)}>
+        <FieldLabel fieldKey={fieldKey} fieldDef={fieldDef} />
+        <Select value={value ?? '__none__'} onValueChange={(v: string) => onChange(v === '__none__' ? '' : v)}>
           <SelectTrigger className="h-8 text-sm">
             <SelectValue placeholder="Select..." />
           </SelectTrigger>
           <SelectContent>
+            {!fieldDef.required && (
+              <SelectItem value="__none__">
+                <span className="text-muted-foreground">&mdash;</span>
+              </SelectItem>
+            )}
             {fieldDef.allowedValues.map((av) => (
               <SelectItem key={String(av)} value={String(av)}>
                 {String(av)}
@@ -606,13 +628,7 @@ function TemplateFieldRow({
   // Default: click-to-edit text input
   return (
     <div className={`${TABLE_GRID} border-b py-2.5 last:border-b-0`}>
-      <div>
-        <span className="text-sm font-medium">
-          {fieldKey}
-          {fieldDef.required && '*'}
-        </span>
-        {fieldDef.description && <p className="mt-0.5 text-xs text-muted-foreground">{fieldDef.description}</p>}
-      </div>
+      <FieldLabel fieldKey={fieldKey} fieldDef={fieldDef} />
       {isEditing ? (
         <Input
           ref={inputRef}
@@ -630,7 +646,12 @@ function TemplateFieldRow({
         </button>
       )}
       <div className="flex justify-center">
-        {!isEditing && (
+        {!isEditing && value && (
+          <Button variant="ghost" size="icon-sm" onClick={() => onChange('')}>
+            <XIcon className="size-3" />
+          </Button>
+        )}
+        {!isEditing && !value && (
           <Button variant="ghost" size="icon-sm" onClick={onStartEdit}>
             <PencilIcon className="size-3" />
           </Button>
@@ -696,7 +717,7 @@ function ContentTab({ documentId, mimeType }: { documentId: string; mimeType: st
   }
 
   if (!fullText) {
-    return <p className="text-sm text-muted-foreground">No content available.</p>;
+    return <p className="text-muted-foreground text-sm">No content available.</p>;
   }
 
   return (

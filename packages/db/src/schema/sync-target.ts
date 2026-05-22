@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { boolean, index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+
 import { metadataTemplates } from './metadata-template';
 
 export const syncTargets = pgTable(

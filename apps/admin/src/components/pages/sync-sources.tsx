@@ -3,50 +3,23 @@ import { Link, useNavigate } from '@tanstack/react-router';
 import type { ColumnDef } from '@typhoon/ui';
 import { apiFetch, Button, DataTable, EmptyState, LoadingSpinner, PageHeader, StatusBadge } from '@typhoon/ui';
 import { FolderSyncIcon, PlusIcon } from 'lucide-react';
+import { useMemo } from 'react';
+
 import { usePageTitle } from '../../hooks/use-page-title';
+import type { SourceDefinition } from './sync-source-create';
 import type { SyncTarget } from './sync-source-detail/shared';
 import { formatConfig } from './sync-source-detail/shared';
 
-const columns: ColumnDef<SyncTarget, unknown>[] = [
-  {
-    accessorKey: 'name',
-    header: 'Name',
-    cell: ({ row }) => (
-      <div>
-        <div className="font-medium">{row.original.name}</div>
-        <div className="text-xs text-muted-foreground">{row.original.sourceType}</div>
-      </div>
-    ),
-  },
-  {
-    accessorKey: 'isActive',
-    header: 'Status',
-    cell: ({ row }) => (
-      <StatusBadge variant={row.original.isActive ? 'success' : 'pending'}>
-        {row.original.isActive ? 'Active' : 'Inactive'}
-      </StatusBadge>
-    ),
-  },
-  {
-    id: 'path',
-    header: 'Path',
-    cell: ({ row }) => (
-      <span className="text-sm text-muted-foreground">
-        {formatConfig(row.original.sourceType, row.original.config)}
-      </span>
-    ),
-  },
-  {
-    accessorKey: 'cronSchedule',
-    header: 'Schedule',
-    cell: ({ row }) => <span className="text-sm text-muted-foreground">{row.original.cronSchedule}</span>,
-  },
-  {
-    accessorKey: 'managedBy',
-    header: 'Managed',
-    cell: ({ row }) => <span className="text-sm text-muted-foreground">{row.original.managedBy ?? '\u2014'}</span>,
-  },
-];
+function useSourceBucketMap(sources: SourceDefinition[] | undefined) {
+  return useMemo(() => {
+    const map = new Map<string, string>();
+    for (const s of sources ?? []) {
+      const bucket = s.config?.bucket;
+      if (typeof bucket === 'string') map.set(s.name, bucket);
+    }
+    return map;
+  }, [sources]);
+}
 
 export function SyncSourcesPage() {
   usePageTitle('Sources');
@@ -56,6 +29,57 @@ export function SyncSourcesPage() {
     queryKey: ['sync-targets'],
     queryFn: () => apiFetch('/api/v1/sync-targets'),
   });
+
+  const { data: sources } = useQuery<SourceDefinition[]>({
+    queryKey: ['sources'],
+    queryFn: () => apiFetch('/api/v1/sources'),
+  });
+
+  const bucketMap = useSourceBucketMap(sources);
+
+  const columns: ColumnDef<SyncTarget, unknown>[] = useMemo(
+    () => [
+      {
+        accessorKey: 'name',
+        header: 'Name',
+        cell: ({ row }) => (
+          <div>
+            <div className="font-medium">{row.original.name}</div>
+            <div className="text-muted-foreground text-xs">{row.original.sourceType}</div>
+          </div>
+        ),
+      },
+      {
+        accessorKey: 'isActive',
+        header: 'Status',
+        cell: ({ row }) => (
+          <StatusBadge variant={row.original.isActive ? 'success' : 'pending'}>
+            {row.original.isActive ? 'Active' : 'Inactive'}
+          </StatusBadge>
+        ),
+      },
+      {
+        id: 'path',
+        header: 'Path',
+        cell: ({ row }) => (
+          <span className="text-muted-foreground text-sm">
+            {formatConfig(row.original.sourceType, row.original.config, bucketMap.get(row.original.source ?? ''))}
+          </span>
+        ),
+      },
+      {
+        accessorKey: 'cronSchedule',
+        header: 'Schedule',
+        cell: ({ row }) => <span className="text-muted-foreground text-sm">{row.original.cronSchedule}</span>,
+      },
+      {
+        accessorKey: 'managedBy',
+        header: 'Managed',
+        cell: ({ row }) => <span className="text-muted-foreground text-sm">{row.original.managedBy ?? '\u2014'}</span>,
+      },
+    ],
+    [bucketMap],
+  );
 
   return (
     <div className="overflow-y-auto p-4 sm:p-6 md:p-8">

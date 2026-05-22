@@ -1,12 +1,4 @@
-export {
-  account,
-  accountRelations,
-  apikey,
-  session,
-  sessionRelations,
-  user,
-  userRelations,
-} from './auth';
+export { account, accountRelations, apikey, session, sessionRelations, user, userRelations } from './auth';
 export { skillBlobs } from './blobs';
 export { datasetItems, datasets, datasetVersions } from './datasets';
 export { documentStatusEnum, documents } from './document';

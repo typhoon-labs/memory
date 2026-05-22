@@ -1,5 +1,6 @@
 export type {
   AuthEnv,
+  AwsEnv,
   DatabaseEnv,
   EmbeddingEnv,
   Env,
@@ -15,9 +16,11 @@ export type {
 } from './env';
 export {
   authSchema,
+  awsSchema,
   databaseSchema,
   embeddingSchema,
   envSchema,
+  isRedisCluster,
   isScoringEnabled,
   llmSchema,
   logSchema,

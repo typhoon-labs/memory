@@ -18,6 +18,7 @@ import {
   Select,
   SelectContent,
   SelectItem,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
   Sheet,
@@ -36,6 +37,7 @@ import {
   TooltipTrigger,
 } from '@typhoon/ui';
 import {
+  AlertTriangleIcon,
   ArchiveIcon,
   ChevronRightIcon,
   ChevronsDownUpIcon,
@@ -48,7 +50,8 @@ import {
   SaveIcon,
   TrashIcon,
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+
 import { detailTitle, usePageTitle } from '../../hooks/use-page-title';
 
 const SCORER_TYPES = [
@@ -71,7 +74,7 @@ function extractModelId(model: Record<string, unknown> | null): string {
 /** Get a short display label from a model ID (last segment after /). */
 function modelLabel(id: string): string {
   const parts = id.split('/');
-  return parts[parts.length - 1];
+  return parts.at(-1) ?? id;
 }
 
 const STATUS_VARIANT: Record<string, 'success' | 'pending' | 'warning'> = {
@@ -129,6 +132,9 @@ export function ScorerDetailPage() {
   const [formModel, setFormModel] = useState('');
   const [formScoreMin, setFormScoreMin] = useState('0');
   const [formScoreMax, setFormScoreMax] = useState('1');
+
+  // Skip form reset after saving a new version (the query refetch would otherwise revert to the active version)
+  const skipNextFormReset = useRef(false);
 
   // Save version dialog
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
@@ -192,6 +198,10 @@ export function ScorerDetailPage() {
   // Populate form when data loads
   useEffect(() => {
     if (scorer) {
+      if (skipNextFormReset.current) {
+        skipNextFormReset.current = false;
+        return;
+      }
       setFormName(scorer.name ?? '');
       setFormType(scorer.type ?? 'faithfulness');
       setFormDescription(scorer.description ?? '');
@@ -220,6 +230,7 @@ export function ScorerDetailPage() {
       });
     },
     onSuccess: () => {
+      skipNextFormReset.current = true;
       queryClient.invalidateQueries({ queryKey: ['admin-scorer', scorerId] });
       queryClient.invalidateQueries({ queryKey: ['admin-scorer-versions', scorerId] });
       setSaveDialogOpen(false);
@@ -298,7 +309,7 @@ export function ScorerDetailPage() {
   }
 
   if (!scorer) {
-    return <div className="p-8 text-center text-muted-foreground">Scorer not found</div>;
+    return <div className="text-muted-foreground p-8 text-center">Scorer not found</div>;
   }
 
   const versions = versionsData?.versions ?? [];
@@ -309,13 +320,13 @@ export function ScorerDetailPage() {
         <PageHeader
           title={
             <span className="flex items-center gap-1.5">
-              <Link to="/scorers" className="text-muted-foreground transition-colors hover:text-foreground">
+              <Link to="/scorers" className="text-muted-foreground hover:text-foreground transition-colors">
                 Scorers
               </Link>
-              <ChevronRightIcon className="size-3.5 text-muted-foreground/50" />
+              <ChevronRightIcon className="text-muted-foreground/50 size-3.5" />
               {scorer.name ?? 'Unnamed Scorer'}
-              {scorer.versionNumber != null && (
-                <span className="rounded-full bg-muted px-1.5 py-0.5 text-2xs font-medium text-muted-foreground">
+              {scorer.versionNumber !== null && scorer.versionNumber !== undefined && (
+                <span className="bg-muted text-2xs text-muted-foreground rounded-full px-1.5 py-0.5 font-medium">
                   v{scorer.versionNumber}
                 </span>
               )}
@@ -352,7 +363,7 @@ export function ScorerDetailPage() {
                   <DialogHeader>
                     <DialogTitle>Delete Scorer</DialogTitle>
                   </DialogHeader>
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-muted-foreground text-sm">
                     This will permanently delete the scorer and all its versions. This action cannot be undone.
                   </p>
                   <DialogFooter>
@@ -422,7 +433,7 @@ export function ScorerDetailPage() {
             <div className="space-y-5">
               <div>
                 <h2 className="text-sm font-semibold">Details</h2>
-                <p className="mt-0.5 text-sm text-muted-foreground">
+                <p className="text-muted-foreground mt-0.5 text-sm">
                   Configure the scorer name, type, and evaluation criteria.
                 </p>
               </div>
@@ -476,14 +487,34 @@ export function ScorerDetailPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="__default__">Default ({modelLabel(defaultModel)})</SelectItem>
-                    {availableModels.map((m) => (
-                      <SelectItem key={m} value={m}>
-                        {modelLabel(m)}
-                      </SelectItem>
-                    ))}
+                    <SelectItem value="__default__">
+                      System default{defaultModel ? ` (${modelLabel(defaultModel)})` : ''}
+                    </SelectItem>
+                    {availableModels.length > 0 && (
+                      <>
+                        <SelectSeparator />
+                        {availableModels.map((m) => (
+                          <SelectItem key={m} value={m}>
+                            {modelLabel(m)}
+                          </SelectItem>
+                        ))}
+                      </>
+                    )}
+                    {formModel && !availableModels.includes(formModel) && (
+                      <>
+                        {availableModels.length === 0 && <SelectSeparator />}
+                        <SelectItem value={formModel}>{modelLabel(formModel)} (unavailable)</SelectItem>
+                      </>
+                    )}
                   </SelectContent>
                 </Select>
+                {formModel && !availableModels.includes(formModel) && (
+                  <p className="mt-1 flex items-center gap-1.5 text-xs text-amber-400">
+                    <AlertTriangleIcon className="size-3.5 shrink-0" />
+                    This model is no longer in the approved list. It will continue to work until removed from the
+                    provider.
+                  </p>
+                )}
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label>Score Range</Label>
@@ -496,7 +527,7 @@ export function ScorerDetailPage() {
                     className="w-20"
                     placeholder="Min"
                   />
-                  <span className="text-sm text-muted-foreground">&ndash;</span>
+                  <span className="text-muted-foreground text-sm">&ndash;</span>
                   <Input
                     id="edit-score-max"
                     type="number"
@@ -545,7 +576,7 @@ export function ScorerDetailPage() {
 
           <TabsContent value="versions" className="mt-4">
             {versions.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No versions yet.</p>
+              <p className="text-muted-foreground text-sm">No versions yet.</p>
             ) : (
               <div className="relative">
                 {versions.map((v, idx) => {
@@ -555,14 +586,14 @@ export function ScorerDetailPage() {
                   return (
                     <div key={v.id} className="flex gap-4 pb-6 last:pb-0">
                       {/* Left: time label — h-8 matches Button size="sm" */}
-                      <div className="flex h-8 w-16 shrink-0 items-center justify-end text-xs text-muted-foreground">
+                      <div className="text-muted-foreground flex h-8 w-16 shrink-0 items-center justify-end text-xs">
                         {formatRelativeTime(v.createdAt)}
                       </div>
 
                       {/* Center: dot + connector line */}
                       <div className="relative flex w-3 shrink-0 justify-center">
                         {idx > 0 && (
-                          <div className="absolute bottom-full left-1/2 h-6 w-px -translate-x-1/2 bg-border" />
+                          <div className="bg-border absolute bottom-full left-1/2 h-6 w-px -translate-x-1/2" />
                         )}
                         <div className="flex h-8 items-center">
                           <div
@@ -572,7 +603,7 @@ export function ScorerDetailPage() {
                           />
                         </div>
                         {!isLast && (
-                          <div className="absolute top-8 bottom-0 left-1/2 w-px -translate-x-1/2 bg-border" />
+                          <div className="bg-border absolute top-8 bottom-0 left-1/2 w-px -translate-x-1/2" />
                         )}
                       </div>
 
@@ -708,7 +739,7 @@ function PreviewPanel({
           </>
         )}
       </Button>
-      {isError && errorMessage && <span className="text-sm text-destructive">{errorMessage}</span>}
+      {isError && errorMessage && <span className="text-destructive text-sm">{errorMessage}</span>}
 
       {/* Result */}
       {result && (
@@ -823,7 +854,6 @@ function VersionEntry({
   publishPending: boolean;
 }) {
   const [localOpen, setLocalOpen] = useState<boolean | null>(null);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reset local override when global toggle changes
   useEffect(() => setLocalOpen(null), [globalExpanded]);
   const open = localOpen ?? globalExpanded;
 
@@ -836,8 +866,8 @@ function VersionEntry({
           onClick={() => setLocalOpen(!open)}
           className="flex min-w-0 flex-1 items-center gap-2 text-left"
         >
-          <span className="shrink-0 tabular-nums text-sm font-medium">v{v.versionNumber}</span>
-          {v.changeMessage && <span className="truncate text-sm text-muted-foreground">{v.changeMessage}</span>}
+          <span className="shrink-0 text-sm font-medium tabular-nums">v{v.versionNumber}</span>
+          {v.changeMessage && <span className="text-muted-foreground truncate text-sm">{v.changeMessage}</span>}
         </button>
         {!isActive && (
           <div className="flex shrink-0 items-center gap-1">
@@ -866,13 +896,13 @@ function VersionContent({ version: v, prev }: { version: Version; prev: Version 
   return (
     <div className="space-y-2">
       <div>
-        <p className="text-2xs font-medium text-muted-foreground">Type</p>
+        <p className="text-2xs text-muted-foreground font-medium">Type</p>
         <p className="mt-0.5 text-xs">
           <DiffText value={v.type} prevValue={prev?.type} />
         </p>
       </div>
       <div>
-        <p className="text-2xs font-medium text-muted-foreground">Score Range</p>
+        <p className="text-2xs text-muted-foreground font-medium">Score Range</p>
         <p className="mt-0.5 text-xs">
           <DiffText
             value={fmtVal(v.scoreRange, 'scoreRange') || '0 \u2013 1'}
@@ -882,7 +912,7 @@ function VersionContent({ version: v, prev }: { version: Version; prev: Version 
       </div>
       {(v.description || prev?.description) && (
         <div>
-          <p className="text-2xs font-medium text-muted-foreground">Description</p>
+          <p className="text-2xs text-muted-foreground font-medium">Description</p>
           <p className="mt-0.5 text-xs leading-relaxed">
             <DiffText value={v.description ?? ''} prevValue={prev?.description ?? undefined} />
           </p>
@@ -890,15 +920,15 @@ function VersionContent({ version: v, prev }: { version: Version; prev: Version 
       )}
       {(v.instructions || prev?.instructions) && (
         <div>
-          <p className="text-2xs font-medium text-muted-foreground">Instructions</p>
-          <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+          <p className="text-2xs text-muted-foreground font-medium">Instructions</p>
+          <p className="text-muted-foreground mt-0.5 text-xs leading-relaxed">
             <DiffText value={v.instructions ?? ''} prevValue={prev?.instructions ?? undefined} />
           </p>
         </div>
       )}
       {(v.model || prev?.model) && (
         <div>
-          <p className="text-2xs font-medium text-muted-foreground">Model</p>
+          <p className="text-2xs text-muted-foreground font-medium">Model</p>
           <p className="mt-0.5 text-xs">
             <DiffText
               value={fmtVal(v.model, 'model')}
@@ -912,7 +942,7 @@ function VersionContent({ version: v, prev }: { version: Version; prev: Version 
 }
 
 function fmtVal(val: unknown, key?: string): string {
-  if (val == null) return '';
+  if (val === null || val === undefined) return '';
   if (typeof val === 'string') return val;
   if (key === 'scoreRange' && typeof val === 'object') {
     const r = val as { min?: number; max?: number };

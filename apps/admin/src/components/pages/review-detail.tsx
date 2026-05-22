@@ -15,6 +15,7 @@ import {
 } from '@typhoon/ui';
 import { ActivityIcon, ChevronRightIcon, MessageSquareIcon } from 'lucide-react';
 import { useCallback, useMemo, useRef, useState } from 'react';
+
 import { detailTitle, usePageTitle } from '../../hooks/use-page-title';
 import { MessageTimeline } from './review-detail/message-timeline';
 import type { ReviewDetailResponse } from './review-detail/shared';
@@ -33,10 +34,10 @@ function Header({ data, messageCount }: { data: ReviewDetailResponse; messageCou
         <PageHeader
           title={
             <span className="flex items-center gap-1.5">
-              <Link to="/reviews" className="text-muted-foreground transition-colors hover:text-foreground">
+              <Link to="/reviews" className="text-muted-foreground hover:text-foreground transition-colors">
                 Reviews
               </Link>
-              <ChevronRightIcon className="size-3.5 text-muted-foreground/50" />
+              <ChevronRightIcon className="text-muted-foreground/50 size-3.5" />
               {data.title || `Thread ${data.id.slice(0, 12)}`}
             </span>
           }

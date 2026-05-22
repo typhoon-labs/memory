@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+
 import { emitToolProgress, withProgress } from './with-progress';
 
 function makeContext(toolCallId?: string) {
@@ -30,8 +31,7 @@ describe('emitToolProgress', () => {
   });
 
   it('no-ops when context is undefined', async () => {
-    await emitToolProgress(undefined, 'msg');
-    // No error thrown
+    await expect(emitToolProgress(undefined, 'msg')).resolves.not.toThrow();
   });
 
   it('no-ops when toolCallId is missing', async () => {
@@ -42,8 +42,7 @@ describe('emitToolProgress', () => {
 
   it('no-ops when writer is missing', async () => {
     const ctx = { agent: { toolCallId: 'tc-1' } };
-    await emitToolProgress(ctx as never, 'msg');
-    // No error thrown
+    await expect(emitToolProgress(ctx as never, 'msg')).resolves.not.toThrow();
   });
 });
 
@@ -51,7 +50,7 @@ describe('withProgress', () => {
   it('emits start message before execution', async () => {
     const callOrder: string[] = [];
     const inner = {
-      execute: vi.fn(async () => {
+      execute: vi.fn(async (_input: unknown, _ctx: unknown) => {
         callOrder.push('execute');
         return 'result';
       }),
@@ -71,7 +70,7 @@ describe('withProgress', () => {
   });
 
   it('emits done message on success when done callback provided', async () => {
-    const inner = { execute: vi.fn(async () => ({ count: 5 })) };
+    const inner = { execute: vi.fn(async (_input: unknown, _ctx: unknown) => ({ count: 5 })) };
     const ctx = makeContext('tc-1');
 
     const wrapped = withProgress(inner, {
@@ -89,7 +88,7 @@ describe('withProgress', () => {
   });
 
   it('does not emit done when no done callback', async () => {
-    const inner = { execute: vi.fn(async () => 'result') };
+    const inner = { execute: vi.fn(async (_input: unknown, _ctx: unknown) => 'result') };
     const ctx = makeContext('tc-1');
 
     const wrapped = withProgress(inner, { start: 'Starting...' });
@@ -101,7 +100,7 @@ describe('withProgress', () => {
 
   it('emits failed status and re-throws on error', async () => {
     const inner = {
-      execute: vi.fn(async () => {
+      execute: vi.fn(async (_input: unknown, _ctx: unknown) => {
         throw new Error('boom');
       }),
     };
@@ -119,7 +118,7 @@ describe('withProgress', () => {
 
   it('emits generic message for non-Error throws', async () => {
     const inner = {
-      execute: vi.fn(async () => {
+      execute: vi.fn(async (_input: unknown, _ctx: unknown) => {
         throw 'string error';
       }),
     };
@@ -146,7 +145,7 @@ describe('withProgress', () => {
       id: 'search-tool',
       description: 'Searches the knowledge base',
       inputSchema: { type: 'object' },
-      execute: vi.fn(async () => 'result'),
+      execute: vi.fn(async (_input: unknown, _ctx: unknown) => 'result'),
     };
     const wrapped = withProgress(inner, { start: 'Starting...' });
     expect(wrapped.id).toBe('search-tool');

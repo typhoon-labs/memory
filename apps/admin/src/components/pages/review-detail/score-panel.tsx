@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { apiFetch, cn, MarkdownContent, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@typhoon/ui';
 import { InfoIcon, LoaderIcon } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+
 import type { ReviewScore } from './shared';
 import { computeCategoryAverages, normalizeScoreForAvg, SCORE_THRESHOLDS, SCORER_CATEGORIES } from './shared';
 
@@ -13,7 +14,7 @@ function formatScorerId(id: string): string {
   const threshold = SCORE_THRESHOLDS[id];
   if (threshold) return threshold.label;
   return id
-    .replace(/([A-Z])/g, ' $1')
+    .replaceAll(/([A-Z])/g, ' $1')
     .replace(/^./, (s) => s.toUpperCase())
     .trim();
 }
@@ -50,7 +51,6 @@ export function ScorePanel({ scores, messageCreatedAt }: { scores: ReviewScore[]
   }, [scorersData]);
 
   // Reset selection when scores change (new message selected)
-  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally reset when scores identity changes
   useEffect(() => {
     setSelectedScorer(undefined);
   }, [scores]);
@@ -59,13 +59,13 @@ export function ScorePanel({ scores, messageCreatedAt }: { scores: ReviewScore[]
     const ageMs = Date.now() - new Date(messageCreatedAt).getTime();
     if (ageMs < 60_000) {
       return (
-        <div className="flex items-center gap-1.5 py-4 text-xs text-muted-foreground">
+        <div className="text-muted-foreground flex items-center gap-1.5 py-4 text-xs">
           <LoaderIcon className="size-3 animate-spin" />
           <span>Scoring in progress...</span>
         </div>
       );
     }
-    return <p className="py-4 text-xs text-muted-foreground">No scores available for this message.</p>;
+    return <p className="text-muted-foreground py-4 text-xs">No scores available for this message.</p>;
   }
 
   // Group scores by category
@@ -120,7 +120,7 @@ export function ScorePanel({ scores, messageCreatedAt }: { scores: ReviewScore[]
           {description && (
             <Tooltip>
               <TooltipTrigger asChild>
-                <InfoIcon className="size-3 text-muted-foreground/40 hover:text-muted-foreground" />
+                <InfoIcon className="text-muted-foreground/40 hover:text-muted-foreground size-3" />
               </TooltipTrigger>
               <TooltipContent className="max-w-xs text-xs">{description}</TooltipContent>
             </Tooltip>
@@ -138,11 +138,11 @@ export function ScorePanel({ scores, messageCreatedAt }: { scores: ReviewScore[]
         {responseScores.length > 0 && (
           <div className="mb-3">
             <div className="mb-1 flex items-center justify-between px-2">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+              <span className="text-muted-foreground text-[10px] font-bold tracking-wider uppercase">
                 Response Quality
               </span>
               {avgs.responseAvg !== null && (
-                <span className="flex items-center gap-1 text-[10px] font-bold tabular-nums text-muted-foreground">
+                <span className="text-muted-foreground flex items-center gap-1 text-[10px] font-bold tabular-nums">
                   <span className={cn('size-1.5 rounded-full', avgDotClass(avgs.responseAvg))} />
                   {avgs.responseAvg.toFixed(2)}
                 </span>
@@ -156,21 +156,21 @@ export function ScorePanel({ scores, messageCreatedAt }: { scores: ReviewScore[]
         {retrievalExpected && (
           <div className="mb-3">
             <div className="mb-1 flex items-center justify-between px-2">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+              <span className="text-muted-foreground text-[10px] font-bold tracking-wider uppercase">
                 Retrieval Quality
               </span>
               {avgs.retrievalAvg !== null && (
-                <span className="flex items-center gap-1 text-[10px] font-bold tabular-nums text-muted-foreground">
+                <span className="text-muted-foreground flex items-center gap-1 text-[10px] font-bold tabular-nums">
                   <span className={cn('size-1.5 rounded-full', avgDotClass(avgs.retrievalAvg))} />
                   {avgs.retrievalAvg.toFixed(2)}
                 </span>
               )}
-              {!hasRetrievalScores && <span className="text-[10px] text-muted-foreground/60">N/A</span>}
+              {!hasRetrievalScores && <span className="text-muted-foreground/60 text-[10px]">N/A</span>}
             </div>
             {hasRetrievalScores ? (
               <div className="flex flex-col gap-px">{retrievalScores.map(renderScorerRow)}</div>
             ) : (
-              <p className="px-2 text-[11px] text-muted-foreground/60">No retrieval context</p>
+              <p className="text-muted-foreground/60 px-2 text-[11px]">No retrieval context</p>
             )}
           </div>
         )}
@@ -179,7 +179,7 @@ export function ScorePanel({ scores, messageCreatedAt }: { scores: ReviewScore[]
         {otherScores.length > 0 && (
           <div className="mb-3">
             <div className="mb-1 px-2">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Other</span>
+              <span className="text-muted-foreground text-[10px] font-bold tracking-wider uppercase">Other</span>
             </div>
             <div className="flex flex-col gap-px">{otherScores.map(renderScorerRow)}</div>
           </div>
@@ -189,7 +189,7 @@ export function ScorePanel({ scores, messageCreatedAt }: { scores: ReviewScore[]
       {/* Reasoning */}
       {activeScore?.reason ? (
         <>
-          <div className="my-3 h-px w-full bg-muted-foreground/20" />
+          <div className="bg-muted-foreground/20 my-3 h-px w-full" />
           <div className="min-h-0 flex-1 overflow-y-auto text-sm leading-relaxed">
             <MarkdownContent text={activeScore.reason} />
           </div>
@@ -197,8 +197,8 @@ export function ScorePanel({ scores, messageCreatedAt }: { scores: ReviewScore[]
       ) : (
         activeScore && (
           <>
-            <div className="my-3 h-px w-full bg-muted-foreground/20" />
-            <p className="text-xs text-muted-foreground">No reasoning provided for this scorer.</p>
+            <div className="bg-muted-foreground/20 my-3 h-px w-full" />
+            <p className="text-muted-foreground text-xs">No reasoning provided for this scorer.</p>
           </>
         )
       )}

@@ -28,6 +28,7 @@ import {
 } from '@typhoon/ui';
 import { FlaskConicalIcon, PlayIcon, Trash2Icon } from 'lucide-react';
 import { useCallback, useMemo } from 'react';
+
 import { usePageTitle } from '../../hooks/use-page-title';
 
 // ---------- Types ----------
@@ -93,7 +94,7 @@ export function ExperimentsPage() {
           row.original.name ? (
             <span className="font-medium">{row.original.name}</span>
           ) : (
-            <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{row.original.id.slice(0, 12)}</code>
+            <code className="bg-muted rounded px-1.5 py-0.5 text-xs">{row.original.id.slice(0, 12)}</code>
           ),
       },
       {
@@ -128,7 +129,7 @@ export function ExperimentsPage() {
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button variant="ghost" size="icon" className="-my-1 size-6 rounded" onClick={(e) => e.stopPropagation()}>
-                <Trash2Icon className="size-3 text-muted-foreground" />
+                <Trash2Icon className="text-muted-foreground size-3" />
               </Button>
             </AlertDialogTrigger>
             <AlertDialogContent onClick={(e) => e.stopPropagation()}>

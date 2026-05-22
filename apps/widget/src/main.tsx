@@ -58,14 +58,19 @@ function TyphoonWidget() {
     transport,
   });
 
-  // Detect stalled streams (server dies mid-stream, AI SDK hangs forever)
+  // Detect stalled streams (server dies mid-stream, AI SDK hangs forever).
+  // Uses 60s timeout when a tool call is executing, 15s otherwise.
   const lastActivityRef = useRef(Date.now());
-  const messagesSnapshotRef = useRef(messages.length);
+  const messagesLenRef = useRef(messages.length);
+  const lastContentRef = useRef('');
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
   const [stallError, setStallError] = useState<Error | null>(null);
   useEffect(() => {
-    const snap = messages.at(-1)?.parts?.length ?? 0;
-    if (messages.length !== messagesSnapshotRef.current || snap !== messagesSnapshotRef.current) {
-      messagesSnapshotRef.current = messages.length;
+    const content = messages.at(-1)?.parts?.length?.toString() ?? '';
+    if (messages.length !== messagesLenRef.current || content !== lastContentRef.current) {
+      messagesLenRef.current = messages.length;
+      lastContentRef.current = content;
       lastActivityRef.current = Date.now();
     }
   }, [messages]);
@@ -78,7 +83,16 @@ function TyphoonWidget() {
   useEffect(() => {
     if (status !== 'streaming' && status !== 'submitted') return;
     const interval = setInterval(() => {
-      if (Date.now() - lastActivityRef.current > 15_000) {
+      const last = messagesRef.current.at(-1);
+      const hasPendingTool =
+        last?.role === 'assistant' &&
+        last.parts.some(
+          (p) =>
+            p.type.startsWith('tool-') &&
+            !['output-available', 'output-error', 'output-denied'].includes((p as { state?: string }).state ?? ''),
+        );
+      const timeout = hasPendingTool ? 60_000 : 15_000;
+      if (Date.now() - lastActivityRef.current > timeout) {
         stop();
         setStallError(new Error('Connection lost'));
         clearInterval(interval);
@@ -90,7 +104,6 @@ function TyphoonWidget() {
 
   const isLoading = status === 'submitted' || status === 'streaming';
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: scroll on message count change
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages.length]);
@@ -160,6 +173,7 @@ function TyphoonWidget() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder="Type your question..."
+              aria-label="Type your question"
               className="typhoon-input"
             />
             {isLoading ? (

@@ -22,11 +22,20 @@ export interface MetadataFieldDefinition {
   default?: unknown;
   allowedValues?: unknown[];
   description?: string;
+  searchable?: boolean;
+  searchPriority?: 'critical' | 'high' | 'moderate' | 'standard';
 }
 
 export type MetadataSchema = Record<string, MetadataFieldDefinition>;
 
-const GRID = 'grid grid-cols-[2rem_1fr_8rem_5rem_2rem] items-center gap-2 px-3';
+const SEARCH_WEIGHT_OPTIONS: { value: string; label: string; description: string }[] = [
+  { value: 'critical', label: 'Critical', description: 'Same weight as document title' },
+  { value: 'high', label: 'High', description: 'Same weight as section headings and keywords' },
+  { value: 'moderate', label: 'Moderate', description: 'Default for metadata fields — higher weight than body text' },
+  { value: 'standard', label: 'Standard', description: 'Same weight as body text' },
+];
+
+const GRID = 'grid grid-cols-[2rem_1fr_8rem_5rem_5.5rem_2rem] items-center gap-2 px-3';
 
 export function FieldSchemaEditor({
   fields,
@@ -87,28 +96,35 @@ export function FieldSchemaEditor({
       {hasFields && (
         <>
           <div
-            className={`${GRID} border-b py-2 text-2xs font-semibold uppercase tracking-widest text-muted-foreground`}
+            className={`${GRID} text-2xs text-muted-foreground border-b py-2 font-semibold tracking-widest uppercase`}
           >
             <button
               type="button"
               onClick={toggleAll}
-              className="flex size-5 items-center justify-center rounded hover:bg-muted"
+              className="hover:bg-muted flex size-5 items-center justify-center rounded"
             >
               {allExpanded ? (
-                <ChevronsDownUpIcon className="size-3.5 text-muted-foreground" />
+                <ChevronsDownUpIcon className="text-muted-foreground size-3.5" />
               ) : (
-                <ChevronsUpDownIcon className="size-3.5 text-muted-foreground" />
+                <ChevronsUpDownIcon className="text-muted-foreground size-3.5" />
               )}
             </button>
             <span>Name</span>
             <span>Type</span>
             <span className="text-center">Required</span>
+            <span className="text-center">Searchable</span>
             <span />
           </div>
 
           {entries.map(([name, field]) => {
             const isOpen = expandedFields.has(name);
-            const hasAdvanced = !!(field.description || field.allowedValues?.length || field.default != null);
+            const hasAdvanced = !!(
+              field.description ||
+              field.allowedValues?.length ||
+              (field.default !== null && field.default !== undefined) ||
+              field.searchable === true ||
+              !!field.searchPriority
+            );
             return (
               <Collapsible key={name} open={isOpen} onOpenChange={(open: boolean) => toggleField(name, open)}>
                 <div className="border-b last:border-b-0">
@@ -116,13 +132,13 @@ export function FieldSchemaEditor({
                     <CollapsibleTrigger asChild>
                       <button
                         type="button"
-                        className="relative flex size-5 items-center justify-center rounded hover:bg-muted"
+                        className="hover:bg-muted relative flex size-5 items-center justify-center rounded"
                       >
                         <ChevronDownIcon
-                          className={`size-3.5 text-muted-foreground transition-transform ${isOpen ? 'rotate-0' : '-rotate-90'}`}
+                          className={`text-muted-foreground size-3.5 transition-transform ${isOpen ? 'rotate-0' : '-rotate-90'}`}
                         />
                         {hasAdvanced && !isOpen && (
-                          <span className="absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-primary" />
+                          <span className="bg-primary absolute -top-0.5 -right-0.5 size-1.5 rounded-full" />
                         )}
                       </button>
                     </CollapsibleTrigger>
@@ -154,6 +170,20 @@ export function FieldSchemaEditor({
                       />
                     </div>
 
+                    <div className="flex justify-center">
+                      <Checkbox
+                        id={`field-searchable-col-${name}`}
+                        checked={field.searchable === true || !!field.searchPriority}
+                        onCheckedChange={(checked: boolean | 'indeterminate') => {
+                          if (checked === true) {
+                            updateField(name, { searchable: true });
+                          } else {
+                            updateField(name, { searchable: undefined, searchPriority: undefined });
+                          }
+                        }}
+                      />
+                    </div>
+
                     <Button variant="ghost" size="icon-sm" onClick={() => removeField(name)}>
                       <XIcon className="size-3.5" />
                     </Button>
@@ -172,7 +202,7 @@ export function FieldSchemaEditor({
                       </div>
                       <div className="flex flex-col gap-1.5">
                         <Label>
-                          Allowed Values <span className="font-normal text-muted-foreground">(comma-separated)</span>
+                          Allowed Values <span className="text-muted-foreground font-normal">(comma-separated)</span>
                         </Label>
                         <Textarea
                           placeholder="e.g. US, UK, CA"
@@ -190,13 +220,43 @@ export function FieldSchemaEditor({
                         <Label>Default Value</Label>
                         <Input
                           placeholder="Value when not specified"
-                          value={field.default != null ? String(field.default) : ''}
+                          value={field.default !== null && field.default !== undefined ? String(field.default) : ''}
                           onChange={(e) => {
                             const v = e.target.value;
                             updateField(name, { default: v || undefined });
                           }}
                         />
                       </div>
+                      {(field.searchable === true || !!field.searchPriority) && (
+                        <div className="flex flex-col gap-1.5">
+                          <Label>Search Weight</Label>
+                          <Select
+                            value={field.searchPriority ?? 'moderate'}
+                            onValueChange={(v: string) =>
+                              updateField(name, {
+                                searchPriority:
+                                  v === 'moderate' ? undefined : (v as MetadataFieldDefinition['searchPriority']),
+                              })
+                            }
+                          >
+                            <SelectTrigger className="!h-auto py-2 [&_[data-slot=select-value]]:line-clamp-none">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {SEARCH_WEIGHT_OPTIONS.map((opt) => (
+                                <SelectItem key={opt.value} value={opt.value} className="items-start">
+                                  <span className="flex flex-col gap-0.5 py-0.5 text-left">
+                                    <span className="font-medium">{opt.label}</span>
+                                    <span className="text-muted-foreground text-xs leading-normal">
+                                      {opt.description}
+                                    </span>
+                                  </span>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
                     </div>
                   </CollapsibleContent>
                 </div>

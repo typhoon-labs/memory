@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+
 import { DrizzleMemoryStorage } from './memory';
 import { createTestConnection } from './test-utils';
 
@@ -128,6 +129,7 @@ describe('DrizzleMemoryStorage (integration)', () => {
     it('listThreads with pagination', async () => {
       const userId = crypto.randomUUID();
       for (let i = 0; i < 5; i++) {
+        // oxlint-disable-next-line no-await-in-loop -- test setup: sequential DB seeding
         await storage.saveThread({
           thread: {
             id: crypto.randomUUID(),

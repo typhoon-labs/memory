@@ -1,4 +1,5 @@
 import { index, pgEnum, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+
 import { user } from './auth';
 import { messages } from './messages';
 import { threads } from './threads';

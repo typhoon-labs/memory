@@ -34,7 +34,6 @@
   "devDependencies": {
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
-    "@typhoon/api": "workspace:*",
     "tailwindcss": "^4.2.2"
   },
   "peerDependencies": {

@@ -2,14 +2,16 @@ import { Chat, useChat } from '@ai-sdk/react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { DocumentViewerPanel, TyphoonThread, useStreamStallDetection } from '@typhoon/chat';
-import { ResizableHandle, ResizablePanel, ResizablePanelGroup, useAuth } from '@typhoon/ui';
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup, apiFetch, useAuth } from '@typhoon/ui';
 import type { UIMessage } from 'ai';
 import { DefaultChatTransport } from 'ai';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+
 import { detailTitle, usePageTitle } from '../../hooks/use-page-title';
 import { ThreadSidebar } from '../chat/thread-sidebar';
 import { useFeedback } from '../chat/use-feedback';
 import { type ThreadListResponse, useThread } from '../chat/use-thread';
+import { extractTitleFromMessages, shouldSeedMessages } from './chat-utils';
 
 const TITLE_POLL_INTERVAL = 5_000;
 const TITLE_POLL_MAX_ATTEMPTS = 24;
@@ -32,13 +34,12 @@ export function ChatPage() {
   const viewerTriggerRef = useRef(0);
 
   // Close document viewer and refresh thread data when switching threads
-  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally re-run when threadId changes
   useEffect(() => {
     setViewerDoc(null);
     if (threadId) {
       queryClient.invalidateQueries({ queryKey: ['thread', threadId] });
     }
-  }, [threadId]);
+  }, [threadId, queryClient]);
 
   const userId = user?.id;
 
@@ -93,12 +94,62 @@ export function ChatPage() {
       }),
     );
   }
-  // biome-ignore lint/style/noNonNullAssertion: guaranteed by the block above
+  // oxlint-disable-next-line @typescript-eslint/no-non-null-assertion -- guaranteed by the block above
   const chat = chatMapRef.current.get(chatId)!;
 
   const { messages, sendMessage, status, stop, setMessages, error } = useChat({ chat });
-  const stallError = useStreamStallDetection({ messages, status, stop });
+
+  const { stallError, clearStallError } = useStreamStallDetection({ messages, status, stop });
   const chatError = error ?? stallError;
+
+  // Background recovery: when a stall is detected, poll the server for the
+  // completed response. If found, setMessages triggers a message change which
+  // auto-clears the stall error in the hook. Uses refs for messages to avoid
+  // restarting the poll on every render.
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
+  useEffect(() => {
+    if (!stallError || !threadId) return;
+
+    let cancelled = false;
+    const poll = async () => {
+      const MAX_ATTEMPTS = 12;
+      const POLL_INTERVAL_MS = 5_000;
+      for (let i = 0; i < MAX_ATTEMPTS; i++) {
+        if (cancelled) return;
+        await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+        if (cancelled) return;
+        try {
+          const data = await apiFetch<{ messages: UIMessage[] }>(`/api/v1/threads/${threadId}`);
+          const serverMessages = data.messages ?? [];
+          const currentMessages = messagesRef.current;
+          if (serverMessages.length > currentMessages.length) {
+            setMessages(serverMessages);
+            clearStallError();
+            return;
+          }
+          const serverLast = serverMessages.at(-1);
+          const clientLast = currentMessages.at(-1);
+          if (
+            serverLast &&
+            clientLast &&
+            serverLast.role === 'assistant' &&
+            serverLast.parts.length > clientLast.parts.length
+          ) {
+            setMessages(serverMessages);
+            clearStallError();
+            return;
+          }
+        } catch {
+          return;
+        }
+      }
+    };
+    poll();
+    return () => {
+      cancelled = true;
+    };
+  }, [stallError, threadId, setMessages, clearStallError]);
 
   useEffect(() => {
     if (chatError) console.error('[useChat error]', chatError);
@@ -110,24 +161,13 @@ export function ChatPage() {
   useEffect(() => {
     if (!threadId || titleRefreshedRef.current.has(threadId)) return;
 
-    for (const m of messages) {
-      for (const p of m.parts ?? []) {
-        const isMatch =
-          (p.type === 'tool-setThreadTitle' ||
-            ((p as { type: string; toolName?: string }).toolName === 'setThreadTitle' && p.type === 'dynamic-tool')) &&
-          (p as { state?: string }).state === 'output-available';
-        if (!isMatch) continue;
+    const title = extractTitleFromMessages(messages);
+    if (!title) return;
 
-        const title = (p as { output?: { title?: string } }).output?.title;
-        if (!title) continue;
-
-        titleRefreshedRef.current.add(threadId);
-        queryClient.setQueryData<ThreadListResponse>(['threads'], (old) =>
-          old ? { ...old, threads: old.threads.map((t) => (t.id === threadId ? { ...t, title } : t)) } : old,
-        );
-        return;
-      }
-    }
+    titleRefreshedRef.current.add(threadId);
+    queryClient.setQueryData<ThreadListResponse>(['threads'], (old) =>
+      old ? { ...old, threads: old.threads.map((t) => (t.id === threadId ? { ...t, title } : t)) } : old,
+    );
   }, [messages, threadId, queryClient]);
 
   // Seed messages from server when a Chat was created with empty initial data
@@ -138,21 +178,17 @@ export function ChatPage() {
     const current = threadId ?? null;
     if (seededThreadRef.current === current) return;
 
-    // Chat from Map already has messages — don't overwrite with server data
-    if (messages.length > 0) {
-      seededThreadRef.current = current;
+    const alreadySeeded = false; // seededThreadRef guards re-entry per thread
+    if (!shouldSeedMessages(messages.length, initialMessages, status, alreadySeeded)) {
+      // Mark as seeded when chat has messages or is streaming, to prevent re-entry
+      if (messages.length > 0 || status === 'streaming' || status === 'submitted') {
+        seededThreadRef.current = current;
+      }
       return;
     }
 
-    if (status === 'streaming' || status === 'submitted') {
-      seededThreadRef.current = current;
-      return;
-    }
-
-    if (initialMessages.length > 0) {
-      setMessages(initialMessages);
-      seededThreadRef.current = current;
-    }
+    setMessages(initialMessages);
+    seededThreadRef.current = current;
   }, [threadId, status, initialMessages, setMessages, messages.length]);
 
   // Send pending message after auto-creation redirect

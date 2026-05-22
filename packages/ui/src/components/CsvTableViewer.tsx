@@ -56,7 +56,7 @@ export function normalizeRows(rows: string[][]): string[][] {
 // ── Search highlighting ────────────────────────────────────────
 
 function escapeRegex(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return str.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function highlightText(text: string, terms: string[]): React.ReactNode {
@@ -65,11 +65,10 @@ function highlightText(text: string, terms: string[]): React.ReactNode {
   const nodes: React.ReactNode[] = [];
   let lastIndex = 0;
   let m: RegExpExecArray | null;
-  // biome-ignore lint/suspicious/noAssignInExpressions: standard regex exec loop
   while ((m = pattern.exec(text)) !== null) {
     if (m.index > lastIndex) nodes.push(text.slice(lastIndex, m.index));
     nodes.push(
-      <mark key={`h${m.index}`} className="search-match rounded-sm bg-primary/10 text-inherit">
+      <mark key={`h${m.index}`} className="search-match bg-primary/10 rounded-sm text-inherit">
         {m[0]}
       </mark>,
     );
@@ -88,15 +87,15 @@ function CsvSheet({ rows, searchTerms }: { rows: string[][]; searchTerms: string
   const [header, ...body] = normalized;
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-border">
+    <div className="border-border overflow-x-auto rounded-lg border">
       <table className="w-full border-collapse text-sm">
         <thead className="bg-muted">
           <tr>
             {header.map((cell, i) => (
               <th
-                // biome-ignore lint/suspicious/noArrayIndexKey: static CSV columns don't reorder
+                // oxlint-disable-next-line react/no-array-index-key -- static CSV columns don't reorder
                 key={i}
-                className="whitespace-nowrap border-r border-border px-4 py-2 text-left text-[0.8125rem] font-semibold last:border-r-0"
+                className="border-border border-r px-4 py-2 text-left text-[0.8125rem] font-semibold whitespace-nowrap last:border-r-0"
               >
                 {highlightText(cell, searchTerms)}
               </th>
@@ -105,11 +104,11 @@ function CsvSheet({ rows, searchTerms }: { rows: string[][]; searchTerms: string
         </thead>
         <tbody>
           {body.map((row, ri) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: static CSV rows don't reorder
+            // oxlint-disable-next-line react/no-array-index-key -- static CSV rows don't reorder
             <tr key={ri}>
               {row.map((cell, ci) => (
-                // biome-ignore lint/suspicious/noArrayIndexKey: static CSV cells don't reorder
-                <td key={ci} className="border-t border-r border-border px-4 py-2 text-sm last:border-r-0">
+                // oxlint-disable-next-line react/no-array-index-key -- static CSV cells don't reorder
+                <td key={ci} className="border-border border-t border-r px-4 py-2 text-sm last:border-r-0">
                   {highlightText(cell, searchTerms)}
                 </td>
               ))}
@@ -128,7 +127,6 @@ export function CsvTableViewer({ text, searchTerms = [] }: { text: string; searc
     const sheetMarker = /^## Sheet: (.+)$/gm;
     const markers: { name: string; markerIndex: number; dataStart: number }[] = [];
     let match: RegExpExecArray | null;
-    // biome-ignore lint/suspicious/noAssignInExpressions: standard regex exec loop
     while ((match = sheetMarker.exec(text)) !== null) {
       markers.push({
         name: match[1],
@@ -151,7 +149,7 @@ export function CsvTableViewer({ text, searchTerms = [] }: { text: string; searc
   return (
     <div className="space-y-6">
       {sheets.map((sheet, i) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: static sheet list doesn't reorder
+        // oxlint-disable-next-line react/no-array-index-key -- static sheet list doesn't reorder
         <div key={i}>
           {sheet.name && <h2 className="mb-2 text-base font-semibold">{sheet.name}</h2>}
           <CsvSheet rows={sheet.rows} searchTerms={searchTerms} />

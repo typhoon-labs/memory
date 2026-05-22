@@ -1,6 +1,7 @@
 import type { ChatMessage } from '@typhoon/chat';
 import { ChatConfigProvider, TyphoonMessage } from '@typhoon/chat';
 import { useMemo } from 'react';
+
 import { ReviewPanel } from './review-panel';
 import type { FeedbackEntry, ReviewScore } from './shared';
 
@@ -41,21 +42,21 @@ export function MessageTimeline({
 
   return (
     <ChatConfigProvider config={{ onDocumentOpen, onFeedback: noop, feedbackState, feedbackReadOnly: true }}>
-      <div className="[&_hr]:hidden [&_[data-role]]:mb-0">
+      <div className="[&_[data-role]]:mb-0 [&_hr]:hidden">
         {messages.map((msg) => {
           const isAssistant = msg.role === 'assistant';
           const scores = isAssistant ? (scoresByMessage[msg.id] ?? []) : [];
 
           if (isAssistant) {
             return (
-              <div key={msg.id} className="border-b border-border py-6">
+              <div key={msg.id} className="border-border border-b py-6">
                 <div className="flex flex-col gap-6 lg:flex-row">
                   {/* Left: message — max-w matches desk TyphoonThread */}
-                  <div className="min-w-0 max-w-[720px] flex-1">
+                  <div className="max-w-[720px] min-w-0 flex-1">
                     <TyphoonMessage message={msg} isStreaming={false} />
                   </div>
                   {/* Right: scores + annotation */}
-                  <div className="w-full lg:w-[300px] lg:shrink-0 lg:border-l lg:border-border lg:pl-6">
+                  <div className="lg:border-border w-full lg:w-[300px] lg:shrink-0 lg:border-l lg:pl-6">
                     <div className="lg:sticky lg:top-4">
                       <ReviewPanel threadId={threadId} message={msg} scores={scores} />
                     </div>
@@ -66,9 +67,9 @@ export function MessageTimeline({
           }
 
           return (
-            <div key={msg.id} className="border-b border-border py-6">
+            <div key={msg.id} className="border-border border-b py-6">
               <div className="flex flex-col gap-6 lg:flex-row">
-                <div className="min-w-0 max-w-[720px] flex-1">
+                <div className="max-w-[720px] min-w-0 flex-1">
                   <TyphoonMessage message={msg} isStreaming={false} />
                 </div>
                 <div className="hidden lg:block lg:w-[300px] lg:shrink-0" />

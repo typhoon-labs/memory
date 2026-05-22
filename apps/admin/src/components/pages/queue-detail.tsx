@@ -17,6 +17,7 @@ import {
   TabsTrigger,
 } from '@typhoon/ui';
 import { ChevronRightIcon, PauseIcon, PlayIcon } from 'lucide-react';
+
 import { detailTitle, usePageTitle } from '../../hooks/use-page-title';
 import { FailedJobsTab } from './queue-detail/failed-jobs-tab';
 import { JobsTab } from './queue-detail/jobs-tab';
@@ -67,7 +68,7 @@ export function QueueDetailPage() {
   }
 
   if (!queue) {
-    return <div className="p-8 text-center text-muted-foreground">Queue not found.</div>;
+    return <div className="text-muted-foreground p-8 text-center">Queue not found.</div>;
   }
 
   return (
@@ -76,10 +77,10 @@ export function QueueDetailPage() {
         <PageHeader
           title={
             <span className="flex items-center gap-1.5">
-              <Link to="/queues" className="text-muted-foreground transition-colors hover:text-foreground">
+              <Link to="/queues" className="text-muted-foreground hover:text-foreground transition-colors">
                 Queues
               </Link>
-              <ChevronRightIcon className="size-3.5 text-muted-foreground/50" />
+              <ChevronRightIcon className="text-muted-foreground/50 size-3.5" />
               {queue.name}
             </span>
           }

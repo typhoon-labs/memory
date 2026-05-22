@@ -3,6 +3,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { apiFetch } from '@typhoon/ui';
 import { PanelLeftIcon, XIcon } from 'lucide-react';
 import { useState } from 'react';
+
 import { useThreads } from './use-thread';
 
 function timeAgo(dateStr: string): string {
@@ -66,6 +67,7 @@ function SidebarContent({
             <button
               type="button"
               className="min-w-0 flex-1 cursor-pointer text-left"
+              aria-label={`Open thread: ${thread.title || 'Untitled'}`}
               onClick={() => {
                 navigate({ to: '/chat/$threadId', params: { threadId: thread.id } });
                 onNavigate?.();
@@ -80,6 +82,7 @@ function SidebarContent({
               className={`text-muted-foreground hover:text-destructive shrink-0 transition-opacity ${
                 isMobile ? '' : 'opacity-0 group-hover:opacity-100'
               }`}
+              aria-label="Delete thread"
               title="Delete thread"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -105,16 +108,16 @@ export function ThreadSidebar({ activeThreadId }: { activeThreadId?: string }) {
       {/* -- Mobile: conversations bar + inline panel -- */}
       <div className="flex flex-col md:hidden">
         {/* Toggle bar */}
-        <div className="flex h-10 items-center gap-2 border-b border-border px-3">
+        <div className="border-border flex h-10 items-center gap-2 border-b px-3">
           <button
             type="button"
             onClick={() => setOpen((prev) => !prev)}
-            className="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent"
+            className="text-muted-foreground hover:bg-accent flex size-7 items-center justify-center rounded-md"
             aria-label={open ? 'Close thread list' : 'Open thread list'}
           >
             {open ? <XIcon className="size-4" /> : <PanelLeftIcon className="size-4" />}
           </button>
-          <span className="text-xs font-medium text-muted-foreground">Conversations</span>
+          <span className="text-muted-foreground text-xs font-medium">Conversations</span>
         </div>
 
         {/* Inline overlay panel — positioned relative to chat page container */}
@@ -123,12 +126,12 @@ export function ThreadSidebar({ activeThreadId }: { activeThreadId?: string }) {
         >
           {/* Thread list */}
           <div
-            className={`flex w-64 shrink-0 flex-col border-r border-border bg-background transition-transform duration-200 ease-out ${open ? 'translate-x-0' : '-translate-x-full'}`}
+            className={`border-border bg-background flex w-64 shrink-0 flex-col border-r transition-transform duration-200 ease-out ${open ? 'translate-x-0' : '-translate-x-full'}`}
           >
             <SidebarContent activeThreadId={activeThreadId} onNavigate={() => setOpen(false)} isMobile />
           </div>
           {/* Backdrop */}
-          {/* biome-ignore lint/a11y/useKeyWithClickEvents lint/a11y/noStaticElementInteractions: backdrop dismiss */}
+          {/* oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- backdrop dismiss */}
           <div
             className={`flex-1 bg-black/50 transition-opacity duration-200 ${open ? 'opacity-100' : 'opacity-0'}`}
             onClick={() => setOpen(false)}

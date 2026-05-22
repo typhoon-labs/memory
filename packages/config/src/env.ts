@@ -28,60 +28,87 @@ export type DatabaseEnv = z.infer<typeof databaseSchema>;
 
 export const redisSchema = z.object({
   REDIS_URL: z.string().url(),
+  REDIS_KEY_PREFIX: z.string().optional().default('typhoon'),
+  REDIS_CLUSTER: z.enum(['true', 'false', '0', '1']).optional().default('false'),
 });
 
 export type RedisEnv = z.infer<typeof redisSchema>;
+
+/** Returns `true` if `REDIS_CLUSTER` is explicitly `'true'` or `'1'`. */
+export function isRedisCluster(env?: Record<string, string | undefined>): boolean {
+  const val = (env ?? process.env).REDIS_CLUSTER;
+  return val === 'true' || val === '1';
+}
+
+// =============================================================================
+// AWS
+// =============================================================================
+
+export const awsSchema = z.object({
+  AWS_REGION: optionalString('us-east-1'),
+});
+
+export type AwsEnv = z.infer<typeof awsSchema>;
 
 // =============================================================================
 // S3 / MinIO
 // =============================================================================
 
 export const s3Schema = z.object({
-  S3_ENDPOINT: z.string().url(),
+  S3_ENDPOINT: optionalUrl(),
   S3_REGION: optionalString('us-east-1'),
-  S3_ACCESS_KEY: z.string().min(1),
-  S3_SECRET_KEY: z.string().min(1),
+  S3_ACCESS_KEY: z.string().min(1).optional(),
+  S3_SECRET_KEY: z.string().min(1).optional(),
   S3_BUCKET: optionalString('typhoon-documents'),
+  S3_FORCE_PATH_STYLE: z.enum(['true', 'false', '0', '1']).optional().default('true'),
 });
 
 export type S3Env = z.infer<typeof s3Schema>;
 
 // =============================================================================
-// LLM Gateway (OpenAI-compatible endpoint)
+// LLM (OpenAI-compatible gateway or direct Bedrock)
 // =============================================================================
 
 export const llmSchema = z.object({
-  LLM_BASE_URL: z.string().url(),
-  LLM_API_KEY: z.string().min(1),
+  /** Gateway endpoint (e.g. Bifrost). When unset, uses direct Bedrock via AWS SDK. */
+  LLM_BASE_URL: optionalUrl(),
+  /** Gateway auth key. Only required when LLM_BASE_URL is set. */
+  LLM_API_KEY: z.string().min(1).optional(),
   LLM_CHAT_MODEL: optionalString('anthropic.claude-sonnet-4-6'),
   LLM_TITLE_MODEL: z.string().optional(),
+  LLM_MAX_RETRIES: z.coerce.number().int().min(0).max(10).default(3),
+  LLM_RETRY_DELAY_MS: z.coerce.number().int().min(100).max(30_000).default(500),
+  LLM_RETRY_MAX_DELAY_MS: z.coerce.number().int().min(1_000).max(60_000).default(10_000),
   ANTHROPIC_API_KEY: z.string().min(1).optional(),
 });
 
 export type LlmEnv = z.infer<typeof llmSchema>;
 
 // =============================================================================
-// Reranker (Cohere-compatible endpoint)
+// Reranker (Cohere-compatible gateway or direct Bedrock)
 // =============================================================================
 
 export const rerankerSchema = z.object({
-  RERANKER_BASE_URL: z.string().url(),
-  RERANKER_MODEL: z.string().min(1),
+  /** Rerank gateway endpoint. When unset, uses direct Bedrock Rerank API via AWS SDK. */
+  RERANKER_BASE_URL: optionalUrl(),
+  /** Reranker model ID or ARN. Required in both gateway and direct modes. */
+  RERANKER_MODEL: z.string().min(1).optional(),
   RERANKER_API_KEY: z.string().optional(),
 });
 
 export type RerankerEnv = z.infer<typeof rerankerSchema>;
 
 // =============================================================================
-// Embeddings (OpenAI-compatible endpoint)
+// Embeddings (OpenAI-compatible gateway or direct Bedrock)
 // =============================================================================
 
 export const embeddingSchema = z.object({
-  EMBEDDING_BASE_URL: z.string().url(),
+  /** Embedding gateway endpoint. When unset, uses direct Bedrock via AWS SDK. */
+  EMBEDDING_BASE_URL: optionalUrl(),
   EMBEDDING_API_KEY: optionalString(''),
   EMBEDDING_MODEL: optionalString('amazon.titan-embed-text-v2:0'),
   EMBEDDING_DIMENSION: z.coerce.number().int().positive().default(1024),
-  EMBEDDING_MAX_CHARS: z.coerce.number().int().positive().default(50_000),
+  EMBEDDING_MAX_CHARS: z.coerce.number().int().positive().default(2_000),
   EMBEDDING_MAX_TOKENS: z.coerce.number().int().positive().default(8_192),
 });
 
@@ -180,6 +207,14 @@ export const ragSchema = z.object({
   RAG_HYBRID_CANDIDATE_MULTIPLIER: z.coerce.number().int().min(1).default(5),
   RAG_RERANK_CANDIDATES: z.coerce.number().int().min(10).max(500).default(100),
   RAG_RERANK_CANDIDATES_EXPANDED: z.coerce.number().int().min(50).max(1000).default(200),
+  /** tsvector weight for tier A (title, critical custom fields). */
+  RAG_FTS_WEIGHT_A: z.coerce.number().min(0).default(1.0),
+  /** tsvector weight for tier B (section, keywords, high custom fields). */
+  RAG_FTS_WEIGHT_B: z.coerce.number().min(0).default(0.6),
+  /** tsvector weight for tier C (moderate custom fields — default tier). */
+  RAG_FTS_WEIGHT_C: z.coerce.number().min(0).default(0.4),
+  /** tsvector weight for tier D (chunk body text, standard custom fields). */
+  RAG_FTS_WEIGHT_D: z.coerce.number().min(0).default(0.2),
 });
 
 export type RagEnv = z.infer<typeof ragSchema>;
@@ -190,6 +225,7 @@ export type RagEnv = z.infer<typeof ragSchema>;
 
 export const envSchema = databaseSchema
   .merge(redisSchema)
+  .merge(awsSchema)
   .merge(s3Schema)
   .merge(llmSchema)
   .merge(rerankerSchema)
@@ -216,6 +252,11 @@ export function isScoringEnabled(env?: Record<string, string | undefined>): bool
   return val === undefined || (val !== '0' && val !== 'false');
 }
 
+/**
+ * Parses and validates all environment variables against the combined schema.
+ * Throws a descriptive error listing all failing fields on validation failure.
+ * Defaults to `process.env` when called without arguments.
+ */
 export function validateEnv(env: Record<string, string | undefined> = process.env): Env {
   const result = envSchema.safeParse(env);
   if (!result.success) {

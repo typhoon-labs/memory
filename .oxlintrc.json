@@ -1,0 +1,86 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn", "oxc", "import", "react", "jsx-a11y", "vitest"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn",
+    "perf": "warn"
+  },
+  "rules": {
+    "no-var": "error",
+    "no-console": "warn",
+    "prefer-const": "error",
+    "prefer-template": "warn",
+    "eqeqeq": "error",
+    "@typescript-eslint/no-explicit-any": "error",
+    "@typescript-eslint/no-non-null-assertion": "warn",
+    "import/no-default-export": "error",
+    "react-hooks/exhaustive-deps": "warn",
+    "react/no-array-index-key": "warn",
+    "unicorn/prefer-string-replace-all": "warn",
+    "unicorn/prefer-at": "warn",
+    "vitest/no-focused-tests": "error",
+    "react/react-in-jsx-scope": "off",
+    "no-underscore-dangle": "off",
+    "no-shadow": "off",
+    "import/no-unassigned-import": "off",
+    "unicorn/consistent-function-scoping": "off",
+    "vitest/require-mock-type-parameters": "off"
+  },
+  "overrides": [
+    {
+      "files": ["**/*.config.ts", "**/*.config.js", "**/*.config.mjs"],
+      "rules": {
+        "import/no-default-export": "off"
+      }
+    },
+    {
+      "files": ["**/*.test.ts", "**/*.test.tsx", "**/__tests__/**"],
+      "rules": {
+        "@typescript-eslint/no-explicit-any": "off",
+        "@typescript-eslint/no-extraneous-class": "off",
+        "no-console": "off"
+      }
+    },
+    {
+      "files": ["**/tests/e2e/**"],
+      "rules": {
+        "vitest/expect-expect": "off",
+        "vitest/no-conditional-expect": "off"
+      }
+    },
+    {
+      "files": ["**/components/ui/**/*.tsx"],
+      "rules": {
+        "react/no-array-index-key": "off",
+        "jsx-a11y/no-static-element-interactions": "off",
+        "jsx-a11y/click-events-have-key-events": "off",
+        "jsx-a11y/prefer-tag-over-role": "off",
+        "jsx-a11y/interactive-supports-focus": "off"
+      }
+    },
+    {
+      "files": ["**/fixtures/**", "**/seed/**"],
+      "rules": {
+        "no-console": "off"
+      }
+    },
+    {
+      "files": ["**/packages/logger/**"],
+      "rules": {
+        "no-console": "off"
+      }
+    }
+  ],
+  "jsPlugins": [
+    "@tanstack/eslint-plugin-query",
+    "@tanstack/eslint-plugin-router",
+    "eslint-plugin-drizzle",
+    "eslint-plugin-react-refresh"
+  ],
+  "env": {
+    "builtin": true,
+    "browser": true
+  },
+  "ignorePatterns": ["**/node_modules", "**/dist", "**/.turbo", "**/coverage", "**/.mastra"]
+}

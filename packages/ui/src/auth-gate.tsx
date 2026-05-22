@@ -1,5 +1,6 @@
 import { Outlet, useNavigate } from '@tanstack/react-router';
 import { useEffect } from 'react';
+
 import { useAuth } from './auth-provider';
 import { AccessDenied } from './components/access-denied';
 

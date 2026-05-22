@@ -1,6 +1,7 @@
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@typhoon/ui';
 import { AlertCircleIcon, ChevronRightIcon, ChevronsDownUpIcon, ChevronsUpDownIcon } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+
 import type { Span, SpanNode } from './shared';
 import { filterTree, formatDurationMs, spanTypeCategory, spanTypeColor, spanTypeLabel } from './shared';
 
@@ -50,20 +51,20 @@ export function SpanTree({
   const hasFilters = !!nameFilter || !!typeFilter;
 
   return (
-    <div className="rounded-lg border border-border bg-card">
+    <div className="border-border bg-card rounded-lg border">
       {/* Header row */}
-      <div className="flex items-center border-b border-border px-3 py-1.5 text-2xs font-semibold uppercase tracking-widest text-muted-foreground">
+      <div className="border-border text-2xs text-muted-foreground flex items-center border-b px-3 py-1.5 font-semibold tracking-widest uppercase">
         <div className="flex w-[40%] shrink-0 items-center gap-1.5">
           <button
             type="button"
             onClick={handleToggleAll}
-            className="flex size-5 items-center justify-center rounded hover:bg-muted"
+            className="hover:bg-muted flex size-5 items-center justify-center rounded"
             title={allExpanded ? 'Collapse all' : 'Expand all'}
           >
             {allExpanded ? (
-              <ChevronsDownUpIcon className="size-3.5 text-muted-foreground" />
+              <ChevronsDownUpIcon className="text-muted-foreground size-3.5" />
             ) : (
-              <ChevronsUpDownIcon className="size-3.5 text-muted-foreground" />
+              <ChevronsUpDownIcon className="text-muted-foreground size-3.5" />
             )}
           </button>
           <span>Span</span>
@@ -72,7 +73,7 @@ export function SpanTree({
       </div>
 
       {/* Span rows */}
-      <div className="divide-y divide-border/50">
+      <div className="divide-border/50 divide-y">
         {filteredRoots.length > 0 ? (
           filteredRoots.map((node) => (
             <SpanRow
@@ -85,7 +86,7 @@ export function SpanTree({
             />
           ))
         ) : hasFilters ? (
-          <div className="px-3 py-4 text-center text-sm text-muted-foreground">No matching spans</div>
+          <div className="text-muted-foreground px-3 py-4 text-center text-sm">No matching spans</div>
         ) : null}
       </div>
     </div>
@@ -109,7 +110,8 @@ function SpanRow({ node, traceStartMs, traceDurationMs, onSelectSpan, globalExpa
   const generation = globalExpand?.generation;
   const expandedValue = globalExpand?.expanded;
   useEffect(() => {
-    if (generation != null && expandedValue != null) setOpen(expandedValue);
+    if (generation !== null && generation !== undefined && expandedValue !== null && expandedValue !== undefined)
+      setOpen(expandedValue);
   }, [generation, expandedValue]);
 
   // Compute bar position
@@ -122,17 +124,17 @@ function SpanRow({ node, traceStartMs, traceDurationMs, onSelectSpan, globalExpa
 
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
-      <div className="flex items-center transition-colors hover:bg-accent/50">
+      <div className="hover:bg-accent/50 flex items-center transition-colors">
         {/* Left: span info */}
         <div className="flex w-[40%] shrink-0 items-center gap-1 px-3 py-1" style={{ paddingLeft: `${12 + indent}px` }}>
           {hasChildren ? (
             <CollapsibleTrigger asChild>
               <button
                 type="button"
-                className="flex size-4 shrink-0 items-center justify-center rounded hover:bg-accent"
+                className="hover:bg-accent flex size-4 shrink-0 items-center justify-center rounded"
               >
                 <ChevronRightIcon
-                  className={`size-3 text-muted-foreground transition-transform ${open ? 'rotate-90' : ''}`}
+                  className={`text-muted-foreground size-3 transition-transform ${open ? 'rotate-90' : ''}`}
                 />
               </button>
             </CollapsibleTrigger>
@@ -155,7 +157,7 @@ function SpanRow({ node, traceStartMs, traceDurationMs, onSelectSpan, globalExpa
 
           {span.error && <AlertCircleIcon className="size-3.5 shrink-0 text-red-400" />}
 
-          <span className="ml-auto shrink-0 whitespace-nowrap font-mono text-2xs text-muted-foreground">
+          <span className="text-2xs text-muted-foreground ml-auto shrink-0 font-mono whitespace-nowrap">
             {formatDurationMs(span.durationMs)}
           </span>
         </div>

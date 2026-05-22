@@ -4,44 +4,20 @@ import { createMiddleware } from 'hono/factory';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // ---------- Hoisted mocks ----------
-const { mockDatasetsStorage, mockExperimentsStorage, mockGetQueue } = vi.hoisted(() => ({
-  mockDatasetsStorage: {
-    getDatasetById: vi.fn().mockResolvedValue(null),
-    listItems: vi.fn().mockResolvedValue({ items: [], total: 0 }),
+const { mockExperimentService } = vi.hoisted(() => ({
+  mockExperimentService: {
+    list: vi.fn().mockResolvedValue({ data: { experiments: [], total: 0, page: 0, perPage: 100, hasMore: false } }),
+    create: vi.fn().mockResolvedValue({ data: { id: 'exp-1', status: 'pending' } }),
+    getById: vi.fn().mockResolvedValue({ error: 'not-found' }),
+    delete: vi.fn().mockResolvedValue({ data: { ok: true } }),
+    getResults: vi.fn().mockResolvedValue({ data: { results: [], total: 0, page: 0, perPage: 100, hasMore: false } }),
+    compare: vi.fn().mockResolvedValue({ data: { experimentA: {}, experimentB: {}, aggregate: {}, items: [] } }),
   },
-  mockExperimentsStorage: {
-    listExperiments: vi.fn().mockResolvedValue({ experiments: [], total: 0, page: 0, perPage: 100, hasMore: false }),
-    createExperiment: vi.fn().mockResolvedValue({ id: 'exp-1', status: 'pending' }),
-    getExperimentById: vi.fn().mockResolvedValue(null),
-    updateExperiment: vi.fn().mockResolvedValue({}),
-    deleteExperiment: vi.fn().mockResolvedValue(undefined),
-    listExperimentResults: vi.fn().mockResolvedValue({ results: [], total: 0, page: 0, perPage: 100, hasMore: false }),
-    deleteExperimentResults: vi.fn().mockResolvedValue(undefined),
-  },
-  mockGetQueue: vi.fn().mockReturnValue({ add: vi.fn().mockResolvedValue({}) }),
 }));
 
 // ---------- Module mocks ----------
-vi.mock('../db', () => ({ db: {}, sql: {} }));
-
-vi.mock('@typhoon/db/drivers/pg', () => ({
-  DrizzleDatasetsStorage: class {
-    getDatasetById = mockDatasetsStorage.getDatasetById;
-    listItems = mockDatasetsStorage.listItems;
-  },
-  DrizzleExperimentsStorage: class {
-    listExperiments = mockExperimentsStorage.listExperiments;
-    createExperiment = mockExperimentsStorage.createExperiment;
-    getExperimentById = mockExperimentsStorage.getExperimentById;
-    updateExperiment = mockExperimentsStorage.updateExperiment;
-    deleteExperiment = mockExperimentsStorage.deleteExperiment;
-    listExperimentResults = mockExperimentsStorage.listExperimentResults;
-    deleteExperimentResults = mockExperimentsStorage.deleteExperimentResults;
-  },
-}));
-
-vi.mock('../queue', () => ({
-  getQueue: mockGetQueue,
+vi.mock('../services', () => ({
+  getExperimentService: () => mockExperimentService,
 }));
 
 vi.mock('../middleware/require-auth', () => ({
@@ -66,7 +42,6 @@ function mountRoutes(routes: Record<string, unknown>[]) {
   for (const route of routes) {
     const mid = Array.isArray(route.middleware) ? route.middleware : route.middleware ? [route.middleware] : [];
     const method = (route.method as string).toLowerCase();
-    // biome-ignore lint/suspicious/noExplicitAny: dynamic route mounting for tests
     (app as any).on(method, route.path as string, ...mid, route.handler);
   }
   return app;
@@ -97,12 +72,14 @@ describe('Experiment Routes', () => {
 
   describe('GET /v1/admin/experiments', () => {
     it('returns experiment list', async () => {
-      mockExperimentsStorage.listExperiments.mockResolvedValueOnce({
-        experiments: [{ id: 'exp-1', name: 'Test', status: 'completed' }],
-        total: 1,
-        page: 0,
-        perPage: 100,
-        hasMore: false,
+      mockExperimentService.list.mockResolvedValueOnce({
+        data: {
+          experiments: [{ id: 'exp-1', name: 'Test', status: 'completed' }],
+          total: 1,
+          page: 0,
+          perPage: 100,
+          hasMore: false,
+        },
       });
 
       const res = await app.request('/v1/admin/experiments');
@@ -115,8 +92,9 @@ describe('Experiment Routes', () => {
 
   describe('POST /v1/admin/experiments', () => {
     it('creates an experiment and enqueues job', async () => {
-      mockDatasetsStorage.getDatasetById.mockResolvedValueOnce({ id: 'ds-1', version: 0 });
-      mockDatasetsStorage.listItems.mockResolvedValueOnce({ items: [{ id: 'item-1' }], total: 5 });
+      mockExperimentService.create.mockResolvedValueOnce({
+        data: { id: 'exp-1', datasetId: 'ds-1', name: 'Test Run', status: 'pending', totalItems: 5, _status: 201 },
+      });
 
       const res = await app.request('/v1/admin/experiments', {
         method: 'POST',
@@ -125,17 +103,17 @@ describe('Experiment Routes', () => {
       });
 
       expect(res.status).toBe(201);
-      expect(mockExperimentsStorage.createExperiment).toHaveBeenCalledWith(
-        expect.objectContaining({
-          datasetId: 'ds-1',
-          name: 'Test Run',
-          status: 'pending',
-          totalItems: 5,
-        }),
+      expect(mockExperimentService.create).toHaveBeenCalledWith(
+        expect.objectContaining({ datasetId: 'ds-1', name: 'Test Run' }),
       );
     });
 
     it('rejects missing datasetId', async () => {
+      mockExperimentService.create.mockResolvedValueOnce({
+        error: 'validation-failed',
+        details: 'datasetId is required',
+      });
+
       const res = await app.request('/v1/admin/experiments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -145,6 +123,8 @@ describe('Experiment Routes', () => {
     });
 
     it('rejects when dataset not found', async () => {
+      mockExperimentService.create.mockResolvedValueOnce({ error: 'dataset-not-found' });
+
       const res = await app.request('/v1/admin/experiments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -154,8 +134,10 @@ describe('Experiment Routes', () => {
     });
 
     it('rejects when dataset has no items', async () => {
-      mockDatasetsStorage.getDatasetById.mockResolvedValueOnce({ id: 'ds-1', version: 0 });
-      mockDatasetsStorage.listItems.mockResolvedValueOnce({ items: [], total: 0 });
+      mockExperimentService.create.mockResolvedValueOnce({
+        error: 'validation-failed',
+        details: 'Dataset has no items',
+      });
 
       const res = await app.request('/v1/admin/experiments', {
         method: 'POST',
@@ -168,10 +150,8 @@ describe('Experiment Routes', () => {
 
   describe('GET /v1/admin/experiments/:id', () => {
     it('returns experiment by ID', async () => {
-      mockExperimentsStorage.getExperimentById.mockResolvedValueOnce({
-        id: 'exp-1',
-        name: 'Test',
-        status: 'completed',
+      mockExperimentService.getById.mockResolvedValueOnce({
+        data: { id: 'exp-1', name: 'Test', status: 'completed' },
       });
 
       const res = await app.request('/v1/admin/experiments/exp-1');
@@ -188,30 +168,29 @@ describe('Experiment Routes', () => {
 
   describe('DELETE /v1/admin/experiments/:id', () => {
     it('cancels a running experiment', async () => {
-      mockExperimentsStorage.getExperimentById.mockResolvedValueOnce({
-        id: 'exp-1',
-        status: 'running',
+      mockExperimentService.delete.mockResolvedValueOnce({
+        data: { ok: true, cancelled: true },
       });
 
       const res = await app.request('/v1/admin/experiments/exp-1', { method: 'DELETE' });
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.cancelled).toBe(true);
-      expect(mockExperimentsStorage.updateExperiment).toHaveBeenCalledWith({ id: 'exp-1', status: 'failed' });
     });
 
     it('deletes a completed experiment', async () => {
-      mockExperimentsStorage.getExperimentById.mockResolvedValueOnce({
-        id: 'exp-1',
-        status: 'completed',
+      mockExperimentService.delete.mockResolvedValueOnce({
+        data: { ok: true },
       });
 
       const res = await app.request('/v1/admin/experiments/exp-1', { method: 'DELETE' });
       expect(res.status).toBe(200);
-      expect(mockExperimentsStorage.deleteExperiment).toHaveBeenCalledWith({ id: 'exp-1' });
+      expect(mockExperimentService.delete).toHaveBeenCalledWith('exp-1');
     });
 
     it('returns 404 for unknown ID', async () => {
+      mockExperimentService.delete.mockResolvedValueOnce({ error: 'not-found' });
+
       const res = await app.request('/v1/admin/experiments/unknown', { method: 'DELETE' });
       expect(res.status).toBe(404);
     });
@@ -219,12 +198,14 @@ describe('Experiment Routes', () => {
 
   describe('GET /v1/admin/experiments/:id/results', () => {
     it('returns experiment results', async () => {
-      mockExperimentsStorage.listExperimentResults.mockResolvedValueOnce({
-        results: [{ id: 'r-1', itemId: 'item-1', output: { responseText: 'test' } }],
-        total: 1,
-        page: 0,
-        perPage: 100,
-        hasMore: false,
+      mockExperimentService.getResults.mockResolvedValueOnce({
+        data: {
+          results: [{ id: 'r-1', itemId: 'item-1', output: { responseText: 'test' } }],
+          total: 1,
+          page: 0,
+          perPage: 100,
+          hasMore: false,
+        },
       });
 
       const res = await app.request('/v1/admin/experiments/exp-1/results');
@@ -236,31 +217,20 @@ describe('Experiment Routes', () => {
 
   describe('GET /v1/admin/experiments/compare', () => {
     it('compares two experiments on the same dataset', async () => {
-      mockExperimentsStorage.getExperimentById
-        .mockResolvedValueOnce({ id: 'exp-1', datasetId: 'ds-1', status: 'completed' })
-        .mockResolvedValueOnce({ id: 'exp-2', datasetId: 'ds-1', status: 'completed' });
-
-      mockExperimentsStorage.listExperimentResults
-        .mockResolvedValueOnce({
-          results: [
-            {
-              itemId: 'item-1',
-              input: { question: 'Q' },
-              output: { scores: [{ scorerId: 'answerRelevancy', score: 0.8 }] },
-            },
-          ],
-          total: 1,
-        })
-        .mockResolvedValueOnce({
-          results: [
-            {
-              itemId: 'item-1',
-              input: { question: 'Q' },
-              output: { scores: [{ scorerId: 'answerRelevancy', score: 0.9 }] },
-            },
-          ],
-          total: 1,
-        });
+      mockExperimentService.compare.mockResolvedValueOnce({
+        data: {
+          experimentA: { id: 'exp-1', datasetId: 'ds-1', status: 'completed' },
+          experimentB: { id: 'exp-2', datasetId: 'ds-1', status: 'completed' },
+          aggregate: {
+            avgScoreA: 0.8,
+            avgScoreB: 0.9,
+            delta: 0.1,
+            regressionCount: 0,
+            improvementCount: 1,
+          },
+          items: [{ itemId: 'item-1', input: { question: 'Q' }, resultA: {}, resultB: {}, scoreDelta: 0.1 }],
+        },
+      });
 
       const res = await app.request('/v1/admin/experiments/compare?a=exp-1&b=exp-2');
       expect(res.status).toBe(200);
@@ -279,9 +249,10 @@ describe('Experiment Routes', () => {
     });
 
     it('rejects experiments from different datasets', async () => {
-      mockExperimentsStorage.getExperimentById
-        .mockResolvedValueOnce({ id: 'exp-1', datasetId: 'ds-1' })
-        .mockResolvedValueOnce({ id: 'exp-2', datasetId: 'ds-2' });
+      mockExperimentService.compare.mockResolvedValueOnce({
+        error: 'validation-failed',
+        details: 'Experiments must share the same dataset for comparison',
+      });
 
       const res = await app.request('/v1/admin/experiments/compare?a=exp-1&b=exp-2');
       expect(res.status).toBe(400);

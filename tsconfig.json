@@ -1,7 +1,7 @@
 {
   "compilerOptions": {
     "strict": true,
-    "target": "ES2022",
+    "target": "ES2025",
     "module": "ESNext",
     "moduleResolution": "bundler",
     "esModuleInterop": true,
@@ -20,13 +20,20 @@
     { "path": "packages/types" },
     { "path": "packages/ai" },
     { "path": "packages/db" },
-    { "path": "packages/storage" },
+    { "path": "packages/blob-store" },
     { "path": "packages/agents" },
     { "path": "packages/queue" },
     { "path": "packages/ingestion" },
+    { "path": "packages/services" },
     { "path": "packages/ui" },
     { "path": "packages/chat" },
+    { "path": "packages/api-client" },
+    { "path": "packages/logger" },
+    { "path": "packages/telemetry" },
     { "path": "apps/api" },
+    { "path": "apps/admin" },
+    { "path": "apps/desk" },
+    { "path": "apps/widget" },
     { "path": "apps/worker" },
     { "path": "apps/scheduler" }
   ]

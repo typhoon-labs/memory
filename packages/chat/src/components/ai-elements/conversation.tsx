@@ -5,9 +5,11 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react';
+
 import { cn } from '../../lib/utils';
 
 // =============================================================================
@@ -70,8 +72,13 @@ export function Conversation({ children, className }: { children: ReactNode; cla
     return () => el.removeEventListener('scroll', handleScroll);
   }, [handleScroll]);
 
+  const ctxValue = useMemo(
+    () => ({ scrollRef, isAtBottom, scrollToBottom, performAutoScroll }),
+    [scrollRef, isAtBottom, scrollToBottom, performAutoScroll],
+  );
+
   return (
-    <ConversationContext.Provider value={{ scrollRef, isAtBottom, scrollToBottom, performAutoScroll }}>
+    <ConversationContext.Provider value={ctxValue}>
       <div className={cn('relative flex min-h-0 flex-col overflow-hidden', className)}>{children}</div>
     </ConversationContext.Provider>
   );
@@ -83,7 +90,6 @@ export function ConversationContent({ children, className }: { children: ReactNo
   // Auto-scroll when content changes and user is near the bottom.
   // Uses a ref-based sticky flag (in Conversation) instead of React state
   // to avoid race conditions during rapid streaming updates.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: children used intentionally to trigger scroll on content change
   useEffect(() => {
     performAutoScroll();
   }, [children, performAutoScroll]);
@@ -105,7 +111,7 @@ export function ConversationScrollButton({ className }: { className?: string }) 
       <button
         type="button"
         onClick={scrollToBottom}
-        className="rounded-full border border-border bg-card px-3 py-1.5 text-xs text-muted-foreground shadow-md transition-colors hover:bg-accent"
+        className="border-border bg-card text-muted-foreground hover:bg-accent rounded-full border px-3 py-1.5 text-xs shadow-md transition-colors"
       >
         Scroll to bottom
       </button>
@@ -127,8 +133,8 @@ export function ConversationEmptyState({
   return (
     <div className={cn('flex h-full flex-col items-center justify-center gap-4 px-5', className)}>
       {icon}
-      {title && <p className="text-sm text-muted-foreground/40">{title}</p>}
-      {description && <p className="text-xs text-muted-foreground/30">{description}</p>}
+      {title && <p className="text-muted-foreground/40 text-sm">{title}</p>}
+      {description && <p className="text-muted-foreground/30 text-xs">{description}</p>}
     </div>
   );
 }

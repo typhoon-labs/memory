@@ -17,6 +17,8 @@ export const metadataTemplates = pgTable('metadata_templates', {
           default?: unknown;
           allowedValues?: unknown[];
           description?: string;
+          searchable?: boolean;
+          searchPriority?: 'critical' | 'high' | 'moderate' | 'standard';
         }
       >
     >()

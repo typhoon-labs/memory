@@ -1,26 +1,10 @@
 import { registerApiRoute } from '@mastra/core/server';
-import { documents, syncJobs, syncTargets } from '@typhoon/db';
-import { PgVector } from '@typhoon/db/drivers/pg';
-import {
-  cancelSyncJob,
-  deleteDocumentVectors,
-  getProvider,
-  listSources,
-  updateDocumentVectorSource,
-} from '@typhoon/ingestion';
-import { createAppLogger } from '@typhoon/logger';
-import type { ProcessFileJobData, ScanJobData } from '@typhoon/queue';
-import { JOB_PRIORITY, makeJobId } from '@typhoon/queue';
-import { syncTargetConfigSchemas } from '@typhoon/types';
-import { and, eq, inArray, like, ne } from 'drizzle-orm';
+import { isError } from '@typhoon/services';
 import { z } from 'zod';
-import { db, sql } from '../db';
+
+import { errorResponse } from '../lib/error-response';
 import { requireAuth } from '../middleware/require-auth';
-import { getSyncQueue } from '../queue';
-
-const log = createAppLogger('sync-targets');
-
-const vectorStore = new PgVector({ id: 'typhoon-vectors', sql });
+import { getSyncTargetService } from '../services';
 
 const createSyncTargetSchema = z.object({
   name: z.string().min(1),
@@ -40,8 +24,8 @@ export const syncTargetRoutes = [
     method: 'GET',
     middleware: [requireAuth],
     handler: (c) => {
-      const sources = listSources().map(({ name, sourceType }) => ({ name, sourceType }));
-      return c.json(sources);
+      const svc = getSyncTargetService();
+      return c.json(svc.listSources());
     },
   }),
 
@@ -49,8 +33,10 @@ export const syncTargetRoutes = [
     method: 'GET',
     middleware: [requireAuth],
     handler: async (c) => {
-      const targets = await db.select().from(syncTargets);
-      return c.json(targets);
+      const svc = getSyncTargetService();
+      const result = await svc.list();
+      if (isError(result)) return errorResponse(c, result, 400);
+      return c.json(result.data);
     },
   }),
 
@@ -58,19 +44,11 @@ export const syncTargetRoutes = [
     method: 'POST',
     middleware: [requireAuth],
     handler: async (c) => {
+      const svc = getSyncTargetService();
       const body = createSyncTargetSchema.parse(await c.req.json());
-      const configSchema = syncTargetConfigSchemas[body.sourceType];
-      if (configSchema) {
-        const result = configSchema.safeParse(body.config);
-        if (!result.success) {
-          const issues = result.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');
-          return c.json({ error: `Invalid config: ${issues}` }, 400);
-        }
-      }
-      const [target] = await db.insert(syncTargets).values(body).returning();
-      log.info('Sync target created', { id: target.id, name: body.name });
-
-      return c.json(target, 201);
+      const result = await svc.create(body);
+      if (isError(result)) return errorResponse(c, result, 400);
+      return c.json(result.data.target, 201);
     },
   }),
 
@@ -78,10 +56,10 @@ export const syncTargetRoutes = [
     method: 'GET',
     middleware: [requireAuth],
     handler: async (c) => {
-      const id = c.req.param('id');
-      const [target] = await db.select().from(syncTargets).where(eq(syncTargets.id, id));
-      if (!target) return c.json({ error: 'Not found' }, 404);
-      return c.json(target);
+      const svc = getSyncTargetService();
+      const result = await svc.getById(c.req.param('id'));
+      if (isError(result)) return errorResponse(c, result, 400);
+      return c.json(result.data);
     },
   }),
 
@@ -89,21 +67,11 @@ export const syncTargetRoutes = [
     method: 'PATCH',
     middleware: [requireAuth],
     handler: async (c) => {
-      const id = c.req.param('id');
-      const [target] = await db.select().from(syncTargets).where(eq(syncTargets.id, id));
-      if (!target) return c.json({ error: 'Not found' }, 404);
-      if (target.managedBy === 'config') {
-        log.warn('Attempt to modify config-managed target', { id });
-        return c.json({ error: 'Cannot edit config-managed sync target' }, 403);
-      }
+      const svc = getSyncTargetService();
       const body = updateSyncTargetSchema.parse(await c.req.json());
-      const [updated] = await db
-        .update(syncTargets)
-        .set({ ...body, updatedAt: new Date() })
-        .where(eq(syncTargets.id, id))
-        .returning();
-
-      return c.json(updated);
+      const result = await svc.update(c.req.param('id'), body);
+      if (isError(result)) return errorResponse(c, result, 400);
+      return c.json(result.data);
     },
   }),
 
@@ -111,24 +79,10 @@ export const syncTargetRoutes = [
     method: 'DELETE',
     middleware: [requireAuth],
     handler: async (c) => {
-      const id = c.req.param('id');
-      const [target] = await db.select().from(syncTargets).where(eq(syncTargets.id, id));
-      if (!target) return c.json({ error: 'Not found' }, 404);
-      if (target.managedBy === 'config') {
-        log.warn('Attempt to delete config-managed target', { id });
-        return c.json({ error: 'Cannot delete config-managed sync target' }, 403);
-      }
-
-      // Delete vectors before cascade removes document rows
-      const docs = await db.select({ id: documents.id }).from(documents).where(eq(documents.syncTargetId, id));
-      for (const doc of docs) {
-        await deleteDocumentVectors(vectorStore, doc.id);
-      }
-
-      await db.delete(syncTargets).where(eq(syncTargets.id, id));
-      log.info('Sync target deleted', { id, documentsCleared: docs.length });
-
-      return c.json({ ok: true });
+      const svc = getSyncTargetService();
+      const result = await svc.delete(c.req.param('id'));
+      if (isError(result)) return errorResponse(c, result, 400);
+      return c.json(result.data);
     },
   }),
 
@@ -136,45 +90,12 @@ export const syncTargetRoutes = [
     method: 'POST',
     middleware: [requireAuth],
     handler: async (c) => {
-      const id = c.req.param('id');
-      const [target] = await db.select().from(syncTargets).where(eq(syncTargets.id, id));
-      if (!target) return c.json({ error: 'Not found' }, 404);
-      if (!target.isActive) return c.json({ error: 'Sync target is inactive' }, 400);
+      const svc = getSyncTargetService();
       const body = await c.req.json().catch(() => ({}));
       const force = body.force === true;
-      const syncQueue = getSyncQueue();
-      await syncQueue.add('scan', { syncTargetId: id, force } satisfies ScanJobData, {
-        jobId: crypto.randomUUID(),
-        priority: JOB_PRIORITY.MANUAL,
-      });
-      log.info('Manual sync triggered — scan job enqueued', { id, name: target.name, force });
-      return c.json({ ok: true, message: `Sync triggered for ${target.name}` });
-    },
-  }),
-
-  registerApiRoute('/v1/sync-targets/:id/cancel', {
-    method: 'POST',
-    middleware: [requireAuth],
-    handler: async (c) => {
-      const id = c.req.param('id');
-
-      // Find the latest running sync job for this target
-      const jobs = await db
-        .select()
-        .from(syncJobs)
-        .where(and(eq(syncJobs.syncTargetId, id), eq(syncJobs.status, 'running')));
-
-      if (jobs.length === 0) {
-        return c.json({ error: 'No running sync job found for this target' }, 404);
-      }
-
-      const latestJob = jobs.sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime())[0];
-
-      const syncQueue = getSyncQueue();
-      const result = await cancelSyncJob(db, syncQueue, latestJob.id);
-
-      log.info('Sync cancelled', { syncTargetId: id, syncJobId: latestJob.id, removed: result.removed });
-      return c.json({ ok: true, syncJobId: latestJob.id, removed: result.removed });
+      const result = await svc.sync(c.req.param('id'), force);
+      if (isError(result)) return errorResponse(c, result, 400);
+      return c.json(result.data);
     },
   }),
 
@@ -182,28 +103,21 @@ export const syncTargetRoutes = [
     method: 'POST',
     middleware: [requireAuth],
     handler: async (c) => {
-      const id = c.req.param('id');
-      const [target] = await db.select().from(syncTargets).where(eq(syncTargets.id, id));
-      if (!target) return c.json({ error: 'Not found' }, 404);
+      const svc = getSyncTargetService();
+      const result = await svc.purge(c.req.param('id'));
+      if (isError(result)) return errorResponse(c, result, 400);
+      return c.json(result.data);
+    },
+  }),
 
-      const docs = await db
-        .select({ id: documents.id, sourceKey: documents.sourceKey })
-        .from(documents)
-        .where(and(eq(documents.syncTargetId, id), ne(documents.status, 'deleted')));
-
-      if (docs.length === 0) {
-        return c.json({ ok: true, purged: 0 });
-      }
-
-      for (const doc of docs) {
-        await deleteDocumentVectors(vectorStore, doc.id);
-      }
-
-      const docIds = docs.map((d) => d.id);
-      await db.update(documents).set({ status: 'deleted', updatedAt: new Date() }).where(inArray(documents.id, docIds));
-
-      log.info('Purge completed', { id, purged: docs.length });
-      return c.json({ ok: true, purged: docs.length });
+  registerApiRoute('/v1/sync-targets/:id/refresh-search-index', {
+    method: 'POST',
+    middleware: [requireAuth],
+    handler: async (c) => {
+      const svc = getSyncTargetService();
+      const result = await svc.refreshSearchIndex(c.req.param('id'));
+      if (isError(result)) return errorResponse(c, result, 400);
+      return c.json(result.data);
     },
   }),
 
@@ -211,9 +125,10 @@ export const syncTargetRoutes = [
     method: 'GET',
     middleware: [requireAuth],
     handler: async (c) => {
-      const id = c.req.param('id');
-      const jobs = await db.select().from(syncJobs).where(eq(syncJobs.syncTargetId, id));
-      return c.json(jobs);
+      const svc = getSyncTargetService();
+      const result = await svc.listJobs(c.req.param('id'));
+      if (isError(result)) return errorResponse(c, result, 400);
+      return c.json(result.data);
     },
   }),
 
@@ -222,89 +137,24 @@ export const syncTargetRoutes = [
     method: 'POST',
     middleware: [requireAuth],
     handler: async (c) => {
-      const id = c.req.param('id');
-      const [target] = await db.select().from(syncTargets).where(eq(syncTargets.id, id));
-      if (!target) return c.json({ error: 'Not found' }, 404);
-
-      const provider = getProvider(target.sourceType);
-      if (!provider.upload) {
-        return c.json({ error: 'Upload is not supported for this source type' }, 400);
-      }
-
+      const svc = getSyncTargetService();
       const body = await c.req.parseBody({ all: true });
-      const files = Array.isArray(body.files) ? body.files : body.files ? [body.files] : [];
-      const validFiles = files.filter((f): f is File => f instanceof File);
+      const rawFiles = Array.isArray(body.files) ? body.files : body.files ? [body.files] : [];
+      const validFiles = rawFiles.filter((f): f is File => f instanceof File);
 
-      if (validFiles.length === 0) {
-        return c.json({ error: 'No files provided' }, 400);
-      }
+      const files = await Promise.all(
+        validFiles.map(async (f) => ({
+          name: f.name,
+          content: Buffer.from(await f.arrayBuffer()),
+          size: f.size,
+          type: f.type || '',
+        })),
+      );
 
-      const config = target.config as Record<string, unknown>;
-      const s3Config = config as { prefix?: string };
-      const basePrefix = s3Config.prefix
-        ? s3Config.prefix.endsWith('/')
-          ? s3Config.prefix
-          : `${s3Config.prefix}/`
-        : '';
-      const rawSubPath = typeof body.path === 'string' ? body.path.trim().replace(/^\/+|\/+$/g, '') : '';
-      const subPath = rawSubPath ? `${rawSubPath}/` : '';
-      const fullPrefix = `${basePrefix}${subPath}`;
-
-      const sourceName = target.source ?? undefined;
-      const syncQueue = getSyncQueue();
-      const created = [];
-
-      for (const file of validFiles) {
-        const sourceKey = `${fullPrefix}${file.name}`;
-        const buffer = Buffer.from(await file.arrayBuffer());
-
-        await provider.upload(config, sourceKey, buffer, file.type || undefined, sourceName);
-
-        const [doc] = await db
-          .insert(documents)
-          .values({
-            syncTargetId: id,
-            sourceKey,
-            sourceEtag: '',
-            fileSize: file.size,
-            mimeType: file.type || null,
-            status: 'processing',
-            lastSyncedAt: new Date(),
-          })
-          .onConflictDoUpdate({
-            target: [documents.syncTargetId, documents.sourceKey],
-            set: {
-              status: 'processing',
-              errorMessage: null,
-              fileSize: file.size,
-              mimeType: file.type || null,
-              lastSyncedAt: new Date(),
-              updatedAt: new Date(),
-            },
-          })
-          .returning();
-
-        const isUpdate = doc.createdAt.getTime() !== doc.updatedAt.getTime();
-
-        await syncQueue.add(
-          'process-file',
-          {
-            syncTargetId: id,
-            documentId: doc.id,
-            sourceKey,
-            sourceEtag: '',
-            sourceType: target.sourceType,
-            sourceName,
-            isUpdate,
-          } satisfies ProcessFileJobData,
-          { jobId: makeJobId('upload', id, sourceKey, String(Date.now())), priority: JOB_PRIORITY.UPLOAD },
-        );
-
-        created.push(doc);
-      }
-
-      log.info('Files uploaded', { syncTargetId: id, count: created.length });
-      return c.json(created, 201);
+      const subPath = typeof body.path === 'string' ? body.path : undefined;
+      const result = await svc.upload(c.req.param('id'), files, subPath);
+      if (isError(result)) return errorResponse(c, result, 400);
+      return c.json(result.data.docs, 201);
     },
   }),
 
@@ -313,43 +163,11 @@ export const syncTargetRoutes = [
     method: 'GET',
     middleware: [requireAuth],
     handler: async (c) => {
-      const id = c.req.param('id');
+      const svc = getSyncTargetService();
       const path = c.req.query('path') ?? '';
-
-      const [target] = await db.select().from(syncTargets).where(eq(syncTargets.id, id));
-      if (!target) return c.json({ error: 'Not found' }, 404);
-
-      const provider = getProvider(target.sourceType);
-      if (!provider.browse) {
-        return c.json({ error: 'Browse is not supported for this source type' }, 400);
-      }
-
-      const config = target.config as Record<string, unknown>;
-      const sourceName = target.source ?? undefined;
-      const result = await provider.browse(config, path, sourceName);
-
-      // Enrich files with DB document info
-      const sourceKeys = result.objects.map((o) => o.key);
-      const dbDocs =
-        sourceKeys.length > 0
-          ? await db
-              .select()
-              .from(documents)
-              .where(and(eq(documents.syncTargetId, id), inArray(documents.sourceKey, sourceKeys)))
-          : [];
-      const docByKey = new Map(dbDocs.map((d) => [d.sourceKey, d]));
-
-      const files = result.objects.map((obj) => {
-        const doc = docByKey.get(obj.key);
-        return {
-          sourceKey: obj.key,
-          size: obj.size,
-          lastModified: obj.lastModified,
-          document: doc ?? null,
-        };
-      });
-
-      return c.json({ path, folders: result.folders, files });
+      const result = await svc.browse(c.req.param('id'), path);
+      if (isError(result)) return errorResponse(c, result, 400);
+      return c.json(result.data);
     },
   }),
 
@@ -358,29 +176,11 @@ export const syncTargetRoutes = [
     method: 'POST',
     middleware: [requireAuth],
     handler: async (c) => {
-      const id = c.req.param('id');
+      const svc = getSyncTargetService();
       const body = z.object({ path: z.string().min(1) }).parse(await c.req.json());
-
-      const [target] = await db.select().from(syncTargets).where(eq(syncTargets.id, id));
-      if (!target) return c.json({ error: 'Not found' }, 404);
-
-      const provider = getProvider(target.sourceType);
-      if (!provider.createFolder) {
-        return c.json({ error: 'Folder creation is not supported for this source type' }, 400);
-      }
-
-      const config = target.config as Record<string, unknown>;
-      const s3Config = config as { prefix?: string };
-      const basePrefix = s3Config.prefix
-        ? s3Config.prefix.endsWith('/')
-          ? s3Config.prefix
-          : `${s3Config.prefix}/`
-        : '';
-      const fullPath = `${basePrefix}${body.path}`;
-
-      await provider.createFolder(config, fullPath, target.source ?? undefined);
-
-      return c.json({ ok: true, path: body.path });
+      const result = await svc.createFolder(c.req.param('id'), body.path);
+      if (isError(result)) return errorResponse(c, result, 400);
+      return c.json(result.data);
     },
   }),
 
@@ -389,66 +189,11 @@ export const syncTargetRoutes = [
     method: 'POST',
     middleware: [requireAuth],
     handler: async (c) => {
-      const id = c.req.param('id');
+      const svc = getSyncTargetService();
       const body = z.object({ path: z.string().min(1) }).parse(await c.req.json());
-
-      const [target] = await db.select().from(syncTargets).where(eq(syncTargets.id, id));
-      if (!target) return c.json({ error: 'Not found' }, 404);
-
-      const provider = getProvider(target.sourceType);
-      if (!provider.deleteObject) {
-        return c.json({ error: 'Folder deletion is not supported for this source type' }, 400);
-      }
-
-      const config = target.config as Record<string, unknown>;
-      const s3Config = config as { prefix?: string };
-      const basePrefix = s3Config.prefix
-        ? s3Config.prefix.endsWith('/')
-          ? s3Config.prefix
-          : `${s3Config.prefix}/`
-        : '';
-      const fullPrefix = `${basePrefix}${body.path}`;
-      const sourceName = target.source ?? undefined;
-
-      // Find all documents under this prefix
-      const docs = await db
-        .select()
-        .from(documents)
-        .where(
-          and(
-            eq(documents.syncTargetId, id),
-            like(documents.sourceKey, `${fullPrefix}%`),
-            ne(documents.status, 'deleted'),
-          ),
-        );
-
-      // Delete vectors and source objects for each document
-      for (const doc of docs) {
-        await deleteDocumentVectors(vectorStore, doc.id);
-        try {
-          await provider.deleteObject(config, doc.sourceKey, sourceName);
-        } catch {
-          // Best-effort
-        }
-      }
-
-      if (docs.length > 0) {
-        const docIds = docs.map((d) => d.id);
-        await db
-          .update(documents)
-          .set({ status: 'deleted', updatedAt: new Date() })
-          .where(inArray(documents.id, docIds));
-      }
-
-      // Delete the folder placeholder itself
-      try {
-        const folderKey = fullPrefix.endsWith('/') ? fullPrefix : `${fullPrefix}/`;
-        await provider.deleteObject(config, folderKey, sourceName);
-      } catch {
-        // Folder placeholder may not exist
-      }
-
-      return c.json({ ok: true, deleted: docs.length });
+      const result = await svc.deleteFolder(c.req.param('id'), body.path);
+      if (isError(result)) return errorResponse(c, result, 400);
+      return c.json(result.data);
     },
   }),
 
@@ -457,54 +202,11 @@ export const syncTargetRoutes = [
     method: 'POST',
     middleware: [requireAuth],
     handler: async (c) => {
-      const id = c.req.param('id');
+      const svc = getSyncTargetService();
       const body = z.object({ oldPath: z.string().min(1), newPath: z.string().min(1) }).parse(await c.req.json());
-
-      const [target] = await db.select().from(syncTargets).where(eq(syncTargets.id, id));
-      if (!target) return c.json({ error: 'Not found' }, 404);
-
-      const provider = getProvider(target.sourceType);
-      if (!provider.copyObject || !provider.deleteObject) {
-        return c.json({ error: 'Folder move is not supported for this source type' }, 400);
-      }
-
-      const config = target.config as Record<string, unknown>;
-      const s3Config = config as { prefix?: string };
-      const basePrefix = s3Config.prefix
-        ? s3Config.prefix.endsWith('/')
-          ? s3Config.prefix
-          : `${s3Config.prefix}/`
-        : '';
-      const oldPrefix = `${basePrefix}${body.oldPath}`;
-      const newPrefix = `${basePrefix}${body.newPath}`;
-      const sourceName = target.source ?? undefined;
-
-      // List all source objects under old prefix
-      const allObjects = await provider.listObjects(config, sourceName);
-      const objectsToMove = allObjects.filter((o) => o.key.startsWith(oldPrefix));
-
-      let moved = 0;
-      for (const obj of objectsToMove) {
-        const newKey = `${newPrefix}${obj.key.slice(oldPrefix.length)}`;
-
-        await provider.copyObject(config, obj.key, newKey, sourceName);
-        await provider.deleteObject(config, obj.key, sourceName);
-
-        // Update DB document if it exists
-        const [doc] = await db
-          .update(documents)
-          .set({ sourceKey: newKey, updatedAt: new Date() })
-          .where(and(eq(documents.syncTargetId, id), eq(documents.sourceKey, obj.key)))
-          .returning();
-
-        if (doc) {
-          await updateDocumentVectorSource(sql, doc.id, newKey);
-        }
-
-        moved++;
-      }
-
-      return c.json({ ok: true, moved });
+      const result = await svc.moveFolder(c.req.param('id'), body.oldPath, body.newPath);
+      if (isError(result)) return errorResponse(c, result, 400);
+      return c.json(result.data);
     },
   }),
 ];

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+
 import { cn } from '../lib/utils';
 
 export interface SectionLabelProps {
@@ -14,7 +15,7 @@ export interface SectionLabelProps {
  */
 export function SectionLabel({ children, className }: SectionLabelProps): React.JSX.Element {
   return (
-    <p className={cn('text-2xs font-semibold uppercase tracking-widest text-muted-foreground', className)}>
+    <p className={cn('text-2xs text-muted-foreground font-semibold tracking-widest uppercase', className)}>
       {children}
     </p>
   );

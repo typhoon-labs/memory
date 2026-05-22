@@ -12,7 +12,6 @@ const cronSchedule = z
 
 const s3ConfigSchema = z
   .object({
-    bucket: z.string().min(1),
     prefix: z.string().default(''),
   })
   .strict();

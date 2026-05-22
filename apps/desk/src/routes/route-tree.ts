@@ -1,4 +1,5 @@
 import { createRootRoute, createRoute } from '@tanstack/react-router';
+
 import { ChatPage } from '../components/pages/chat';
 import { DashboardPage } from '../components/pages/dashboard';
 import { DocumentsPage } from '../components/pages/documents';

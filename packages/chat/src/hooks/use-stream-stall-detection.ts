@@ -1,17 +1,33 @@
 import type { ChatStatus, UIMessage } from 'ai';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 const STALL_TIMEOUT_MS = 15_000;
+const TOOL_STALL_TIMEOUT_MS = 60_000;
 const CHECK_INTERVAL_MS = 5_000;
 
+const TERMINAL_TOOL_STATES = new Set(['output-available', 'output-error', 'output-denied']);
+
+/** Whether the last assistant message has a tool invocation still executing. */
+function hasPendingToolCall(messages: UIMessage[]): boolean {
+  const last = messages.at(-1);
+  if (!last || last.role !== 'assistant') return false;
+  return last.parts.some(
+    (p) => p.type.startsWith('tool-') && !TERMINAL_TOOL_STATES.has((p as { state?: string }).state ?? ''),
+  );
+}
+
 /**
- * Detects when an AI SDK chat stream has stalled (no new data for 15s)
- * and auto-aborts it. Returns a stall error that can be displayed in the UI.
+ * Detects when an AI SDK chat stream has stalled and auto-aborts it.
+ * Returns a stall error and a function to clear it.
  *
  * The AI SDK's `useChat` hangs forever when the server dies mid-stream —
  * `reader.read()` blocks indefinitely, `status` stays "streaming", and
  * `error` is never set. This hook works around that by monitoring message
  * updates and calling `stop()` when the stream appears dead.
+ *
+ * When a tool call is in progress (e.g. knowledge search), the timeout is
+ * extended to 60s since tool execution legitimately takes longer than text
+ * streaming. When no tool call is pending, the 15s timeout applies.
  */
 export function useStreamStallDetection({
   messages,
@@ -21,11 +37,18 @@ export function useStreamStallDetection({
   messages: UIMessage[];
   status: ChatStatus;
   stop: () => void;
-}): Error | null {
+}): { stallError: Error | null; clearStallError: () => void } {
   const lastActivityRef = useRef(Date.now());
   const [stallError, setStallError] = useState<Error | null>(null);
 
-  // Reset activity on any message change or status transition
+  const clearStallError = useCallback(() => setStallError(null), []);
+
+  // Keep a ref to messages so the polling interval can read current values
+  // without restarting the interval on every message change.
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
+
+  // Reset activity on any message change
   const messagesLengthRef = useRef(messages.length);
   const lastContentRef = useRef('');
   useEffect(() => {
@@ -50,7 +73,9 @@ export function useStreamStallDetection({
     if (status !== 'streaming' && status !== 'submitted') return;
 
     const interval = setInterval(() => {
-      if (Date.now() - lastActivityRef.current > STALL_TIMEOUT_MS) {
+      const timeout = hasPendingToolCall(messagesRef.current) ? TOOL_STALL_TIMEOUT_MS : STALL_TIMEOUT_MS;
+
+      if (Date.now() - lastActivityRef.current > timeout) {
         stop();
         setStallError(new Error('Connection lost — the response was interrupted.'));
         clearInterval(interval);
@@ -60,5 +85,5 @@ export function useStreamStallDetection({
     return () => clearInterval(interval);
   }, [status, stop]);
 
-  return stallError;
+  return { stallError, clearStallError };
 }

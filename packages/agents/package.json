@@ -10,12 +10,12 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@mastra/core": "^1.22.0",
+    "@mastra/core": "^1.27.0",
     "@mastra/rag": "^2.1.3",
     "@typhoon/ai": "workspace:*",
     "@typhoon/config": "workspace:*",
-    "@typhoon/logger": "workspace:*",
     "@typhoon/db": "workspace:*",
+    "@typhoon/logger": "workspace:*",
     "@typhoon/types": "workspace:*",
     "ai": "^6.0.142",
     "zod": "^4.3.6"

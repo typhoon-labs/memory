@@ -12,6 +12,8 @@ export interface ProcessFileJobData {
   sourceName?: string;
   isUpdate: boolean;
   syncJobId?: string;
+  /** When true, skip download/parse/embed — only refresh _searchMeta_* fields. */
+  metaRefreshOnly?: boolean;
 }
 
 export interface DeleteFileJobData {
@@ -88,6 +90,18 @@ export interface ExperimentItemJobData {
   responseText?: string;
   /** Retrieval scorers skipped due to missing context, passed from step 1 to step 2. */
   contextSkippedScorerNames?: string[];
+  /** Chunk sources with metadata, set in step 1 for storage in step 2. */
+  chunkSources?: Array<{
+    chunkId: string;
+    displayIndex: string;
+    title?: string;
+    section?: string;
+    source?: string;
+    syncTargetName?: string;
+    documentId?: string;
+    startIndex?: number;
+    score?: number;
+  }>;
 }
 
 /** Data for experiment completion (experiments queue). */

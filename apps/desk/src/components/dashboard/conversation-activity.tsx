@@ -26,7 +26,7 @@ export function ConversationActivity({ threads, isLoading }: ConversationActivit
 
   if (recent.length === 0) {
     return (
-      <div className="flex h-[200px] items-center justify-center text-sm text-muted-foreground">
+      <div className="text-muted-foreground flex h-[200px] items-center justify-center text-sm">
         No conversations yet
       </div>
     );
@@ -39,11 +39,11 @@ export function ConversationActivity({ threads, isLoading }: ConversationActivit
           <Link
             to="/chat/$threadId"
             params={{ threadId: thread.id }}
-            className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-accent"
+            className="hover:bg-accent flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors"
           >
-            <MessageSquareIcon className="size-3.5 shrink-0 text-muted-foreground" />
+            <MessageSquareIcon className="text-muted-foreground size-3.5 shrink-0" />
             <span className="min-w-0 flex-1 truncate">{thread.title || 'Untitled'}</span>
-            <span className="shrink-0 text-xs text-muted-foreground">
+            <span className="text-muted-foreground shrink-0 text-xs">
               {formatRelativeTime(thread.updatedAt, { compact: true })}
             </span>
           </Link>

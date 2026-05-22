@@ -2,12 +2,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { managePartitions } from './partition-management';
 
-/** Create a mock SQL client with tagged-template and .unsafe() support. */
-function createMockSql() {
-  const unsafeFn = vi.fn<(query: string) => Promise<unknown[]>>().mockResolvedValue([]);
-  const taggedFn = vi.fn().mockResolvedValue([]);
-  const sql = Object.assign(taggedFn, { unsafe: unsafeFn });
-  return sql;
+/** Create a mock PartitionRepo. */
+function createMockPartitionRepo() {
+  return {
+    exists: vi.fn<(name: string) => Promise<boolean>>().mockResolvedValue(false),
+    create: vi
+      .fn<(name: string, parent: string, from: string, to: string) => Promise<void>>()
+      .mockResolvedValue(undefined),
+    listPartitions: vi.fn<(parent: string) => Promise<string[]>>().mockResolvedValue([]),
+    drop: vi.fn<(name: string) => Promise<void>>().mockResolvedValue(undefined),
+  };
 }
 
 describe('managePartitions', () => {
@@ -22,11 +26,11 @@ describe('managePartitions', () => {
 
   describe('creating partitions', () => {
     it('creates partitions for daysAhead+1 days (0..daysAhead)', async () => {
-      const sql = createMockSql();
+      const repo = createMockPartitionRepo();
       // No existing partitions
-      sql.mockResolvedValue([]);
+      repo.exists.mockResolvedValue(false);
 
-      const result = await managePartitions(sql, { retentionDays: 0, daysAhead: 2 });
+      const result = await managePartitions(repo as never, { retentionDays: 0, daysAhead: 2 });
 
       // Should create today + 2 more days = 3 partitions
       expect(result.created).toHaveLength(3);
@@ -36,32 +40,32 @@ describe('managePartitions', () => {
     });
 
     it('defaults daysAhead to 7', async () => {
-      const sql = createMockSql();
-      sql.mockResolvedValue([]);
+      const repo = createMockPartitionRepo();
+      repo.exists.mockResolvedValue(false);
 
-      const result = await managePartitions(sql, { retentionDays: 0 });
+      const result = await managePartitions(repo as never, { retentionDays: 0 });
 
       // 0..7 = 8 partitions
       expect(result.created).toHaveLength(8);
     });
 
     it('skips creation when partition already exists', async () => {
-      const sql = createMockSql();
-      // Return a row indicating the partition exists
-      sql.mockResolvedValue([{ '?column?': 1 }]);
+      const repo = createMockPartitionRepo();
+      // Return true indicating the partition exists
+      repo.exists.mockResolvedValue(true);
 
-      const result = await managePartitions(sql, { retentionDays: 0, daysAhead: 1 });
+      const result = await managePartitions(repo as never, { retentionDays: 0, daysAhead: 1 });
 
       expect(result.created).toHaveLength(0);
-      expect(sql.unsafe).not.toHaveBeenCalled();
+      expect(repo.create).not.toHaveBeenCalled();
     });
 
     it('handles concurrent creation errors gracefully', async () => {
-      const sql = createMockSql();
-      sql.mockResolvedValue([]);
-      sql.unsafe.mockRejectedValue(new Error('relation already exists'));
+      const repo = createMockPartitionRepo();
+      repo.exists.mockResolvedValue(false);
+      repo.create.mockRejectedValue(new Error('relation already exists'));
 
-      const result = await managePartitions(sql, { retentionDays: 0, daysAhead: 0 });
+      const result = await managePartitions(repo as never, { retentionDays: 0, daysAhead: 0 });
 
       // Error is caught — partition not added to created list
       expect(result.created).toHaveLength(0);
@@ -70,15 +74,11 @@ describe('managePartitions', () => {
 
   describe('dropping partitions', () => {
     it('drops partitions older than retentionDays', async () => {
-      const sql = createMockSql();
-      // First calls: partition existence checks (no existing for creation)
-      sql.mockResolvedValue([]);
-      // Override: after creation loop, the partitions query returns old partitions
-      sql
-        .mockResolvedValueOnce([]) // partition check for today
-        .mockResolvedValueOnce([{ partition_name: 'ai_spans_2026_04_01' }, { partition_name: 'ai_spans_2026_05_04' }]);
+      const repo = createMockPartitionRepo();
+      repo.exists.mockResolvedValue(false);
+      repo.listPartitions.mockResolvedValue(['ai_spans_2026_04_01', 'ai_spans_2026_05_04']);
 
-      const result = await managePartitions(sql, { retentionDays: 1, daysAhead: 0 });
+      const result = await managePartitions(repo as never, { retentionDays: 1, daysAhead: 0 });
 
       // Cutoff is 2026-05-04, so ai_spans_2026_04_01 < cutoff => dropped
       // ai_spans_2026_05_04 = cutoff => NOT dropped (not strictly less than)
@@ -87,33 +87,30 @@ describe('managePartitions', () => {
     });
 
     it('does not drop partitions within retention window', async () => {
-      const sql = createMockSql();
-      sql.mockResolvedValue([]);
-      // Return only recent partitions
-      sql
-        .mockResolvedValueOnce([]) // partition check for today
-        .mockResolvedValueOnce([{ partition_name: 'ai_spans_2026_05_05' }]);
+      const repo = createMockPartitionRepo();
+      repo.exists.mockResolvedValue(false);
+      repo.listPartitions.mockResolvedValue(['ai_spans_2026_05_05']);
 
-      const result = await managePartitions(sql, { retentionDays: 30, daysAhead: 0 });
+      const result = await managePartitions(repo as never, { retentionDays: 30, daysAhead: 0 });
 
       expect(result.dropped).toHaveLength(0);
     });
 
     it('skips dropping when retentionDays is 0', async () => {
-      const sql = createMockSql();
-      sql.mockResolvedValue([]);
+      const repo = createMockPartitionRepo();
+      repo.exists.mockResolvedValue(false);
 
-      const result = await managePartitions(sql, { retentionDays: 0, daysAhead: 0 });
+      const result = await managePartitions(repo as never, { retentionDays: 0, daysAhead: 0 });
 
       expect(result.dropped).toHaveLength(0);
     });
   });
 
   it('returns created and dropped partition names', async () => {
-    const sql = createMockSql();
-    sql.mockResolvedValue([]);
+    const repo = createMockPartitionRepo();
+    repo.exists.mockResolvedValue(false);
 
-    const result = await managePartitions(sql, { retentionDays: 0, daysAhead: 0 });
+    const result = await managePartitions(repo as never, { retentionDays: 0, daysAhead: 0 });
 
     expect(result).toHaveProperty('created');
     expect(result).toHaveProperty('dropped');

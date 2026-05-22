@@ -4,27 +4,26 @@ import { createMiddleware } from 'hono/factory';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // ---------- Hoisted mocks ----------
-const { mockSqlUnsafe, mockStorage, mockConstructScorer } = vi.hoisted(() => ({
-  mockSqlUnsafe: vi.fn().mockResolvedValue([]),
-  mockStorage: {
-    getById: vi.fn().mockResolvedValue(null),
-    create: vi.fn().mockResolvedValue({ id: 'def-1', status: 'draft' }),
-    update: vi.fn().mockResolvedValue({ id: 'def-1', status: 'active' }),
-    delete: vi.fn().mockResolvedValue(undefined),
-    list: vi.fn().mockResolvedValue({ rows: [], total: 0, hasMore: false }),
-    createVersion: vi.fn().mockResolvedValue({ id: 'ver-1', version_number: 1, name: 'test' }),
-    getVersion: vi.fn().mockResolvedValue(null),
-    getLatestVersion: vi.fn().mockResolvedValue(null),
-    listVersions: vi.fn().mockResolvedValue({ rows: [], total: 0, hasMore: false }),
-    countVersions: vi.fn().mockResolvedValue(0),
+const { mockScorerService } = vi.hoisted(() => ({
+  mockScorerService: {
+    getModels: vi.fn().mockReturnValue({ data: { models: ['model-a'], defaultModel: 'model-a' } }),
+    list: vi.fn().mockResolvedValue({ data: { scorers: [], total: 0, page: 0, perPage: 100, hasMore: false } }),
+    create: vi.fn().mockResolvedValue({ data: { id: 'def-1', name: 'test', versionId: 'ver-1' } }),
+    getById: vi.fn().mockResolvedValue({ error: 'not-found' }),
+    update: vi.fn().mockResolvedValue({ data: { id: 'def-1', status: 'active' } }),
+    delete: vi.fn().mockResolvedValue({ data: { ok: true } }),
+    listVersions: vi
+      .fn()
+      .mockResolvedValue({ data: { versions: [], total: 0, page: 0, perPage: 100, hasMore: false } }),
+    createVersion: vi.fn().mockResolvedValue({ data: { id: 'ver-1', versionNumber: 1 } }),
+    publishVersion: vi.fn().mockResolvedValue({ data: { id: 'def-1', status: 'active' } }),
+    previewScore: vi.fn().mockResolvedValue({ data: { score: 0.85, reason: 'Good', durationMs: 100 } }),
   },
-  mockConstructScorer: vi.fn().mockReturnValue(null),
 }));
 
 // ---------- Module mocks ----------
-vi.mock('../db', () => ({
-  db: {},
-  sql: { unsafe: mockSqlUnsafe },
+vi.mock('../services', () => ({
+  getScorerService: () => mockScorerService,
 }));
 
 vi.mock('../middleware/require-auth', () => ({
@@ -40,25 +39,6 @@ vi.mock('../middleware/require-admin', () => ({
   }),
 }));
 
-vi.mock('@typhoon/db/drivers/pg', () => ({
-  DrizzleScorerDefinitionsStorage: class {
-    getById = mockStorage.getById;
-    create = mockStorage.create;
-    update = mockStorage.update;
-    delete = mockStorage.delete;
-    list = mockStorage.list;
-    createVersion = mockStorage.createVersion;
-    getVersion = mockStorage.getVersion;
-    getLatestVersion = mockStorage.getLatestVersion;
-    listVersions = mockStorage.listVersions;
-    countVersions = mockStorage.countVersions;
-  },
-}));
-
-vi.mock('@typhoon/evals', () => ({
-  constructScorer: mockConstructScorer,
-}));
-
 vi.mock('@typhoon/ai', () => ({
   createScoringModel: vi.fn().mockReturnValue('mock-model'),
 }));
@@ -72,53 +52,9 @@ function mountRoutes(routes: Record<string, unknown>[]) {
   for (const route of routes) {
     const mid = Array.isArray(route.middleware) ? route.middleware : route.middleware ? [route.middleware] : [];
     const method = (route.method as string).toLowerCase();
-    // biome-ignore lint/suspicious/noExplicitAny: dynamic route mounting for tests
     (app as any).on(method, route.path as string, ...mid, route.handler);
   }
   return app;
-}
-
-function makeDefinitionRow(overrides: Record<string, unknown> = {}) {
-  return {
-    id: 'def-1',
-    status: 'active',
-    active_version_id: 'ver-1',
-    author_id: null,
-    metadata: null,
-    created_at: '2026-04-20T10:00:00.000Z',
-    updated_at: '2026-04-20T10:00:00.000Z',
-    name: 'faithfulness',
-    description: 'Are answers grounded in retrieved context?',
-    type: 'faithfulness',
-    model: null,
-    instructions: null,
-    score_range: null,
-    preset_config: null,
-    default_sampling: null,
-    version_number: 1,
-    change_message: 'Initial version',
-    ...overrides,
-  };
-}
-
-function makeVersionRow(overrides: Record<string, unknown> = {}) {
-  return {
-    id: 'ver-1',
-    scorer_definition_id: 'def-1',
-    version_number: 1,
-    name: 'faithfulness',
-    description: 'Are answers grounded in retrieved context?',
-    type: 'faithfulness',
-    model: null,
-    instructions: null,
-    score_range: null,
-    preset_config: null,
-    default_sampling: null,
-    changed_fields: null,
-    change_message: 'Initial version',
-    created_at: '2026-04-20T10:00:00.000Z',
-    ...overrides,
-  };
 }
 
 // ---------- Tests ----------
@@ -126,17 +62,7 @@ describe('Scorer Routes', () => {
   let app: Hono;
 
   beforeEach(() => {
-    mockSqlUnsafe.mockReset().mockResolvedValue([]);
-    mockStorage.getById.mockReset().mockResolvedValue(null);
-    mockStorage.create.mockReset().mockResolvedValue({ id: 'def-1', status: 'draft' });
-    mockStorage.update.mockReset().mockResolvedValue({ id: 'def-1', status: 'active' });
-    mockStorage.delete.mockReset().mockResolvedValue(undefined);
-    mockStorage.createVersion.mockReset().mockResolvedValue({ id: 'ver-1', version_number: 1, name: 'test' });
-    mockStorage.getVersion.mockReset().mockResolvedValue(null);
-    mockStorage.getLatestVersion.mockReset().mockResolvedValue(null);
-    mockStorage.listVersions.mockReset().mockResolvedValue({ rows: [], total: 0, hasMore: false });
-    mockStorage.countVersions.mockReset().mockResolvedValue(0);
-    mockConstructScorer.mockReset().mockReturnValue(null);
+    vi.clearAllMocks();
     app = mountRoutes(scorerRoutes as unknown as Record<string, unknown>[]);
   });
 
@@ -155,9 +81,10 @@ describe('Scorer Routes', () => {
   });
 
   describe('GET /v1/admin/scorers/models', () => {
-    it('returns models from LLM_SCORING_MODEL_OPTIONS env var', async () => {
-      process.env.LLM_SCORING_MODEL_OPTIONS = 'model-a,model-b';
-      process.env.LLM_SCORING_MODEL = 'model-a';
+    it('returns models from service', async () => {
+      mockScorerService.getModels.mockReturnValueOnce({
+        data: { models: ['model-a', 'model-b'], defaultModel: 'model-a' },
+      });
 
       const res = await app.request('/v1/admin/scorers/models');
       expect(res.status).toBe(200);
@@ -165,30 +92,20 @@ describe('Scorer Routes', () => {
       const body = await res.json();
       expect(body.models).toEqual(['model-a', 'model-b']);
       expect(body.defaultModel).toBe('model-a');
-
-      delete process.env.LLM_SCORING_MODEL_OPTIONS;
-      delete process.env.LLM_SCORING_MODEL;
-    });
-
-    it('falls back to LLM_SCORING_MODEL when options not set', async () => {
-      delete process.env.LLM_SCORING_MODEL_OPTIONS;
-      process.env.LLM_SCORING_MODEL = 'fallback-model';
-
-      const res = await app.request('/v1/admin/scorers/models');
-      expect(res.status).toBe(200);
-
-      const body = await res.json();
-      expect(body.models).toEqual(['fallback-model']);
-      expect(body.defaultModel).toBe('fallback-model');
-
-      delete process.env.LLM_SCORING_MODEL;
     });
   });
 
   describe('GET /v1/admin/scorers', () => {
     it('returns scorer list with correct shape', async () => {
-      const row = makeDefinitionRow();
-      mockSqlUnsafe.mockResolvedValueOnce([row]).mockResolvedValueOnce([{ count: 1 }]);
+      mockScorerService.list.mockResolvedValueOnce({
+        data: {
+          scorers: [{ id: 'def-1', name: 'faithfulness', type: 'faithfulness', status: 'active', versionNumber: 1 }],
+          total: 1,
+          page: 0,
+          perPage: 100,
+          hasMore: false,
+        },
+      });
 
       const res = await app.request('/v1/admin/scorers');
       expect(res.status).toBe(200);
@@ -205,8 +122,6 @@ describe('Scorer Routes', () => {
     });
 
     it('returns empty list when no scorers', async () => {
-      mockSqlUnsafe.mockResolvedValueOnce([]).mockResolvedValueOnce([{ count: 0 }]);
-
       const res = await app.request('/v1/admin/scorers');
       const body = await res.json();
       expect(body.scorers).toEqual([]);
@@ -216,6 +131,10 @@ describe('Scorer Routes', () => {
 
   describe('POST /v1/admin/scorers', () => {
     it('creates definition + initial version, returns 201', async () => {
+      mockScorerService.create.mockResolvedValueOnce({
+        data: { id: 'def-1', name: 'faithfulness', versionId: 'ver-1' },
+      });
+
       const res = await app.request('/v1/admin/scorers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -223,17 +142,19 @@ describe('Scorer Routes', () => {
       });
 
       expect(res.status).toBe(201);
-      expect(mockStorage.create).toHaveBeenCalledOnce();
-      expect(mockStorage.create).toHaveBeenCalledWith(
-        expect.objectContaining({ scorerDefinition: { status: 'draft' } }),
+      expect(mockScorerService.create).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'faithfulness', type: 'faithfulness' }),
       );
-      expect(mockStorage.createVersion).toHaveBeenCalledOnce();
-
       const body = await res.json();
-      expect(body.name).toBe('test'); // from mock return value
+      expect(body.name).toBe('faithfulness');
     });
 
     it('validates required fields', async () => {
+      mockScorerService.create.mockResolvedValueOnce({
+        error: 'validation-failed',
+        details: 'name is required',
+      });
+
       const res = await app.request('/v1/admin/scorers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -242,10 +163,15 @@ describe('Scorer Routes', () => {
 
       expect(res.status).toBe(400);
       const body = await res.json();
-      expect(body.error).toContain('name');
+      expect(body.details).toContain('name');
     });
 
     it('rejects missing type', async () => {
+      mockScorerService.create.mockResolvedValueOnce({
+        error: 'validation-failed',
+        details: 'type is required',
+      });
+
       const res = await app.request('/v1/admin/scorers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -254,14 +180,15 @@ describe('Scorer Routes', () => {
 
       expect(res.status).toBe(400);
       const body = await res.json();
-      expect(body.error).toContain('type');
+      expect(body.details).toContain('type');
     });
   });
 
   describe('GET /v1/admin/scorers/:id', () => {
     it('returns scorer with active version', async () => {
-      const row = makeDefinitionRow();
-      mockSqlUnsafe.mockResolvedValueOnce([row]);
+      mockScorerService.getById.mockResolvedValueOnce({
+        data: { id: 'def-1', name: 'faithfulness', status: 'active' },
+      });
 
       const res = await app.request('/v1/admin/scorers/def-1');
       expect(res.status).toBe(200);
@@ -272,16 +199,14 @@ describe('Scorer Routes', () => {
     });
 
     it('returns 404 for unknown scorer', async () => {
-      mockSqlUnsafe.mockResolvedValueOnce([]);
-
       const res = await app.request('/v1/admin/scorers/nonexistent');
       expect(res.status).toBe(404);
     });
 
     it('falls back to latest version when no active version', async () => {
-      const row = makeDefinitionRow({ name: null, active_version_id: null });
-      mockSqlUnsafe.mockResolvedValueOnce([row]);
-      mockStorage.getLatestVersion.mockResolvedValueOnce(makeVersionRow({ name: 'fallback-name' }));
+      mockScorerService.getById.mockResolvedValueOnce({
+        data: { id: 'def-1', name: 'fallback-name', versionId: 'ver-1' },
+      });
 
       const res = await app.request('/v1/admin/scorers/def-1');
       expect(res.status).toBe(200);
@@ -292,8 +217,9 @@ describe('Scorer Routes', () => {
 
   describe('PATCH /v1/admin/scorers/:id', () => {
     it('updates scorer status', async () => {
-      mockStorage.getById.mockResolvedValueOnce({ id: 'def-1', status: 'active' });
-      mockStorage.update.mockResolvedValueOnce({ id: 'def-1', status: 'archived', updated_at: '2026-04-20T12:00:00Z' });
+      mockScorerService.update.mockResolvedValueOnce({
+        data: { id: 'def-1', status: 'archived' },
+      });
 
       const res = await app.request('/v1/admin/scorers/def-1', {
         method: 'PATCH',
@@ -302,10 +228,12 @@ describe('Scorer Routes', () => {
       });
 
       expect(res.status).toBe(200);
-      expect(mockStorage.update).toHaveBeenCalledWith(expect.objectContaining({ id: 'def-1', status: 'archived' }));
+      expect(mockScorerService.update).toHaveBeenCalledWith('def-1', expect.objectContaining({ status: 'archived' }));
     });
 
     it('returns 404 for unknown scorer', async () => {
+      mockScorerService.update.mockResolvedValueOnce({ error: 'not-found' });
+
       const res = await app.request('/v1/admin/scorers/nonexistent', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -318,14 +246,14 @@ describe('Scorer Routes', () => {
 
   describe('DELETE /v1/admin/scorers/:id', () => {
     it('deletes scorer', async () => {
-      mockStorage.getById.mockResolvedValueOnce({ id: 'def-1' });
-
       const res = await app.request('/v1/admin/scorers/def-1', { method: 'DELETE' });
       expect(res.status).toBe(200);
-      expect(mockStorage.delete).toHaveBeenCalledWith('def-1');
+      expect(mockScorerService.delete).toHaveBeenCalledWith('def-1');
     });
 
     it('returns 404 for unknown scorer', async () => {
+      mockScorerService.delete.mockResolvedValueOnce({ error: 'not-found' });
+
       const res = await app.request('/v1/admin/scorers/nonexistent', { method: 'DELETE' });
       expect(res.status).toBe(404);
     });
@@ -333,10 +261,17 @@ describe('Scorer Routes', () => {
 
   describe('GET /v1/admin/scorers/:id/versions', () => {
     it('returns version history', async () => {
-      mockStorage.listVersions.mockResolvedValueOnce({
-        rows: [makeVersionRow(), makeVersionRow({ id: 'ver-2', version_number: 2 })],
-        total: 2,
-        hasMore: false,
+      mockScorerService.listVersions.mockResolvedValueOnce({
+        data: {
+          versions: [
+            { id: 'ver-1', versionNumber: 1 },
+            { id: 'ver-2', versionNumber: 2 },
+          ],
+          total: 2,
+          page: 0,
+          perPage: 100,
+          hasMore: false,
+        },
       });
 
       const res = await app.request('/v1/admin/scorers/def-1/versions');
@@ -351,11 +286,9 @@ describe('Scorer Routes', () => {
 
   describe('POST /v1/admin/scorers/:id/versions', () => {
     it('creates new version with incremented number', async () => {
-      mockStorage.getById.mockResolvedValueOnce({ id: 'def-1' });
-      mockStorage.countVersions.mockResolvedValueOnce(2);
-      mockStorage.createVersion.mockResolvedValueOnce(
-        makeVersionRow({ id: 'ver-3', version_number: 3, change_message: 'Updated instructions' }),
-      );
+      mockScorerService.createVersion.mockResolvedValueOnce({
+        data: { id: 'ver-3', versionNumber: 3, changeMessage: 'Updated instructions' },
+      });
 
       const res = await app.request('/v1/admin/scorers/def-1/versions', {
         method: 'POST',
@@ -374,6 +307,8 @@ describe('Scorer Routes', () => {
     });
 
     it('returns 404 for unknown scorer', async () => {
+      mockScorerService.createVersion.mockResolvedValueOnce({ error: 'not-found' });
+
       const res = await app.request('/v1/admin/scorers/nonexistent/versions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -386,12 +321,8 @@ describe('Scorer Routes', () => {
 
   describe('POST /v1/admin/scorers/:id/publish', () => {
     it('publishes latest version when no versionId specified', async () => {
-      mockStorage.getById.mockResolvedValueOnce({ id: 'def-1' });
-      mockStorage.getLatestVersion.mockResolvedValueOnce({ id: 'ver-2' });
-      mockStorage.update.mockResolvedValueOnce({
-        id: 'def-1',
-        status: 'active',
-        active_version_id: 'ver-2',
+      mockScorerService.publishVersion.mockResolvedValueOnce({
+        data: { id: 'def-1', status: 'active', activeVersionId: 'ver-2' },
       });
 
       const res = await app.request('/v1/admin/scorers/def-1/publish', {
@@ -401,18 +332,12 @@ describe('Scorer Routes', () => {
       });
 
       expect(res.status).toBe(200);
-      expect(mockStorage.update).toHaveBeenCalledWith(
-        expect.objectContaining({ id: 'def-1', status: 'active', activeVersionId: 'ver-2' }),
-      );
+      expect(mockScorerService.publishVersion).toHaveBeenCalledWith('def-1', undefined);
     });
 
     it('publishes specific version', async () => {
-      mockStorage.getById.mockResolvedValueOnce({ id: 'def-1' });
-      mockStorage.getVersion.mockResolvedValueOnce({ id: 'ver-1' });
-      mockStorage.update.mockResolvedValueOnce({
-        id: 'def-1',
-        status: 'active',
-        active_version_id: 'ver-1',
+      mockScorerService.publishVersion.mockResolvedValueOnce({
+        data: { id: 'def-1', status: 'active', activeVersionId: 'ver-1' },
       });
 
       const res = await app.request('/v1/admin/scorers/def-1/publish', {
@@ -422,16 +347,18 @@ describe('Scorer Routes', () => {
       });
 
       expect(res.status).toBe(200);
+      expect(mockScorerService.publishVersion).toHaveBeenCalledWith('def-1', 'ver-1');
     });
 
     it('returns 404 for unknown scorer', async () => {
+      mockScorerService.publishVersion.mockResolvedValueOnce({ error: 'not-found' });
+
       const res = await app.request('/v1/admin/scorers/nonexistent/publish', { method: 'POST' });
       expect(res.status).toBe(404);
     });
 
     it('returns 404 for unknown version', async () => {
-      mockStorage.getById.mockResolvedValueOnce({ id: 'def-1' });
-      mockStorage.getVersion.mockResolvedValueOnce(null);
+      mockScorerService.publishVersion.mockResolvedValueOnce({ error: 'version-not-found' });
 
       const res = await app.request('/v1/admin/scorers/def-1/publish', {
         method: 'POST',
@@ -445,13 +372,9 @@ describe('Scorer Routes', () => {
 
   describe('POST /v1/admin/scorers/:id/preview', () => {
     it('runs scorer and returns score + reason', async () => {
-      const mockScorer = {
-        run: vi.fn().mockResolvedValue({ score: 0.85, reason: 'Well-grounded response' }),
-      };
-      mockConstructScorer.mockReturnValueOnce({ id: 'faithfulness', scorer: mockScorer });
-      mockStorage.getLatestVersion.mockResolvedValueOnce(
-        makeVersionRow({ name: 'faithfulness', type: 'faithfulness' }),
-      );
+      mockScorerService.previewScore.mockResolvedValueOnce({
+        data: { score: 0.85, reason: 'Well-grounded response', durationMs: 150 },
+      });
 
       const res = await app.request('/v1/admin/scorers/def-1/preview', {
         method: 'POST',
@@ -471,6 +394,11 @@ describe('Scorer Routes', () => {
     });
 
     it('validates required fields', async () => {
+      mockScorerService.previewScore.mockResolvedValueOnce({
+        error: 'validation-failed',
+        details: 'response and question are required',
+      });
+
       const res = await app.request('/v1/admin/scorers/def-1/preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -479,14 +407,14 @@ describe('Scorer Routes', () => {
 
       expect(res.status).toBe(400);
       const body = await res.json();
-      expect(body.error).toContain('required');
+      expect(body.details).toContain('required');
     });
 
     it('returns 400 with message when retrieval scorer has no context', async () => {
-      mockConstructScorer.mockReturnValueOnce(null);
-      mockStorage.getLatestVersion.mockResolvedValueOnce(
-        makeVersionRow({ name: 'contextRelevance', type: 'contextRelevance' }),
-      );
+      mockScorerService.previewScore.mockResolvedValueOnce({
+        error: 'validation-failed',
+        details: 'This scorer type (contextRelevance) requires context chunks to evaluate.',
+      });
 
       const res = await app.request('/v1/admin/scorers/def-1/preview', {
         method: 'POST',
@@ -496,11 +424,11 @@ describe('Scorer Routes', () => {
 
       expect(res.status).toBe(400);
       const body = await res.json();
-      expect(body.error).toContain('requires context');
+      expect(body.details).toContain('requires context');
     });
 
     it('returns 404 when no version found', async () => {
-      mockStorage.getLatestVersion.mockResolvedValueOnce(null);
+      mockScorerService.previewScore.mockResolvedValueOnce({ error: 'version-not-found' });
 
       const res = await app.request('/v1/admin/scorers/def-1/preview', {
         method: 'POST',

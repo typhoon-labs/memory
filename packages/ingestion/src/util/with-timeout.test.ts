@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+
 import { StageTimeoutError, withTimeout } from './with-timeout';
 
 describe('StageTimeoutError', () => {

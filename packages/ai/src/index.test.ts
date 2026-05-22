@@ -8,9 +8,26 @@ vi.mock('@ai-sdk/openai-compatible', () => ({
     const provider = mockModelFn as unknown as ReturnType<
       typeof import('@ai-sdk/openai-compatible').createOpenAICompatible
     >;
-    (provider as Record<string, unknown>).textEmbeddingModel = mockEmbeddingModelFn;
+    (provider as unknown as Record<string, unknown>).textEmbeddingModel = mockEmbeddingModelFn;
     return provider;
   }),
+}));
+
+const mockBedrockModelFn = vi.fn((id: string) => ({ modelId: id, provider: 'bedrock' }));
+const mockBedrockEmbeddingFn = vi.fn((id: string) => ({ embeddingModelId: id, provider: 'bedrock' }));
+
+vi.mock('@ai-sdk/amazon-bedrock', () => ({
+  createAmazonBedrock: vi.fn(() => {
+    const provider = mockBedrockModelFn as unknown as ReturnType<
+      typeof import('@ai-sdk/amazon-bedrock').createAmazonBedrock
+    >;
+    (provider as unknown as Record<string, unknown>).embedding = mockBedrockEmbeddingFn;
+    return provider;
+  }),
+}));
+
+vi.mock('@aws-sdk/credential-providers', () => ({
+  fromNodeProviderChain: vi.fn(() => ({})),
 }));
 
 describe('model factories', () => {
@@ -20,6 +37,11 @@ describe('model factories', () => {
     vi.resetModules();
     mockModelFn.mockClear();
     mockEmbeddingModelFn.mockClear();
+    mockBedrockModelFn.mockClear();
+    mockBedrockEmbeddingFn.mockClear();
+    // Default to gateway mode for existing tests
+    process.env.LLM_BASE_URL = 'http://localhost:8787/v1';
+    process.env.EMBEDDING_BASE_URL = 'http://localhost:8787/v1';
   });
 
   afterEach(() => {
@@ -64,10 +86,10 @@ describe('model factories', () => {
     expect(scorer).toHaveProperty('getRelevanceScore');
   });
 
-  it('createExtractionModel reads LLM_EXTRACTION_MODEL', async () => {
-    process.env.LLM_EXTRACTION_MODEL = 'extraction-model';
-    const { createExtractionModel } = await import('./index.js');
-    createExtractionModel();
+  it('createMetadataExtractionModel reads LLM_METADATA_EXTRACTION_MODEL', async () => {
+    process.env.LLM_METADATA_EXTRACTION_MODEL = 'extraction-model';
+    const { createMetadataExtractionModel } = await import('./index.js');
+    createMetadataExtractionModel();
     expect(mockModelFn).toHaveBeenCalledWith('extraction-model');
   });
 
@@ -157,7 +179,19 @@ describe('model factories', () => {
   it('exports embedding constraint constants with defaults', async () => {
     const { EMBEDDING_MAX_TOKENS, EMBEDDING_MAX_CHARS } = await import('./index.js');
     expect(EMBEDDING_MAX_TOKENS).toBe(8_192);
-    expect(EMBEDDING_MAX_CHARS).toBe(50_000);
+    expect(EMBEDDING_MAX_CHARS).toBe(2_000);
+  });
+
+  it('RERANKER_TIMEOUT_MS defaults to 15000', async () => {
+    delete process.env.RERANKER_TIMEOUT_MS;
+    const { RERANKER_TIMEOUT_MS } = await import('./index.js');
+    expect(RERANKER_TIMEOUT_MS).toBe(15_000);
+  });
+
+  it('RERANKER_TIMEOUT_MS reads from env', async () => {
+    process.env.RERANKER_TIMEOUT_MS = '30000';
+    const { RERANKER_TIMEOUT_MS } = await import('./index.js');
+    expect(RERANKER_TIMEOUT_MS).toBe(30_000);
   });
 
   it('createScoringModel reads LLM_SCORING_MODEL', async () => {
@@ -198,5 +232,131 @@ describe('model factories', () => {
     delete process.env.RAG_RERANK_CANDIDATES_EXPANDED;
     const { RAG_RERANK_CANDIDATES_EXPANDED } = await import('./index.js');
     expect(RAG_RERANK_CANDIDATES_EXPANDED).toBe(200);
+  });
+
+  // ── Retry configuration ─────────────────────────────────────────────
+
+  it('LLM_MAX_RETRIES defaults to 3', async () => {
+    delete process.env.LLM_MAX_RETRIES;
+    const { LLM_MAX_RETRIES } = await import('./index.js');
+    expect(LLM_MAX_RETRIES).toBe(3);
+  });
+
+  it('LLM_MAX_RETRIES reads from env', async () => {
+    process.env.LLM_MAX_RETRIES = '5';
+    const { LLM_MAX_RETRIES } = await import('./index.js');
+    expect(LLM_MAX_RETRIES).toBe(5);
+  });
+
+  it('LLM_RETRY_DELAY_MS defaults to 500', async () => {
+    delete process.env.LLM_RETRY_DELAY_MS;
+    const { LLM_RETRY_DELAY_MS } = await import('./index.js');
+    expect(LLM_RETRY_DELAY_MS).toBe(500);
+  });
+
+  it('LLM_RETRY_MAX_DELAY_MS defaults to 10000', async () => {
+    delete process.env.LLM_RETRY_MAX_DELAY_MS;
+    const { LLM_RETRY_MAX_DELAY_MS } = await import('./index.js');
+    expect(LLM_RETRY_MAX_DELAY_MS).toBe(10_000);
+  });
+
+  it('EMBEDDING_MAX_RETRIES falls back to LLM_MAX_RETRIES', async () => {
+    delete process.env.EMBEDDING_MAX_RETRIES;
+    process.env.LLM_MAX_RETRIES = '4';
+    const { EMBEDDING_MAX_RETRIES } = await import('./index.js');
+    expect(EMBEDDING_MAX_RETRIES).toBe(4);
+  });
+
+  it('EMBEDDING_MAX_RETRIES reads own env var over LLM fallback', async () => {
+    process.env.EMBEDDING_MAX_RETRIES = '2';
+    process.env.LLM_MAX_RETRIES = '5';
+    const { EMBEDDING_MAX_RETRIES } = await import('./index.js');
+    expect(EMBEDDING_MAX_RETRIES).toBe(2);
+  });
+
+  it('RERANKER_MAX_RETRIES falls back to LLM_MAX_RETRIES', async () => {
+    delete process.env.RERANKER_MAX_RETRIES;
+    process.env.LLM_MAX_RETRIES = '4';
+    const { RERANKER_MAX_RETRIES } = await import('./index.js');
+    expect(RERANKER_MAX_RETRIES).toBe(4);
+  });
+
+  it('RERANKER_MAX_RETRIES reads own env var over LLM fallback', async () => {
+    process.env.RERANKER_MAX_RETRIES = '1';
+    process.env.LLM_MAX_RETRIES = '5';
+    const { RERANKER_MAX_RETRIES } = await import('./index.js');
+    expect(RERANKER_MAX_RETRIES).toBe(1);
+  });
+
+  // ── Provider options ────────────────────────────────────────────────
+
+  it('createChatModel passes includeUsage and fetch to provider', async () => {
+    const { createOpenAICompatible } = await import('@ai-sdk/openai-compatible');
+    const { createChatModel } = await import('./index.js');
+    createChatModel();
+    expect(createOpenAICompatible).toHaveBeenCalledWith(
+      expect.objectContaining({
+        includeUsage: true,
+        supportsStructuredOutputs: true,
+        fetch: expect.any(Function),
+      }),
+    );
+  });
+
+  it('createEmbeddingModel passes includeUsage and fetch to provider', async () => {
+    const { createOpenAICompatible } = await import('@ai-sdk/openai-compatible');
+    const { createEmbeddingModel } = await import('./index.js');
+    createEmbeddingModel();
+    expect(createOpenAICompatible).toHaveBeenCalledWith(
+      expect.objectContaining({
+        includeUsage: true,
+        fetch: expect.any(Function),
+      }),
+    );
+  });
+
+  // ── Direct Bedrock mode ─────────────────────────────────────────────
+
+  it('createChatModel uses Bedrock provider when LLM_BASE_URL is not set', async () => {
+    delete process.env.LLM_BASE_URL;
+    delete process.env.LLM_CHAT_MODEL;
+    const { createChatModel } = await import('./index.js');
+    createChatModel();
+    expect(mockBedrockModelFn).toHaveBeenCalledWith('anthropic.claude-sonnet-4-6');
+    expect(mockModelFn).not.toHaveBeenCalled();
+  });
+
+  it('createChatModel uses Bedrock provider with custom model ID', async () => {
+    delete process.env.LLM_BASE_URL;
+    process.env.LLM_CHAT_MODEL = 'us.anthropic.claude-sonnet-4-6';
+    const { createChatModel } = await import('./index.js');
+    createChatModel();
+    expect(mockBedrockModelFn).toHaveBeenCalledWith('us.anthropic.claude-sonnet-4-6');
+  });
+
+  it('createEmbeddingModel uses Bedrock provider when EMBEDDING_BASE_URL is not set', async () => {
+    delete process.env.EMBEDDING_BASE_URL;
+    delete process.env.EMBEDDING_MODEL;
+    const { createEmbeddingModel } = await import('./index.js');
+    createEmbeddingModel();
+    expect(mockBedrockEmbeddingFn).toHaveBeenCalledWith('amazon.titan-embed-text-v2:0');
+    expect(mockEmbeddingModelFn).not.toHaveBeenCalled();
+  });
+
+  it('createRerankerScorer returns BedrockRerankerScorer when RERANKER_BASE_URL is not set', async () => {
+    delete process.env.RERANKER_BASE_URL;
+    process.env.RERANKER_MODEL = 'arn:aws:bedrock:us-east-1::foundation-model/cohere.rerank-v3-5:0';
+    const { createRerankerScorer, BedrockRerankerScorer } = await import('./index.js');
+    const scorer = createRerankerScorer();
+    expect(scorer).toBeInstanceOf(BedrockRerankerScorer);
+  });
+
+  it('createRerankerScorer returns RerankerScorer when RERANKER_BASE_URL is set', async () => {
+    process.env.RERANKER_BASE_URL = 'http://localhost:8787/v1';
+    process.env.RERANKER_MODEL = 'bedrock/amazon.rerank-v1:0';
+    process.env.LLM_API_KEY = 'test-key';
+    const { createRerankerScorer, RerankerScorer } = await import('./index.js');
+    const scorer = createRerankerScorer();
+    expect(scorer).toBeInstanceOf(RerankerScorer);
   });
 });

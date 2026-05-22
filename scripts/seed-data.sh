@@ -27,6 +27,9 @@ docker exec typhoon-api ln -sf /app/apps/api/node_modules /app/fixtures/node_mod
 echo "Seeding sync targets, documents..."
 docker exec typhoon-api bun run /app/fixtures/seed/sync-targets.ts
 
+echo "Seeding metadata field groups, templates..."
+docker exec typhoon-api bun run /app/fixtures/seed/metadata.ts
+
 # TODO: threads need real user IDs (created on first OIDC login)
 # echo "Seeding threads, messages..."
 # docker exec typhoon-api bun run /app/fixtures/seed/threads.ts

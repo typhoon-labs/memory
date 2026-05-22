@@ -1,5 +1,6 @@
 import type { QueryResult } from '@mastra/core/vector';
 import { describe, expect, it, vi } from 'vitest';
+
 import { type RerankFn, refineResults } from './retrieval';
 
 function makeResult(id: string, score: number, metadata?: Record<string, unknown>): QueryResult {

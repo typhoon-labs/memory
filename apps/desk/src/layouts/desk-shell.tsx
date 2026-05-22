@@ -31,12 +31,12 @@ function UserMenu() {
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="flex w-full min-w-0 items-center gap-2 rounded-md p-1 text-left transition-colors hover:bg-accent"
+          className="hover:bg-accent flex w-full min-w-0 items-center gap-2 rounded-md p-1 text-left transition-colors"
         >
-          <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary text-2xs font-medium text-primary-foreground">
+          <div className="bg-primary text-2xs text-primary-foreground flex size-7 shrink-0 items-center justify-center rounded-full font-medium">
             {user?.email?.charAt(0).toUpperCase() ?? 'U'}
           </div>
-          <span className="truncate text-xs text-muted-foreground">{user?.email ?? 'User'}</span>
+          <span className="text-muted-foreground truncate text-xs">{user?.email ?? 'User'}</span>
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-48">

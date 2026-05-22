@@ -1,5 +1,6 @@
 import type { ProgressEvent } from '@typhoon/ui';
 import { describe, expect, it } from 'vitest';
+
 import { resolveStepStatus } from './task-progress';
 
 describe('resolveStepStatus', () => {

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+
 import { parseHtml } from './html';
 
 // No external network calls — turndown operates on pure strings, no mocking needed.

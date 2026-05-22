@@ -5,11 +5,13 @@
 
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+
 import { Document, HeadingLevel, Packer, Paragraph, TextRun } from 'docx';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import * as XLSX from 'xlsx';
 
-const OUTPUT_DIR = join(import.meta.dirname, 'samples');
+const SUPPORT_DIR = join(import.meta.dirname, 'samples', 'support');
+const GUIDES_DIR = join(import.meta.dirname, 'samples', 'guides');
 
 // Fixed date for deterministic output — override Date so all libraries
 // (including docx which hardcodes new Date()) produce identical files.
@@ -157,7 +159,7 @@ async function generateDocx() {
   });
 
   const buffer = await Packer.toBuffer(doc);
-  const path = join(OUTPUT_DIR, 'shipping-info.docx');
+  const path = join(SUPPORT_DIR, 'shipping-info.docx');
   await writeFile(path, buffer);
   console.log(`  Created ${path}`);
 }
@@ -237,7 +239,7 @@ async function generateXlsx() {
   limitsSheet['!cols'] = [{ wch: 22 }, { wch: 18 }, { wch: 18 }, { wch: 18 }];
   XLSX.utils.book_append_sheet(workbook, limitsSheet, 'Usage Limits');
 
-  const path = join(OUTPUT_DIR, 'pricing-plans.xlsx');
+  const path = join(GUIDES_DIR, 'pricing-plans.xlsx');
   XLSX.writeFile(workbook, path);
   console.log(`  Created ${path}`);
 }
@@ -492,7 +494,7 @@ async function generatePdf() {
   body('For questions or help, visit our Help Center at help.typhooncloudvault.com or email support@typhooncloudvault.com.');
 
   const pdfBytes = await pdfDoc.save();
-  const path = join(OUTPUT_DIR, 'getting-started.pdf');
+  const path = join(GUIDES_DIR, 'getting-started.pdf');
   await writeFile(path, pdfBytes);
   console.log(`  Created ${path}`);
 }

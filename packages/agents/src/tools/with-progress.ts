@@ -37,6 +37,17 @@ export async function emitToolProgress(
 }
 
 /**
+ * Emit the generated thread title as a dedicated `data-thread-title` stream
+ * part so the client can update the sidebar immediately — before the tool
+ * part transitions to `output-available`.
+ */
+export async function emitThreadTitle(context: ToolExecutionContext | undefined, title: string): Promise<void> {
+  const writer = context?.writer;
+  if (!writer) return;
+  await writer.custom({ type: 'data-thread-title', data: { title }, transient: false });
+}
+
+/**
  * Wrap a Mastra tool with start/done progress events. Useful for tools
  * created via `@mastra/rag` helpers (`createVectorQueryTool`,
  * `createGraphRAGTool`) where we don't own the `execute` body and can't add
@@ -48,13 +59,13 @@ export async function emitToolProgress(
  * message derived from the result.
  */
 export function withProgress<
-  // biome-ignore lint/suspicious/noExplicitAny: rag tool types are not portable across @mastra/rag boundaries
+  // oxlint-disable-next-line @typescript-eslint/no-explicit-any -- rag tool types are not portable across @mastra/rag boundaries
   TTool extends { execute?: (input: any, context: any) => Promise<any> },
 >(
   inner: TTool,
   labels: {
     start: string;
-    // biome-ignore lint/suspicious/noExplicitAny: result shape varies per tool; callers do their own narrowing
+    // oxlint-disable-next-line @typescript-eslint/no-explicit-any -- result shape varies per tool; callers do their own narrowing
     done?: (output: any) => string;
   },
 ): TTool {

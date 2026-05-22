@@ -22,6 +22,7 @@ import {
 } from '@typhoon/ui';
 import { DatabaseIcon, FileTextIcon, SearchIcon, SparklesIcon } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+
 import { detailTitle, usePageTitle } from '../../hooks/use-page-title';
 
 // ── Types ───────────────────────────────────────────────────────
@@ -70,12 +71,12 @@ const GROUPS_PER_PAGE = 10;
 
 function stripMarkdown(text: string): string {
   return text
-    .replace(/^#{1,6}\s+/gm, '')
-    .replace(/\*\*(.+?)\*\*/g, '$1')
-    .replace(/\*(.+?)\*/g, '$1')
-    .replace(/`(.+?)`/g, '$1')
-    .replace(/^\s*[-*+]\s+/gm, '')
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
+    .replaceAll(/^#{1,6}\s+/gm, '')
+    .replaceAll(/\*\*(.+?)\*\*/g, '$1')
+    .replaceAll(/\*(.+?)\*/g, '$1')
+    .replaceAll(/`(.+?)`/g, '$1')
+    .replaceAll(/^\s*[-*+]\s+/gm, '')
+    .replaceAll(/\[([^\]]+)\]\([^)]+\)/g, '$1');
 }
 
 function scoreVariant(score: number): 'success' | 'info' | 'warning' {
@@ -182,13 +183,18 @@ export function SearchPage() {
     e.preventDefault();
     const trimmed = query.trim();
     if (!trimmed) return;
-    navigate({ search: (prev) => ({ ...prev, q: trimmed, doc: undefined, chunk: undefined }) });
+    navigate({
+      search: ((prev: Record<string, unknown>) => ({ ...prev, q: trimmed, doc: undefined, chunk: undefined })) as never,
+    });
     executeSearch(trimmed, expandedMode);
   };
 
   const handleToggleExpanded = () => {
     const next = !expandedMode;
-    navigate({ search: (prev) => ({ ...prev, expanded: next || undefined }), replace: true });
+    navigate({
+      search: ((prev: Record<string, unknown>) => ({ ...prev, expanded: next || undefined })) as never,
+      replace: true,
+    });
     if (hasSearched) executeSearch(query.trim(), next);
   };
 
@@ -225,7 +231,7 @@ export function SearchPage() {
         });
       }
     }
-    return Array.from(map.values()).sort((a, b) => b.bestScore - a.bestScore);
+    return Array.from(map.values()).toSorted((a, b) => b.bestScore - a.bestScore);
   }, [results, docMap, syncTargetMap]);
 
   // In expanded mode, show individual chunks; in default mode, show document groups
@@ -260,19 +266,20 @@ export function SearchPage() {
         <div className="mt-4 space-y-3">
           <form
             onSubmit={handleSearch}
-            className="flex items-center gap-2 rounded-xl border border-border bg-card p-2.5 shadow-lg shadow-black/5"
+            className="border-border bg-card flex items-center gap-2 rounded-xl border p-2.5 shadow-lg shadow-black/5"
           >
-            <SearchIcon className="size-4 shrink-0 text-muted-foreground" />
+            <SearchIcon className="text-muted-foreground size-4 shrink-0" />
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search documents…"
-              className="min-w-0 flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground/65 focus-visible:outline-none"
+              aria-label="Search documents"
+              className="text-foreground placeholder:text-muted-foreground/65 min-w-0 flex-1 bg-transparent text-sm focus-visible:outline-none"
             />
             <button
               type="submit"
               disabled={isSearching}
-              className="flex size-[30px] shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-opacity hover:opacity-85 disabled:opacity-40"
+              className="bg-primary text-primary-foreground flex size-[30px] shrink-0 items-center justify-center rounded-lg transition-opacity hover:opacity-85 disabled:opacity-40"
             >
               {isSearching ? <LoadingSpinner size="sm" /> : <SearchIcon className="size-3.5" />}
             </button>
@@ -299,7 +306,7 @@ export function SearchPage() {
             </TooltipProvider>
 
             {hasSearched && !isSearching && displayItems.length > 0 && (
-              <span className="text-xs text-muted-foreground">
+              <span className="text-muted-foreground text-xs">
                 {expandedMode
                   ? `${results.length} passage${results.length !== 1 ? 's' : ''} found`
                   : `${grouped.length} document${grouped.length !== 1 ? 's' : ''} found`}
@@ -328,31 +335,38 @@ export function SearchPage() {
                       key={`${docId}-${result.metadata.startIndex ?? idx}`}
                       className={cn(
                         'cursor-pointer transition-shadow hover:shadow-md',
-                        isActive && 'ring-2 ring-primary/40',
+                        isActive && 'ring-primary/40 ring-2',
                       )}
                       onClick={() => {
-                        navigate({ search: (prev) => ({ ...prev, doc: docId, chunk: idx }), replace: true });
+                        navigate({
+                          search: ((prev: Record<string, unknown>) => ({
+                            ...prev,
+                            doc: docId,
+                            chunk: idx,
+                          })) as never,
+                          replace: true,
+                        });
                       }}
                       onMouseEnter={() => docId && prefetchDocument(docId)}
                     >
                       <CardHeader className="pb-1.5">
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex min-w-0 gap-2">
-                            <FileTextIcon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
-                            <span className="break-words text-sm font-medium">
+                            <FileTextIcon className="text-muted-foreground mt-0.5 size-3.5 shrink-0" />
+                            <span className="text-sm font-medium break-words">
                               {stripMarkdown(result.metadata.title ?? result.metadata.source ?? 'Unknown')}
                             </span>
                           </div>
-                          <Badge variant={scoreVariant(result.score)} className="shrink-0 text-2xs tabular-nums">
+                          <Badge variant={scoreVariant(result.score)} className="text-2xs shrink-0 tabular-nums">
                             {(result.score * 100).toFixed(0)}%
                           </Badge>
                         </div>
                       </CardHeader>
                       <CardContent className="pt-0">
-                        <p className="line-clamp-3 pl-[22px] text-xs leading-relaxed text-muted-foreground">
+                        <p className="text-muted-foreground line-clamp-3 pl-[22px] text-xs leading-relaxed">
                           {stripMarkdown(result.text)}
                         </p>
-                        <div className="mt-1.5 flex min-w-0 items-center gap-1.5 pl-[22px] text-2xs text-muted-foreground">
+                        <div className="text-2xs text-muted-foreground mt-1.5 flex min-w-0 items-center gap-1.5 pl-[22px]">
                           {st?.name && (
                             <>
                               <DatabaseIcon className="size-3 shrink-0" />
@@ -375,11 +389,15 @@ export function SearchPage() {
                       key={group.documentId}
                       className={cn(
                         'cursor-pointer transition-shadow hover:shadow-md',
-                        isActive && 'ring-2 ring-primary/40',
+                        isActive && 'ring-primary/40 ring-2',
                       )}
                       onClick={() =>
                         navigate({
-                          search: (prev) => ({ ...prev, doc: group.documentId, chunk: undefined }),
+                          search: ((prev: Record<string, unknown>) => ({
+                            ...prev,
+                            doc: group.documentId,
+                            chunk: undefined,
+                          })) as never,
                           replace: true,
                         })
                       }
@@ -388,8 +406,8 @@ export function SearchPage() {
                       <CardHeader className="pb-1.5">
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex min-w-0 gap-2">
-                            <FileTextIcon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
-                            <span className="break-words text-sm font-medium">{stripMarkdown(group.title)}</span>
+                            <FileTextIcon className="text-muted-foreground mt-0.5 size-3.5 shrink-0" />
+                            <span className="text-sm font-medium break-words">{stripMarkdown(group.title)}</span>
                           </div>
                           <div className="flex shrink-0 items-center gap-2">
                             <Badge variant={scoreVariant(group.bestScore)} className="text-2xs tabular-nums">
@@ -400,11 +418,11 @@ export function SearchPage() {
                       </CardHeader>
                       <CardContent className="pt-0">
                         {group.description && (
-                          <p className="line-clamp-2 pl-[22px] text-xs leading-relaxed text-muted-foreground">
+                          <p className="text-muted-foreground line-clamp-2 pl-[22px] text-xs leading-relaxed">
                             {group.description}
                           </p>
                         )}
-                        <div className="mt-1.5 flex min-w-0 items-center gap-1.5 pl-[22px] text-2xs text-muted-foreground">
+                        <div className="text-2xs text-muted-foreground mt-1.5 flex min-w-0 items-center gap-1.5 pl-[22px]">
                           {group.syncTargetName && (
                             <>
                               <DatabaseIcon className="size-3 shrink-0" />
@@ -460,17 +478,28 @@ export function SearchPage() {
       {/* Document viewer panel */}
       <ResizablePanel defaultSize={50} minSize={30}>
         <DocumentViewerPanel
-          key={expandedMode && selectedChunkIdx != null ? `${selectedDocId}-${selectedChunkIdx}` : selectedDocId}
+          key={
+            expandedMode && selectedChunkIdx !== null && selectedChunkIdx !== undefined
+              ? `${selectedDocId}-${selectedChunkIdx}`
+              : selectedDocId
+          }
           documentId={selectedDocId}
           searchTerms={searchTerms}
           startIndex={
-            expandedMode && selectedChunkIdx != null
+            expandedMode && selectedChunkIdx !== null && selectedChunkIdx !== undefined
               ? (results[selectedChunkIdx]?.metadata.startIndex ?? undefined)
               : undefined
           }
-          chunkText={expandedMode && selectedChunkIdx != null ? results[selectedChunkIdx]?.text : undefined}
+          chunkText={
+            expandedMode && selectedChunkIdx !== null && selectedChunkIdx !== undefined
+              ? results[selectedChunkIdx]?.text
+              : undefined
+          }
           onClose={() => {
-            navigate({ search: (prev) => ({ ...prev, doc: undefined, chunk: undefined }), replace: true });
+            navigate({
+              search: ((prev: Record<string, unknown>) => ({ ...prev, doc: undefined, chunk: undefined })) as never,
+              replace: true,
+            });
           }}
         />
       </ResizablePanel>

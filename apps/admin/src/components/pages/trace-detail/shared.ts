@@ -47,7 +47,7 @@ export interface SpanNode {
 
 /** Format milliseconds to human-readable duration. */
 export function formatDurationMs(ms: number | null): string {
-  if (ms == null) return '\u2014';
+  if (ms === null || ms === undefined) return '\u2014';
   if (ms < 1) return '<1ms';
   if (ms < 1000) return `${Math.round(ms)}ms`;
   if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;

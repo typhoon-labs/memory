@@ -1,6 +1,7 @@
 import { Agent } from '@mastra/core/agent';
 import type { MastraMemory } from '@mastra/core/memory';
 import { createKnowledgeModel } from '@typhoon/ai';
+
 import { searchKnowledgeBaseGraph } from './tools/graph-kb';
 import { createHybridSearchTool, searchKnowledgeBaseHybrid } from './tools/search-kb-hybrid';
 
@@ -42,7 +43,7 @@ export interface KnowledgeAgentOptions {
   rerank?: boolean;
 }
 
-// biome-ignore lint/suspicious/noExplicitAny: Agent generic includes rag tool types not portable across packages
+// oxlint-disable-next-line @typescript-eslint/no-explicit-any -- Agent generic includes rag tool types not portable across packages
 export function createKnowledgeAgent(options?: KnowledgeAgentOptions): Agent<any, any> {
   const rerank = options?.rerank ?? true;
   const hybridTool = rerank ? searchKnowledgeBaseHybrid : createHybridSearchTool({ rerank: false });

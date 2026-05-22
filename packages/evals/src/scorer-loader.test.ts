@@ -33,7 +33,8 @@ function makeDefinition(overrides: Partial<ScorerDefinitionVersion> = {}): Score
   };
 }
 
-const mockModel = { provider: 'openai', name: 'gpt-4' } as never;
+const mockModelInstance = { provider: 'openai', name: 'gpt-4' } as never;
+const mockModel = () => mockModelInstance;
 
 // ---------- Tests ----------
 describe('constructScorer', () => {
@@ -69,25 +70,31 @@ describe('constructScorer', () => {
     it('creates faithfulness scorer with model and context', () => {
       const context = ['doc content'];
       constructScorer(makeDefinition({ type: 'faithfulness', name: 'faith' }), mockModel, context);
-      expect(mockFactories.createFaithfulnessScorer).toHaveBeenCalledWith({ model: mockModel, options: { context } });
+      expect(mockFactories.createFaithfulnessScorer).toHaveBeenCalledWith({
+        model: mockModelInstance,
+        options: { context },
+      });
     });
 
     it('creates hallucination scorer with model and context', () => {
       const context = ['doc content'];
       constructScorer(makeDefinition({ type: 'hallucination', name: 'halluc' }), mockModel, context);
-      expect(mockFactories.createHallucinationScorer).toHaveBeenCalledWith({ model: mockModel, options: { context } });
+      expect(mockFactories.createHallucinationScorer).toHaveBeenCalledWith({
+        model: mockModelInstance,
+        options: { context },
+      });
     });
 
     it('creates answerRelevancy scorer with model only', () => {
       constructScorer(makeDefinition({ type: 'answerRelevancy', name: 'ar' }), mockModel, []);
-      expect(mockFactories.createAnswerRelevancyScorer).toHaveBeenCalledWith({ model: mockModel });
+      expect(mockFactories.createAnswerRelevancyScorer).toHaveBeenCalledWith({ model: mockModelInstance });
     });
 
     it('creates contextRelevance scorer with model and context', () => {
       const context = ['doc content'];
       constructScorer(makeDefinition({ type: 'contextRelevance', name: 'cr' }), mockModel, context);
       expect(mockFactories.createContextRelevanceScorerLLM).toHaveBeenCalledWith({
-        model: mockModel,
+        model: mockModelInstance,
         options: { context },
       });
     });
@@ -96,7 +103,7 @@ describe('constructScorer', () => {
       const context = ['doc content'];
       constructScorer(makeDefinition({ type: 'contextPrecision', name: 'cp' }), mockModel, context);
       expect(mockFactories.createContextPrecisionScorer).toHaveBeenCalledWith({
-        model: mockModel,
+        model: mockModelInstance,
         options: { context },
       });
     });
@@ -120,6 +127,26 @@ describe('constructScorer', () => {
       const def = makeDefinition({ type: 'custom', name: 'no-instr', instructions: null });
       const result = constructScorer(def, mockModel, []);
       expect(result).toBeNull();
+    });
+  });
+
+  describe('pinned model', () => {
+    it('calls factory with pinned model ID when definition.model is set', () => {
+      const factory = vi.fn().mockReturnValue(mockModelInstance);
+      const def = makeDefinition({
+        type: 'faithfulness',
+        name: 'pinned',
+        model: { id: 'anthropic/claude-sonnet-4-6' },
+      });
+      constructScorer(def, factory, ['ctx']);
+      expect(factory).toHaveBeenCalledWith('anthropic/claude-sonnet-4-6');
+    });
+
+    it('calls factory with undefined when definition.model is null', () => {
+      const factory = vi.fn().mockReturnValue(mockModelInstance);
+      const def = makeDefinition({ type: 'faithfulness', name: 'default' });
+      constructScorer(def, factory, ['ctx']);
+      expect(factory).toHaveBeenCalledWith(undefined);
     });
   });
 

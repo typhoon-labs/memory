@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { documentContentQuery, documentParsedQuery } from './document-queries';
 
 const mockFetch = vi.fn();
@@ -14,7 +15,7 @@ afterEach(() => {
 describe('documentContentQuery', () => {
   it('returns correct query key for document id', () => {
     const opts = documentContentQuery('doc-123');
-    expect(opts.queryKey).toEqual(['document-content', 'doc-123']);
+    expect(opts.queryKey).toEqual(['documents', 'chunks', 'doc-123']);
   });
 
   it('sets staleTime to 5 minutes', () => {
@@ -25,7 +26,7 @@ describe('documentContentQuery', () => {
   it('fetches chunks endpoint with credentials', async () => {
     mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve({ document: {}, chunks: [] }) });
 
-    await documentContentQuery('doc-abc').queryFn();
+    await documentContentQuery('doc-abc').queryFn?.({} as never);
 
     expect(mockFetch).toHaveBeenCalledWith('/api/v1/documents/doc-abc/chunks', { credentials: 'include' });
   });
@@ -33,14 +34,14 @@ describe('documentContentQuery', () => {
   it('throws on non-ok response', async () => {
     mockFetch.mockResolvedValue({ ok: false, status: 404, statusText: 'Not Found' });
 
-    await expect(documentContentQuery('doc-abc').queryFn()).rejects.toThrow('404 Not Found');
+    await expect(documentContentQuery('doc-abc').queryFn?.({} as never)).rejects.toThrow('404 Not Found');
   });
 
   it('returns parsed JSON on success', async () => {
     const data = { document: { id: 'doc-1' }, chunks: [{ text: 'hello', startIndex: 0 }] };
     mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve(data) });
 
-    const result = await documentContentQuery('doc-1').queryFn();
+    const result = await documentContentQuery('doc-1').queryFn?.({} as never);
     expect(result).toEqual(data);
   });
 });
@@ -48,7 +49,7 @@ describe('documentContentQuery', () => {
 describe('documentParsedQuery', () => {
   it('returns correct query key for document id', () => {
     const opts = documentParsedQuery('doc-456');
-    expect(opts.queryKey).toEqual(['document-parsed', 'doc-456']);
+    expect(opts.queryKey).toEqual(['documents', 'parsed-content', 'doc-456']);
   });
 
   it('sets staleTime to 5 minutes', () => {
@@ -59,7 +60,7 @@ describe('documentParsedQuery', () => {
   it('fetches parsed-content endpoint with credentials', async () => {
     mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve({ text: 'content' }) });
 
-    await documentParsedQuery('doc-xyz').queryFn();
+    await documentParsedQuery('doc-xyz').queryFn?.({} as never);
 
     expect(mockFetch).toHaveBeenCalledWith('/api/v1/documents/doc-xyz/parsed-content', { credentials: 'include' });
   });
@@ -67,14 +68,14 @@ describe('documentParsedQuery', () => {
   it('throws on non-ok response', async () => {
     mockFetch.mockResolvedValue({ ok: false, status: 500, statusText: 'Internal Server Error' });
 
-    await expect(documentParsedQuery('doc-xyz').queryFn()).rejects.toThrow('500 Internal Server Error');
+    await expect(documentParsedQuery('doc-xyz').queryFn?.({} as never)).rejects.toThrow('500 Internal Server Error');
   });
 
   it('returns parsed JSON on success', async () => {
     const data = { text: 'full document text' };
     mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve(data) });
 
-    const result = await documentParsedQuery('doc-1').queryFn();
+    const result = await documentParsedQuery('doc-1').queryFn?.({} as never);
     expect(result).toEqual(data);
   });
 });

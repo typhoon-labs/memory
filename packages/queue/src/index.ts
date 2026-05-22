@@ -1,8 +1,5 @@
-export { createExperimentQueue } from './queues/experiments';
-export { createReviewsQueue } from './queues/reviews';
-export { createScoringQueue } from './queues/scoring';
-
-export { createReportsQueue, createSyncQueue } from './queues/sync';
+export type { RedisConfig } from './redis-provider';
+export { RedisProvider } from './redis-provider';
 export type { QueueRegistry } from './registry';
 export { createQueueRegistry } from './registry';
 export type {
@@ -16,4 +13,4 @@ export type {
   ScoringJobData,
   ScoringRunJobData,
 } from './types';
-export { JOB_PRIORITY, makeJobId } from './utils';
+export { childPriorityFor, JOB_PRIORITY, makeJobId } from './utils';

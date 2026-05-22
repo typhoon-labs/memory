@@ -5,13 +5,16 @@
 
 export interface ChunkSource {
   chunkId: string;
-  displayIndex: number;
+  /** Hierarchical label from the knowledge search tool, e.g. "1", "1.1". */
+  displayIndex: string;
   score?: number;
   /** Populated after hydration from the vector store. */
   text?: string;
   documentId?: string;
   title?: string;
+  section?: string;
   source?: string;
+  syncTargetName?: string;
 }
 
 export interface ScoringData {
@@ -90,15 +93,49 @@ function extractChunkSources(content: { parts?: unknown[] }): ChunkSource[] {
       if (typeof cs.chunkId === 'string') {
         sources.push({
           chunkId: cs.chunkId,
-          displayIndex: typeof cs.displayIndex === 'number' ? cs.displayIndex : 0,
+          displayIndex: String(cs.displayIndex ?? '0'),
           score: typeof cs.score === 'number' ? cs.score : undefined,
           text: typeof cs.text === 'string' ? cs.text : undefined,
           documentId: typeof cs.documentId === 'string' ? cs.documentId : undefined,
           title: typeof cs.title === 'string' ? cs.title : undefined,
+          section: typeof cs.section === 'string' ? cs.section : undefined,
           source: typeof cs.source === 'string' ? cs.source : undefined,
+          syncTargetName: typeof cs.syncTargetName === 'string' ? cs.syncTargetName : undefined,
         });
       }
     }
   }
   return sources;
+}
+
+// ── Citation formatting for scorers ────────────────────────────────
+
+const CITATION_PATTERN = /\[Source:\s*(.+?)\]/g;
+const NUMERIC_CITATION = /^\d+(?:\.\d+)?(?:\s*,\s*\d+(?:\.\d+)?)*$/;
+
+/**
+ * Transform raw agent response text into a scorer-friendly format by
+ * collapsing `[Source: 1.1]` or `[Source: 1.1, 1.2]` → `[1]`.
+ *
+ * No references footer is appended — footer metadata (titles, file paths)
+ * is not present in the scorer's context chunks and would be penalised as
+ * unsupported claims by faithfulness/hallucination scorers.
+ *
+ * Returns the original text unchanged when there are no chunk sources.
+ */
+export function formatResponseForScoring(responseText: string, chunkSources: ChunkSource[]): string {
+  if (chunkSources.length === 0) return responseText;
+
+  // Replace inline [Source: ...] patterns with compact [N] references,
+  // collapsing chunk-level refs to document-level (e.g. [Source: 1.1, 1.2] → [1])
+  return responseText.replace(CITATION_PATTERN, (_match, captured: string) => {
+    const trimmed = captured.trim();
+    if (NUMERIC_CITATION.test(trimmed)) {
+      const refs = trimmed.split(/\s*,\s*/);
+      const docNums = [...new Set(refs.map((r) => r.split('.')[0]))];
+      return `[${docNums.join(', ')}]`;
+    }
+    // Non-numeric citation pattern — leave as-is
+    return _match;
+  });
 }

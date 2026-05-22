@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+
 import { cn } from '../../lib/utils';
 
 export function Message({
@@ -18,7 +19,7 @@ export function Message({
 }
 
 export function MessageContent({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn('text-sm leading-relaxed text-card-foreground', className)}>{children}</div>;
+  return <div className={cn('text-card-foreground text-sm leading-relaxed', className)}>{children}</div>;
 }
 
 export function MessageResponse({ children, className }: { children: ReactNode; className?: string }) {
@@ -55,7 +56,7 @@ export function MessageAction({
       aria-pressed={active}
       onClick={onClick}
       className={cn(
-        'rounded p-1 text-muted-foreground/50 transition-colors hover:text-muted-foreground',
+        'text-muted-foreground/50 hover:text-muted-foreground rounded p-1 transition-colors',
         active && (activeClassName ?? 'text-muted-foreground'),
         className,
       )}

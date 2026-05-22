@@ -1,9 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { isScoringEnabled, validateEnv } from './env';
 
+import { isRedisCluster, isScoringEnabled, validateEnv } from './env';
+
+/** Minimal valid env — direct Bedrock mode (no gateway URLs). */
 const validEnv = {
   DATABASE_URL: 'postgresql://typhoon:typhoon@localhost:5432/typhoon',
   REDIS_URL: 'redis://localhost:6379',
+  AUTH_SECRET: 'test-secret',
+  AUTH_URL: 'http://localhost:5172',
+};
+
+/** Valid env with gateway URLs — Bifrost/dev mode. */
+const validGatewayEnv = {
+  ...validEnv,
   S3_ENDPOINT: 'http://localhost:9000',
   S3_ACCESS_KEY: 'minioadmin',
   S3_SECRET_KEY: 'minioadmin',
@@ -12,17 +21,32 @@ const validEnv = {
   RERANKER_BASE_URL: 'http://localhost:8787/v1',
   RERANKER_MODEL: 'bedrock/amazon.rerank-v1:0',
   EMBEDDING_BASE_URL: 'http://localhost:11434/v1',
-  AUTH_SECRET: 'test-secret',
-  AUTH_URL: 'http://localhost:5172',
 };
 
 describe('validateEnv', () => {
-  it('validates a complete valid environment', () => {
+  it('validates a minimal valid environment (direct Bedrock mode)', () => {
     const result = validateEnv(validEnv);
     expect(result.DATABASE_URL).toBe('postgresql://typhoon:typhoon@localhost:5432/typhoon');
     expect(result.PORT).toBe(5172);
     expect(result.S3_BUCKET).toBe('typhoon-documents');
     expect(result.LLM_CHAT_MODEL).toBe('anthropic.claude-sonnet-4-6');
+    expect(result.LLM_BASE_URL).toBeUndefined();
+    expect(result.LLM_API_KEY).toBeUndefined();
+    expect(result.EMBEDDING_BASE_URL).toBeUndefined();
+    expect(result.RERANKER_BASE_URL).toBeUndefined();
+    expect(result.S3_ENDPOINT).toBeUndefined();
+    expect(result.S3_ACCESS_KEY).toBeUndefined();
+    expect(result.S3_SECRET_KEY).toBeUndefined();
+  });
+
+  it('validates a complete gateway environment (Bifrost mode)', () => {
+    const result = validateEnv(validGatewayEnv);
+    expect(result.LLM_BASE_URL).toBe('http://localhost:8787/v1');
+    expect(result.LLM_API_KEY).toBe('changeme');
+    expect(result.EMBEDDING_BASE_URL).toBe('http://localhost:11434/v1');
+    expect(result.RERANKER_BASE_URL).toBe('http://localhost:8787/v1');
+    expect(result.S3_ACCESS_KEY).toBe('minioadmin');
+    expect(result.S3_SECRET_KEY).toBe('minioadmin');
   });
 
   it('throws on missing required fields', () => {
@@ -31,7 +55,9 @@ describe('validateEnv', () => {
 
   it('applies default values for optional fields', () => {
     const result = validateEnv(validEnv);
+    expect(result.AWS_REGION).toBe('us-east-1');
     expect(result.S3_REGION).toBe('us-east-1');
+    expect(result.S3_FORCE_PATH_STYLE).toBe('true');
     expect(result.HOST).toBe('0.0.0.0');
     expect(result.EMBEDDING_MODEL).toBe('amazon.titan-embed-text-v2:0');
     expect(result.EMBEDDING_DIMENSION).toBe(1024);
@@ -46,8 +72,13 @@ describe('validateEnv', () => {
     expect(() => validateEnv({ ...validEnv, DATABASE_URL: 'not-a-url' })).toThrow('Environment validation failed');
   });
 
-  it('rejects empty S3_ACCESS_KEY', () => {
+  it('rejects empty S3_ACCESS_KEY when explicitly provided', () => {
     expect(() => validateEnv({ ...validEnv, S3_ACCESS_KEY: '' })).toThrow('Environment validation failed');
+  });
+
+  it('accepts S3_FORCE_PATH_STYLE=false for production S3', () => {
+    const result = validateEnv({ ...validEnv, S3_FORCE_PATH_STYLE: 'false' });
+    expect(result.S3_FORCE_PATH_STYLE).toBe('false');
   });
 
   it('accepts OIDC config when all three fields are present', () => {
@@ -85,12 +116,8 @@ describe('validateEnv', () => {
   });
 
   it('error message includes field names', () => {
-    try {
-      validateEnv({});
-    } catch (err) {
-      expect((err as Error).message).toContain('DATABASE_URL');
-      expect((err as Error).message).toContain('REDIS_URL');
-    }
+    expect(() => validateEnv({})).toThrow('DATABASE_URL');
+    expect(() => validateEnv({})).toThrow('REDIS_URL');
   });
 
   it('applies scoring defaults', () => {
@@ -203,5 +230,49 @@ describe('isScoringEnabled', () => {
 
   it('returns false when SCORING_ENABLED is "0"', () => {
     expect(isScoringEnabled({ SCORING_ENABLED: '0' })).toBe(false);
+  });
+});
+
+describe('isRedisCluster', () => {
+  it('returns false when REDIS_CLUSTER is undefined', () => {
+    expect(isRedisCluster({})).toBe(false);
+  });
+
+  it('returns false when REDIS_CLUSTER is "false"', () => {
+    expect(isRedisCluster({ REDIS_CLUSTER: 'false' })).toBe(false);
+  });
+
+  it('returns false when REDIS_CLUSTER is "0"', () => {
+    expect(isRedisCluster({ REDIS_CLUSTER: '0' })).toBe(false);
+  });
+
+  it('returns true when REDIS_CLUSTER is "true"', () => {
+    expect(isRedisCluster({ REDIS_CLUSTER: 'true' })).toBe(true);
+  });
+
+  it('returns true when REDIS_CLUSTER is "1"', () => {
+    expect(isRedisCluster({ REDIS_CLUSTER: '1' })).toBe(true);
+  });
+});
+
+describe('validateEnv redis fields', () => {
+  it('applies REDIS_KEY_PREFIX default', () => {
+    const result = validateEnv(validEnv);
+    expect(result.REDIS_KEY_PREFIX).toBe('typhoon');
+  });
+
+  it('accepts custom REDIS_KEY_PREFIX', () => {
+    const result = validateEnv({ ...validEnv, REDIS_KEY_PREFIX: 'myapp' });
+    expect(result.REDIS_KEY_PREFIX).toBe('myapp');
+  });
+
+  it('applies REDIS_CLUSTER default', () => {
+    const result = validateEnv(validEnv);
+    expect(result.REDIS_CLUSTER).toBe('false');
+  });
+
+  it('accepts REDIS_CLUSTER=true', () => {
+    const result = validateEnv({ ...validEnv, REDIS_CLUSTER: 'true' });
+    expect(result.REDIS_CLUSTER).toBe('true');
   });
 });

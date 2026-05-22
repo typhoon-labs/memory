@@ -1,4 +1,5 @@
 import postgres, { type Notice, type Sql } from 'postgres';
+
 import { createDb, type Db } from './client';
 
 export interface DbConnection {

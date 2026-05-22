@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+
 import { stripChunkSources } from './strip-chunks';
 
 describe('stripChunkSources', () => {

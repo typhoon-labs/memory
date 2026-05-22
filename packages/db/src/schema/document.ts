@@ -1,14 +1,19 @@
-import { index, integer, jsonb, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import {
+  boolean,
+  index,
+  integer,
+  jsonb,
+  pgEnum,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
+
 import { syncTargets } from './sync-target';
 
-export const documentStatusEnum = pgEnum('document_status', [
-  'pending',
-  'processing',
-  'ready',
-  'parse_error',
-  'embed_error',
-  'deleted',
-]);
+export const documentStatusEnum = pgEnum('document_status', ['pending', 'processing', 'ready', 'error', 'deleted']);
 
 export const documents = pgTable(
   'documents',
@@ -30,6 +35,7 @@ export const documents = pgTable(
     chunkCount: integer('chunk_count').notNull().default(0),
     customMetadata: jsonb('custom_metadata').$type<Record<string, unknown>>().notNull().default({}),
     contentHash: text('content_hash'),
+    searchMetaDirty: boolean('search_meta_dirty').default(false).notNull(),
     lastSyncedAt: timestamp('last_synced_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true })

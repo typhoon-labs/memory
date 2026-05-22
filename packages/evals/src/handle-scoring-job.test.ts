@@ -61,7 +61,7 @@ function createDeps(overrides?: Partial<ScoringDeps>): ScoringDeps {
   };
 }
 
-const fakeModel = 'test-model' as never;
+const fakeModel = (() => 'test-model') as never;
 
 describe('prepareScoring', () => {
   beforeEach(() => {
@@ -91,13 +91,9 @@ describe('prepareScoring', () => {
       fetchMessages: vi.fn().mockResolvedValue(null),
     });
 
-    await expect(prepareScoring(createInput(), deps, fakeModel)).rejects.toThrow('Message not found: msg-1');
-
-    try {
-      await prepareScoring(createInput(), deps, fakeModel);
-    } catch (err) {
-      expect((err as { unrecoverable: boolean }).unrecoverable).toBe(true);
-    }
+    const err = await prepareScoring(createInput(), deps, fakeModel).catch((e: unknown) => e);
+    expect((err as Error).message).toBe('Message not found: msg-1');
+    expect((err as { unrecoverable: boolean }).unrecoverable).toBe(true);
   });
 
   it('throws unrecoverable error when scoring data cannot be extracted', async () => {
@@ -127,7 +123,7 @@ describe('prepareScoring', () => {
   });
 
   it('hydrates chunks when text is missing', async () => {
-    const hydrateChunks = vi.fn().mockResolvedValue(new Map([['c-1', 'hydrated chunk text']]));
+    const hydrateChunks = vi.fn().mockResolvedValue(new Map([['c-1', { text: 'hydrated chunk text', title: 'Doc' }]]));
 
     const deps = createDeps({
       fetchMessages: vi.fn().mockResolvedValue({

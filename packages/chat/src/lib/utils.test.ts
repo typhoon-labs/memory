@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+
 import { cn, stripMarkdown } from './utils';
 
 describe('cn', () => {

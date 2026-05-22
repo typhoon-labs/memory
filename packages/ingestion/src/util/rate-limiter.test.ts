@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+
 import { createRateLimiter } from './rate-limiter';
 
 describe('createRateLimiter', () => {
@@ -42,8 +43,9 @@ describe('createRateLimiter', () => {
 
   it('release is safe to call more times than acquire', () => {
     const limiter = createRateLimiter({ maxConcurrent: 1, minIntervalMs: 0 });
-    // Should not throw
-    limiter.release();
-    limiter.release();
+    expect(() => {
+      limiter.release();
+      limiter.release();
+    }).not.toThrow();
   });
 });

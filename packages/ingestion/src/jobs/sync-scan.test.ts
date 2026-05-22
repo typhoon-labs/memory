@@ -1,11 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 
-vi.mock('@typhoon/db', () => ({
-  documents: 'documents',
-  syncJobs: 'syncJobs',
-  syncTargets: 'syncTargets',
-}));
-vi.mock('drizzle-orm', () => ({ eq: vi.fn((_col, val) => val) }));
+vi.mock('@typhoon/queue', async () => {
+  const actual = await vi.importActual<typeof import('@typhoon/queue')>('@typhoon/queue');
+  return actual;
+});
 vi.mock('../providers/index.js', () => ({
   getProvider: vi.fn(),
 }));
@@ -25,28 +23,24 @@ import { computeSyncDiff } from '../sync';
 import { isUnrecoverable } from '../util/classify-error';
 import { handleScanJob } from './sync-scan';
 
-function mockDb() {
-  const insertReturning = vi.fn(async () => [{ id: 'sj-1' }]);
-  const updateReturning = vi.fn(async () => [{ id: 'doc-1' }]);
+function mockRepos(target?: Record<string, unknown> | null) {
   return {
-    select: vi.fn(() => ({
-      from: vi.fn(() => ({
-        where: vi.fn(async () => []),
-      })),
-    })),
-    insert: vi.fn(() => ({
-      values: vi.fn(() => ({
-        returning: insertReturning,
-      })),
-    })),
-    update: vi.fn(() => ({
-      set: vi.fn(() => ({
-        where: vi.fn(async () => {}),
-        returning: undefined as unknown,
-      })),
-    })),
-    _insertReturning: insertReturning,
-    _updateReturning: updateReturning,
+    syncTargetRepo: {
+      findById: vi.fn(async () => target ?? null),
+    },
+    syncJobRepo: {
+      create: vi.fn(async () => ({ id: 'sj-1' })),
+      updateStats: vi.fn(async () => {}),
+      markFailed: vi.fn(async () => {}),
+    },
+    documentRepo: {
+      listBySyncTarget: vi.fn(async () => []),
+      create: vi.fn(async () => ({ id: 'doc-1' })),
+      updateForSync: vi.fn(async () => ({ id: 'doc-1' })),
+    },
+    metadataRepo: {
+      resolveEffectiveSchema: vi.fn(async () => null),
+    },
   };
 }
 
@@ -60,39 +54,28 @@ function mockQueue() {
 
 describe('handleScanJob', () => {
   it('returns early for missing sync target', async () => {
-    const db = mockDb();
-    db.select.mockReturnValue({
-      from: vi.fn(() => ({ where: vi.fn(async () => []) })),
-    });
+    const repos = mockRepos(null);
     const queue = mockQueue();
-    await handleScanJob(mockJob() as never, db as never, queue as never);
+    await handleScanJob(mockJob() as never, repos as never, queue as never);
     expect(queue.add).not.toHaveBeenCalled();
   });
 
   it('returns early for inactive sync target', async () => {
-    const db = mockDb();
-    db.select.mockReturnValue({
-      from: vi.fn(() => ({
-        where: vi.fn(async () => [{ id: 'st-1', isActive: false, name: 'test', sourceType: 's3', config: {} }]),
-      })),
-    });
+    const repos = mockRepos({ id: 'st-1', isActive: false, name: 'test', sourceType: 's3', config: {} });
     const queue = mockQueue();
-    await handleScanJob(mockJob() as never, db as never, queue as never);
+    await handleScanJob(mockJob() as never, repos as never, queue as never);
     expect(queue.add).not.toHaveBeenCalled();
   });
 
   it('enqueues process-file jobs for new files', async () => {
-    const db = mockDb();
-    // First select: sync target lookup
-    const selectFrom = vi
-      .fn()
-      .mockReturnValueOnce({
-        where: vi.fn(async () => [
-          { id: 'st-1', isActive: true, name: 'test', sourceType: 's3', config: {}, source: 'src' },
-        ]),
-      })
-      .mockReturnValueOnce({ where: vi.fn(async () => []) }); // existing docs
-    db.select.mockReturnValue({ from: selectFrom });
+    const repos = mockRepos({
+      id: 'st-1',
+      isActive: true,
+      name: 'test',
+      sourceType: 's3',
+      config: {},
+      source: 'src',
+    });
 
     vi.mocked(getProvider).mockReturnValue({
       listObjects: vi.fn(async () => []),
@@ -101,10 +84,11 @@ describe('handleScanJob', () => {
       newFiles: [{ key: 'new.pdf', etag: 'e1', size: 100, lastModified: new Date() }],
       updatedFiles: [],
       deletedDocumentIds: [],
+      metaRefreshFiles: [],
     });
 
     const queue = mockQueue();
-    await handleScanJob(mockJob() as never, db as never, queue as never);
+    await handleScanJob(mockJob() as never, repos as never, queue as never);
     expect(queue.add).toHaveBeenCalledWith(
       'process-file',
       expect.objectContaining({
@@ -119,26 +103,25 @@ describe('handleScanJob', () => {
   });
 
   it('enqueues delete-file jobs for deleted files', async () => {
-    const db = mockDb();
-    const selectFrom = vi
-      .fn()
-      .mockReturnValueOnce({
-        where: vi.fn(async () => [
-          { id: 'st-1', isActive: true, name: 'test', sourceType: 's3', config: {}, source: null },
-        ]),
-      })
-      .mockReturnValueOnce({ where: vi.fn(async () => []) });
-    db.select.mockReturnValue({ from: selectFrom });
+    const repos = mockRepos({
+      id: 'st-1',
+      isActive: true,
+      name: 'test',
+      sourceType: 's3',
+      config: {},
+      source: null,
+    });
 
     vi.mocked(getProvider).mockReturnValue({ listObjects: vi.fn(async () => []) } as never);
     vi.mocked(computeSyncDiff).mockReturnValue({
       newFiles: [],
       updatedFiles: [],
       deletedDocumentIds: ['doc-del-1'],
+      metaRefreshFiles: [],
     });
 
     const queue = mockQueue();
-    await handleScanJob(mockJob() as never, db as never, queue as never);
+    await handleScanJob(mockJob() as never, repos as never, queue as never);
     expect(queue.add).toHaveBeenCalledWith(
       'delete-file',
       { documentId: 'doc-del-1', syncJobId: 'sj-1' },
@@ -149,16 +132,14 @@ describe('handleScanJob', () => {
   });
 
   it('marks syncJob as failed on error', async () => {
-    const db = mockDb();
-    const selectFrom = vi
-      .fn()
-      .mockReturnValueOnce({
-        where: vi.fn(async () => [
-          { id: 'st-1', isActive: true, name: 'test', sourceType: 's3', config: {}, source: null },
-        ]),
-      })
-      .mockReturnValueOnce({ where: vi.fn(async () => []) });
-    db.select.mockReturnValue({ from: selectFrom });
+    const repos = mockRepos({
+      id: 'st-1',
+      isActive: true,
+      name: 'test',
+      sourceType: 's3',
+      config: {},
+      source: null,
+    });
 
     vi.mocked(getProvider).mockReturnValue({
       listObjects: vi.fn(async () => {
@@ -167,20 +148,53 @@ describe('handleScanJob', () => {
     } as never);
 
     const queue = mockQueue();
-    await expect(handleScanJob(mockJob() as never, db as never, queue as never)).rejects.toThrow('network fail');
+    await expect(handleScanJob(mockJob() as never, repos as never, queue as never)).rejects.toThrow('network fail');
+    expect(repos.syncJobRepo.markFailed).toHaveBeenCalledWith('sj-1', 'network fail');
+  });
+
+  it('enqueues child jobs with demoted priority (not scan priority)', async () => {
+    const repos = mockRepos({
+      id: 'st-1',
+      isActive: true,
+      name: 'test',
+      sourceType: 's3',
+      config: {},
+      source: 'src',
+    });
+
+    vi.mocked(getProvider).mockReturnValue({
+      listObjects: vi.fn(async () => []),
+    } as never);
+    vi.mocked(computeSyncDiff).mockReturnValue({
+      newFiles: [{ key: 'file.pdf', etag: 'e1', size: 100, lastModified: new Date() }],
+      updatedFiles: [],
+      deletedDocumentIds: ['doc-del-1'],
+      metaRefreshFiles: [],
+    });
+
+    const queue = mockQueue();
+    const job = { data: { syncTargetId: 'st-1' }, opts: { priority: 1 }, updateProgress: vi.fn() };
+    await handleScanJob(job as never, repos as never, queue as never);
+
+    // process-file child should get CHILD_MANUAL (10), not MANUAL (1)
+    expect(queue.add).toHaveBeenCalledWith(
+      'process-file',
+      expect.anything(),
+      expect.objectContaining({ priority: 10 }),
+    );
+    // delete-file child should also get CHILD_MANUAL (10)
+    expect(queue.add).toHaveBeenCalledWith('delete-file', expect.anything(), expect.objectContaining({ priority: 10 }));
   });
 
   it('throws UnrecoverableError for permanent failures', async () => {
-    const db = mockDb();
-    const selectFrom = vi
-      .fn()
-      .mockReturnValueOnce({
-        where: vi.fn(async () => [
-          { id: 'st-1', isActive: true, name: 'test', sourceType: 's3', config: {}, source: null },
-        ]),
-      })
-      .mockReturnValueOnce({ where: vi.fn(async () => []) });
-    db.select.mockReturnValue({ from: selectFrom });
+    const repos = mockRepos({
+      id: 'st-1',
+      isActive: true,
+      name: 'test',
+      sourceType: 's3',
+      config: {},
+      source: null,
+    });
 
     const permError = new Error('NoSuchBucket');
     vi.mocked(getProvider).mockReturnValue({
@@ -191,6 +205,6 @@ describe('handleScanJob', () => {
     vi.mocked(isUnrecoverable).mockReturnValue(true);
 
     const queue = mockQueue();
-    await expect(handleScanJob(mockJob() as never, db as never, queue as never)).rejects.toThrow();
+    await expect(handleScanJob(mockJob() as never, repos as never, queue as never)).rejects.toThrow('NoSuchBucket');
   });
 });

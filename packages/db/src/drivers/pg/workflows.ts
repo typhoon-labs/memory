@@ -1,5 +1,6 @@
 import { WorkflowsStorage } from '@mastra/core/storage';
 import { and, desc, eq, gte, lte, sql } from 'drizzle-orm';
+
 import type { Db } from '../../client';
 import { workflowSnapshots } from '../../schema/workflows';
 
@@ -18,7 +19,7 @@ export class DrizzleWorkflowsStorage extends WorkflowsStorage {
     await this.db.delete(workflowSnapshots);
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: Mastra WorkflowRunState type
+  // oxlint-disable-next-line @typescript-eslint/no-explicit-any -- Mastra WorkflowRunState type
   async persistWorkflowSnapshot(args: any) {
     await this.db
       .insert(workflowSnapshots)
@@ -40,7 +41,7 @@ export class DrizzleWorkflowsStorage extends WorkflowsStorage {
       });
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: Mastra WorkflowRunState type
+  // oxlint-disable-next-line @typescript-eslint/no-explicit-any -- Mastra WorkflowRunState type
   async loadWorkflowSnapshot(args: { workflowName: string; runId: string }): Promise<any> {
     const [row] = await this.db
       .select()
@@ -92,7 +93,10 @@ export class DrizzleWorkflowsStorage extends WorkflowsStorage {
     const page = args?.page ?? 0;
     const perPage = args?.perPage;
 
-    const [countRow] = await this.db.select({ count: sql<number>`count(*)::int` }).from(workflowSnapshots).where(where);
+    const [countRow] = await this.db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(workflowSnapshots)
+      .where(where);
     const total = countRow?.count ?? 0;
 
     let query = this.db
@@ -119,7 +123,7 @@ export class DrizzleWorkflowsStorage extends WorkflowsStorage {
     } as never;
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: Mastra UpdateWorkflowStateOptions type
+  // oxlint-disable-next-line @typescript-eslint/no-explicit-any -- Mastra UpdateWorkflowStateOptions type
   async updateWorkflowState(args: any) {
     const existing = await this.loadWorkflowSnapshot({ workflowName: args.workflowName, runId: args.runId });
     if (!existing) return undefined;
@@ -132,7 +136,7 @@ export class DrizzleWorkflowsStorage extends WorkflowsStorage {
     return updated as never;
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: Mastra StepResult type
+  // oxlint-disable-next-line @typescript-eslint/no-explicit-any -- Mastra StepResult type
   async updateWorkflowResults(args: any) {
     const existing = await this.loadWorkflowSnapshot({ workflowName: args.workflowName, runId: args.runId });
     if (!existing) return {} as never;

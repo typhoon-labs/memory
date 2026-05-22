@@ -2,6 +2,7 @@ import type { UIMessage } from '@ai-sdk/react';
 import { CopyIcon, ThumbsDownIcon, ThumbsUpIcon } from 'lucide-react';
 import type { RefObject } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+
 import { Message, MessageAction, MessageActions, MessageContent } from '../ai-elements/message';
 import { useChatConfig } from './chat-config';
 import { CitationProvider } from './citation-context';
@@ -29,7 +30,7 @@ export function TyphoonMessage({ message, isStreaming }: { message: ChatMessage;
   const config = useChatConfig();
   const isAssistant = message.role === 'assistant';
   const displayName = isAssistant ? 'Typhoon' : (config.userName ?? 'You');
-  const allCitations = isAssistant ? extractCitations(message) : [];
+  const allCitations = useMemo(() => (isAssistant ? extractCitations(message) : []), [isAssistant, message]);
 
   // Compute which citation indices are actually referenced inline in the text
   const usedCitationIndices = useMemo(() => {
@@ -136,10 +137,10 @@ export function TyphoonMessage({ message, isStreaming }: { message: ChatMessage;
       <div ref={messageRef} id={message.id ? `msg-${message.id}` : undefined}>
         {/* Header: avatar + name */}
         <div className="mb-1.5 flex items-center gap-1.5">
-          <div className="flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-[8px] font-medium text-muted-foreground ring-1 ring-border">
+          <div className="bg-muted text-muted-foreground ring-border flex size-5 shrink-0 items-center justify-center rounded-full text-[8px] font-medium ring-1">
             {getInitials(displayName)}
           </div>
-          <span className="text-2xs font-medium uppercase tracking-widest text-muted-foreground/50">{displayName}</span>
+          <span className="text-2xs text-muted-foreground/50 font-medium tracking-widest uppercase">{displayName}</span>
           <span className="flex-1" />
           {message.createdAt && (
             <span className="text-2xs text-muted-foreground/30">{formatTimestamp(message.createdAt)}</span>
@@ -240,19 +241,20 @@ export function TyphoonMessage({ message, isStreaming }: { message: ChatMessage;
 
         {/* Inline comment form */}
         {commentFormOpen && arrowLeft > 0 && (
-          <div className="relative mt-2 rounded-md border border-border bg-card p-3.5">
+          <div className="border-border bg-card relative mt-2 rounded-md border p-3.5">
             <div
-              className="absolute -top-[5px] size-2 rotate-45 border-l border-t border-border bg-card"
+              className="border-border bg-card absolute -top-[5px] size-2 rotate-45 border-t border-l"
               style={{ left: `${arrowLeft - 4}px` }}
             />
-            <p className="text-2xs mb-1.5 font-medium uppercase tracking-widest text-muted-foreground">
+            <p className="text-2xs text-muted-foreground mb-1.5 font-medium tracking-widest uppercase">
               What could be improved?
             </p>
             <textarea
               ref={commentRef}
               rows={2}
+              aria-label="Feedback comment"
               placeholder="Share your feedback..."
-              className="w-full resize-none rounded-md border border-input bg-background/50 px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground/40 outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              className="border-input bg-background/50 text-foreground placeholder:text-muted-foreground/40 focus-visible:border-ring focus-visible:ring-ring/50 w-full resize-none rounded-md border px-3 py-2 text-xs transition-[color,box-shadow] outline-none focus-visible:ring-[3px]"
               onInput={(e) => {
                 const el = e.currentTarget;
                 el.style.height = 'auto';
@@ -268,7 +270,7 @@ export function TyphoonMessage({ message, isStreaming }: { message: ChatMessage;
               <button
                 type="button"
                 onClick={handleSubmitNegative}
-                className="inline-flex h-6 items-center rounded-md bg-primary px-2 text-xs font-medium text-primary-foreground outline-none transition-all hover:bg-primary/90 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                className="bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:border-ring focus-visible:ring-ring/50 inline-flex h-6 items-center rounded-md px-2 text-xs font-medium transition-all outline-none focus-visible:ring-[3px]"
               >
                 Submit
               </button>
@@ -278,16 +280,16 @@ export function TyphoonMessage({ message, isStreaming }: { message: ChatMessage;
 
         {/* Existing comment display */}
         {!commentFormOpen && feedbackComment && arrowLeft > 0 && (
-          <div className="relative mt-2 rounded-md border border-border bg-card px-3.5 py-2.5">
+          <div className="border-border bg-card relative mt-2 rounded-md border px-3.5 py-2.5">
             <div
-              className="absolute -top-[5px] size-2 rotate-45 border-l border-t border-border bg-card"
+              className="border-border bg-card absolute -top-[5px] size-2 rotate-45 border-t border-l"
               style={{ left: `${arrowLeft - 4}px` }}
             />
-            <p className="cursor-text select-text text-xs text-foreground/90">{feedbackComment}</p>
+            <p className="text-foreground/90 cursor-text text-xs select-text">{feedbackComment}</p>
           </div>
         )}
 
-        <hr className="mt-2 border-t border-border" />
+        <hr className="border-border mt-2 border-t" />
       </div>
     </Message>
   );
@@ -359,8 +361,8 @@ function FeedbackButtons({
         className={
           readOnly
             ? thumbsUpActive
-              ? 'text-emerald-400 cursor-default hover:text-emerald-400'
-              : 'opacity-30 cursor-default hover:text-muted-foreground/50'
+              ? 'cursor-default text-emerald-400 hover:text-emerald-400'
+              : 'hover:text-muted-foreground/50 cursor-default opacity-30'
             : thumbsUpActive
               ? 'text-emerald-400 hover:text-emerald-300'
               : 'hover:text-emerald-400'
@@ -377,8 +379,8 @@ function FeedbackButtons({
           className={
             readOnly
               ? thumbsDownActive
-                ? 'text-red-400 cursor-default hover:text-red-400'
-                : 'opacity-30 cursor-default hover:text-muted-foreground/50'
+                ? 'cursor-default text-red-400 hover:text-red-400'
+                : 'hover:text-muted-foreground/50 cursor-default opacity-30'
               : thumbsDownActive
                 ? 'text-red-400 hover:text-red-300'
                 : 'hover:text-red-400'

@@ -179,7 +179,7 @@ export function extractCitations(message: UIMessage): CitationData[] {
       seen.add(key);
       deduped.push(entry);
     }
-    const chunkCitations = deduped.map((entry, i) => ({ ...entry, index: i + 1 }));
+    const chunkCitations = deduped.map((entry, i) => Object.assign({}, entry, { index: i + 1 }));
 
     // Build parent citations for multi-chunk documents so the LLM can cite
     // [Source: N] to reference all chunks from document N as one citation.
@@ -207,7 +207,7 @@ export function extractCitations(message: UIMessage): CitationData[] {
       });
     }
 
-    return [...chunkCitations, ...parents].sort((a, b) => {
+    return [...chunkCitations, ...parents].toSorted((a, b) => {
       const aNum = Number((a.displayIndex ?? String(a.index)).split('.')[0]);
       const bNum = Number((b.displayIndex ?? String(b.index)).split('.')[0]);
       return aNum - bNum;
@@ -223,7 +223,7 @@ export function extractCitations(message: UIMessage): CitationData[] {
     seen.add(key);
     deduped.push(entry);
   }
-  return deduped.map((entry, i) => ({ ...entry, index: i + 1, displayIndex: String(i + 1) }));
+  return deduped.map((entry, i) => Object.assign({}, entry, { index: i + 1, displayIndex: String(i + 1) }));
 }
 
 /**
@@ -258,11 +258,11 @@ const NUMERIC_CITATION = /^\d+(?:\.\d+)?(?:\s*,\s*\d+(?:\.\d+)?)*$/;
 const SEPARATOR = /\s*(?:\u2014|\u2013|--)\s*/; // em-dash, en-dash, double-hyphen
 
 function normalizeTitle(s: string): string {
-  return s.toLowerCase().trim().replace(/\s+/g, ' ');
+  return s.toLowerCase().trim().replaceAll(/\s+/g, ' ');
 }
 
 function escapeAttr(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+  return s.replaceAll('&', '&amp;').replaceAll('"', '&quot;');
 }
 
 /**

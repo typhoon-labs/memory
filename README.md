@@ -4,26 +4,26 @@ AI-powered customer service chatbot that answers questions from source documents
 
 ## Tech Stack
 
-| Layer | Technology |
-|-------|-----------|
-| Runtime | Bun 1.3.11 |
-| Language | TypeScript 5.9 (strict) |
-| Monorepo | Bun workspaces + Turborepo |
-| Server | Mastra + Hono (`@mastra/hono`) |
+| Layer                 | Technology                                                            |
+| --------------------- | --------------------------------------------------------------------- |
+| Runtime               | Bun 1.3.14                                                            |
+| Language              | TypeScript 6.0 (strict)                                               |
+| Monorepo              | Bun workspaces + Turborepo                                            |
+| Server                | Mastra + Hono (`@mastra/hono`)                                        |
 | Agents / RAG / Memory | Mastra (`@mastra/core`, `@mastra/rag`, `@mastra/memory`) + `@typhoon/db` |
-| Vectors | pgvector (PostgreSQL extension) |
-| Background Jobs | BullMQ (Redis) |
-| Auth | Better Auth + OIDC (Dex local / Okta prod) |
-| Frontend | React 19 + Vite + TanStack Router/Query + Radix UI (shadcn-style) |
-| Chat Streaming | AI SDK React (`@ai-sdk/react`) + Mastra `chatRoute` (SSE) |
-| LLM Gateway | Bifrost (optional) |
-| Observability | OpenTelemetry + Grafana LGTM (local) |
-| Lint / Format | Biome v2 |
-| Tests | Vitest |
+| Vectors               | pgvector (PostgreSQL extension)                                       |
+| Background Jobs       | BullMQ (Redis)                                                        |
+| Auth                  | Better Auth + OIDC (Dex local / Okta prod)                            |
+| Frontend              | React 19 + Vite + TanStack Router/Query + Radix UI (shadcn-style)     |
+| Chat Streaming        | AI SDK React (`@ai-sdk/react`) + Mastra `chatRoute` (SSE)             |
+| LLM Gateway           | Bifrost (optional)                                                    |
+| Observability         | OpenTelemetry + Grafana LGTM (local)                                  |
+| Lint / Format         | oxlint + oxfmt                                                        |
+| Tests                 | Vitest                                                                |
 
 ## Prerequisites
 
-- [Bun](https://bun.sh) 1.3.11+
+- [Bun](https://bun.sh) 1.3.14+
 - [Docker](https://docs.docker.com/get-docker/) and Docker Compose
 
 ## Quick Start
@@ -65,7 +65,7 @@ typhoon/
 │   └── widget/          Embeddable customer chat widget
 │
 ├── packages/
-│   ├── config/   (L0)   Shared TS, Biome, env validation
+│   ├── config/   (L0)   Shared TS configs, env validation
 │   ├── types/    (L0)   Zod schemas for domain entities
 │   ├── db/       (L1)   Drizzle ORM schemas + migrations
 │   ├── ai/       (L1)   LLM + embedding model factories
@@ -86,33 +86,35 @@ typhoon/
 
 ## Scripts
 
-| Command | Description |
-|---------|-------------|
-| `bun run setup` | Bootstrap dev environment (install, Docker, migrations) |
-| `bun run dev` | Start all services in dev mode |
-| `bun run dev:api` | Start only the API server |
-| `bun run dev:desk` | Start only the rep desk |
-| `bun run dev:admin` | Start only the admin dashboard |
-| `bun run dev:widget` | Start only the customer widget |
-| `bun run dev:worker` | Start only the BullMQ worker |
-| `bun run dev:backend` | Start API + worker + scheduler |
-| `bun run doctor` | Check health of all services |
-| `bun run build` | Build all packages and apps |
-| `bun run test` | Run all tests |
-| `bun run test:watch` | Run tests in watch mode |
-| `bun run lint` | Lint with Biome |
-| `bun run format` | Auto-fix lint/format issues |
-| `bun run typecheck` | TypeScript type checking |
-| `bun run db:migrate` | Run database migrations |
-| `bun run seed` | Seed database + upload sample docs to MinIO |
-| `bun run docker:up` | Start Docker services (build + detach) |
-| `bun run docker:down` | Stop Docker services |
-| `bun run docker:restart` | Restart Docker services (rebuild images) |
-| `bun run docker:status` | Show running containers and health |
-| `bun run docker:build` | Rebuild all Docker images (no cache) |
-| `bun run docker:logs` | Tail logs from all services |
-| `bun run reset` | Tear down and recreate dev environment |
-| `bun run clean` | Remove build artifacts and node_modules |
+| Command                  | Description                                             |
+| ------------------------ | ------------------------------------------------------- |
+| `bun run setup`          | Bootstrap dev environment (install, Docker, migrations) |
+| `bun run dev`            | Start all services in dev mode                          |
+| `bun run dev:api`        | Start only the API server                               |
+| `bun run dev:desk`       | Start only the rep desk                                 |
+| `bun run dev:admin`      | Start only the admin dashboard                          |
+| `bun run dev:widget`     | Start only the customer widget                          |
+| `bun run dev:worker`     | Start only the BullMQ worker                            |
+| `bun run dev:backend`    | Start API + worker + scheduler                          |
+| `bun run doctor`         | Check health of all services                            |
+| `bun run build`          | Build all packages and apps                             |
+| `bun run test`           | Run all unit tests                                      |
+| `bun run test:watch`     | Run tests in watch mode                                 |
+| `bun run test:coverage`  | Run tests with coverage report                          |
+| `bun run lint`           | Lint with oxlint                                        |
+| `bun run format`         | Auto-fix formatting with oxfmt                          |
+| `bun run check`          | Run format check + lint                                 |
+| `bun run typecheck`      | TypeScript type checking                                |
+| `bun run db:migrate`     | Run database migrations                                 |
+| `bun run seed`           | Seed database + upload sample docs to MinIO             |
+| `bun run docker:up`      | Start Docker services (build + detach)                  |
+| `bun run docker:down`    | Stop Docker services                                    |
+| `bun run docker:restart` | Restart Docker services (rebuild images)                |
+| `bun run docker:status`  | Show running containers and health                      |
+| `bun run docker:build`   | Rebuild all Docker images (no cache)                    |
+| `bun run docker:logs`    | Tail logs from all services                             |
+| `bun run reset`          | Tear down and recreate dev environment                  |
+| `bun run clean`          | Remove build artifacts and node_modules                 |
 
 ## Documentation
 

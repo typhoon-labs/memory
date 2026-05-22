@@ -14,6 +14,7 @@ import {
 } from '@typhoon/ui';
 import { ChevronDownIcon, ClipboardCheckIcon } from 'lucide-react';
 import { useState } from 'react';
+
 import type { Span } from './shared';
 import { formatDurationMs, spanTypeColor, spanTypeLabel } from './shared';
 
@@ -64,17 +65,18 @@ export function SpanDetailSheet({ span, open, onOpenChange }: SpanDetailSheetPro
           </div>
 
           {/* Tokens */}
-          {(span.promptTokens != null || span.completionTokens != null) && (
+          {((span.promptTokens !== null && span.promptTokens !== undefined) ||
+            (span.completionTokens !== null && span.completionTokens !== undefined)) && (
             <div>
               <SectionLabel>Tokens</SectionLabel>
               <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
-                {span.promptTokens != null && (
+                {span.promptTokens !== null && span.promptTokens !== undefined && (
                   <>
                     <dt className="text-muted-foreground">Prompt</dt>
                     <dd className="tabular-nums">{span.promptTokens.toLocaleString()}</dd>
                   </>
                 )}
-                {span.completionTokens != null && (
+                {span.completionTokens !== null && span.completionTokens !== undefined && (
                   <>
                     <dt className="text-muted-foreground">Completion</dt>
                     <dd className="tabular-nums">{span.completionTokens.toLocaleString()}</dd>
@@ -130,13 +132,13 @@ export function SpanDetailSheet({ span, open, onOpenChange }: SpanDetailSheetPro
           {span.error && <ErrorSection error={span.error} />}
 
           {/* Input */}
-          {span.input != null && <JsonSection label="Input" data={span.input} />}
+          {span.input !== null && span.input !== undefined && <JsonSection label="Input" data={span.input} />}
 
           {/* Output */}
-          {span.output != null && <JsonSection label="Output" data={span.output} />}
+          {span.output !== null && span.output !== undefined && <JsonSection label="Output" data={span.output} />}
 
           {/* Attributes */}
-          {span.attributes != null && Object.keys(span.attributes).length > 0 && (
+          {span.attributes !== null && span.attributes !== undefined && Object.keys(span.attributes).length > 0 && (
             <JsonSection label="Attributes" data={span.attributes} />
           )}
 
@@ -180,14 +182,14 @@ function StackTrace({ stack }: { stack: string }) {
       <CollapsibleTrigger asChild>
         <button
           type="button"
-          className="mt-2 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+          className="text-muted-foreground hover:text-foreground mt-2 inline-flex items-center gap-1 text-xs"
         >
           <ChevronDownIcon className={`size-3.5 transition-transform ${expanded ? 'rotate-180' : ''}`} />
           Stack trace
         </button>
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <pre className="mt-1 max-h-60 overflow-auto whitespace-pre-wrap rounded bg-muted p-2 font-mono text-2xs">
+        <pre className="bg-muted text-2xs mt-1 max-h-60 overflow-auto rounded p-2 font-mono whitespace-pre-wrap">
           {stack}
         </pre>
       </CollapsibleContent>
@@ -208,20 +210,20 @@ function JsonSection({ label, data }: { label: string; data: unknown }) {
           <CollapsibleTrigger asChild>
             <button
               type="button"
-              className="mt-1 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+              className="text-muted-foreground hover:text-foreground mt-1 inline-flex items-center gap-1 text-xs"
             >
               <ChevronDownIcon className={`size-3.5 transition-transform ${expanded ? 'rotate-180' : ''}`} />
               {expanded ? 'Collapse' : 'Expand'}
             </button>
           </CollapsibleTrigger>
           <CollapsibleContent>
-            <pre className="mt-1 max-h-80 overflow-auto whitespace-pre-wrap rounded bg-muted p-2 font-mono text-2xs">
+            <pre className="bg-muted text-2xs mt-1 max-h-80 overflow-auto rounded p-2 font-mono whitespace-pre-wrap">
               {json}
             </pre>
           </CollapsibleContent>
         </Collapsible>
       ) : (
-        <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap rounded bg-muted p-2 font-mono text-2xs">
+        <pre className="bg-muted text-2xs mt-1 max-h-40 overflow-auto rounded p-2 font-mono whitespace-pre-wrap">
           {json}
         </pre>
       )}

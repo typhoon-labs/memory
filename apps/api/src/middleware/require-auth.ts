@@ -1,6 +1,7 @@
 import { createAppLogger } from '@typhoon/logger';
 import { createMiddleware } from 'hono/factory';
-import { auth } from '../auth';
+
+import { auth } from '../infra/auth';
 
 const log = createAppLogger('auth');
 

@@ -4,7 +4,6 @@ vi.mock('@mastra/core/processors', () => {
   class MockTokenLimiterProcessor {
     id = 'token-limiter';
     name = 'TokenLimiterProcessor';
-    // biome-ignore lint/suspicious/noExplicitAny: mock
     constructor(public opts?: any) {}
   }
   class MockPromptInjectionDetector {
@@ -30,7 +29,7 @@ vi.mock('@mastra/core/processors', () => {
 
 const { mockWorkflow, mockCreateWorkflow } = vi.hoisted(() => {
   const mockWorkflow = {
-    // biome-ignore lint/suspicious/noThenProperty: mocking Mastra workflow API
+    // oxlint-disable-next-line unicorn/no-thenable -- mocking Mastra workflow API
     then: vi.fn(),
     parallel: vi.fn(),
     map: vi.fn(),

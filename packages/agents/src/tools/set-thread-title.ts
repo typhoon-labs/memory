@@ -1,11 +1,13 @@
 import type { ToolExecutionContext } from '@mastra/core/tools';
 import { createTool } from '@mastra/core/tools';
+import type { LanguageModel } from '@typhoon/ai';
 import { createTitleModel } from '@typhoon/ai';
-import { generateText } from 'ai';
+import { generateText, Output } from 'ai';
 import { z } from 'zod';
-import { emitToolProgress } from './with-progress';
 
-const titleModel = createTitleModel();
+import { emitThreadTitle, emitToolProgress } from './with-progress';
+
+const titleModel = createTitleModel() as unknown as LanguageModel;
 
 export const setThreadTitle = createTool({
   id: 'setThreadTitle',
@@ -36,22 +38,30 @@ export const setThreadTitle = createTool({
 
     await emitToolProgress(context as ToolExecutionContext, 'Naming conversation…');
 
-    const { text: title } = await generateText({
+    const { output } = await generateText({
       model: titleModel,
       temperature: 0,
-      prompt: `Generate a short title (max 80 chars) summarizing this user message. Do not use quotes or colons. Return only the title.\n\n${userMessage.slice(0, 200)}`,
+      output: Output.object({
+        schema: z.object({
+          title: z.string().describe('Short title (max 80 chars) summarizing the user message. No quotes or colons.'),
+        }),
+      }),
+      prompt: `Generate a short title for this conversation based on the user's message.\n\n${userMessage.slice(0, 200)}`,
     });
+
+    const title = (output?.title ?? '').slice(0, 80);
 
     if (title) {
       await memoryStore.updateThread({
         id: threadId,
-        title: title.trim(),
+        title,
         metadata: thread?.metadata ?? {},
       });
+      await emitThreadTitle(context as ToolExecutionContext, title);
     }
 
-    await emitToolProgress(context as ToolExecutionContext, title?.trim() ?? '', 'done');
+    await emitToolProgress(context as ToolExecutionContext, title, 'done');
 
-    return { title: title?.trim() ?? '' };
+    return { title };
   },
 });

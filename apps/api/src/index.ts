@@ -1,17 +1,20 @@
 import '@typhoon/telemetry/instrumentation';
 import { type HonoBindings, type HonoVariables, MastraServer } from '@mastra/hono';
+import { FailedJobRepo } from '@typhoon/db/repos';
 import { listRegisteredSyncTargets, listSources } from '@typhoon/ingestion';
 import { createAppLogger } from '@typhoon/logger';
+import { RedisProvider } from '@typhoon/queue';
 import { otelMiddleware } from '@typhoon/telemetry';
 import { Hono } from 'hono';
+
 import { registerAllSources } from './config/sources';
 import { registerAllSyncTargets } from './config/sync-targets';
-import { db, sql } from './db';
-import { initFailedJobArchiver } from './failed-job-archiver';
-import { initVectorIndex, reconcileConfigSyncTargets } from './init';
+import { db, sql } from './infra/db';
+import { initFailedJobArchiver } from './infra/failed-job-archiver';
+import { initVectorIndex, reconcileConfigSyncTargets } from './infra/init';
+import { getQueue, initQueue, initSyncQueue, shutdownQueues, trackQueueEvents } from './infra/queue';
 import { mastra } from './mastra/index';
 import { requestLogger } from './middleware/request-logger';
-import { getQueue, initQueue, initSyncQueue, shutdownQueues, trackQueueEvents } from './queue';
 import { setReviewsQueue } from './routes/chat';
 
 const log = createAppLogger('api');
@@ -69,13 +72,14 @@ async function bootstrap() {
   await initVectorIndex(sql);
   await reconcileConfigSyncTargets(db, listRegisteredSyncTargets());
 
-  const redisUrl = process.env.REDIS_URL ?? 'redis://localhost:6379';
-  const syncQueue = initSyncQueue(redisUrl);
-  initQueue('reports', redisUrl);
-  initQueue('scoring', redisUrl);
-  initQueue('reviews', redisUrl);
-  initQueue('experiments', redisUrl);
-  const archiverEvents = initFailedJobArchiver(syncQueue, redisUrl, db);
+  const redis = new RedisProvider();
+  const syncQueue = initSyncQueue(redis);
+  initQueue('reports', redis);
+  initQueue('scoring', redis);
+  initQueue('reviews', redis);
+  initQueue('experiments', redis);
+  initQueue('maintenance', redis);
+  const archiverEvents = initFailedJobArchiver(syncQueue, redis, new FailedJobRepo(db));
   trackQueueEvents('archiver', archiverEvents);
   setReviewsQueue(getQueue('reviews'));
 }
@@ -91,7 +95,7 @@ for (const signal of ['SIGTERM', 'SIGINT'] as const) {
   });
 }
 
-// biome-ignore lint/style/noDefaultExport: Required for Bun HTTP server
+// oxlint-disable-next-line import/no-default-export -- Required for Bun HTTP server
 export default {
   port,
   hostname: process.env.HOST ?? '0.0.0.0',

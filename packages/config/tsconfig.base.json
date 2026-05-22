@@ -1,7 +1,8 @@
 {
   "compilerOptions": {
+    "types": ["bun"],
     "strict": true,
-    "target": "ES2022",
+    "target": "ES2025",
     "module": "ESNext",
     "moduleResolution": "bundler",
     "esModuleInterop": true,
@@ -9,20 +10,6 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "forceConsistentCasingInFileNames": true,
-    "verbatimModuleSyntax": true,
-    "paths": {
-      "@typhoon/ai": ["../../packages/ai/src"],
-      "@typhoon/config": ["../../packages/config/src"],
-      "@typhoon/types": ["../../packages/types/src"],
-      "@typhoon/db": ["../../packages/db/src"],
-      "@typhoon/storage": ["../../packages/storage/src"],
-      "@typhoon/agents": ["../../packages/agents/src"],
-      "@typhoon/queue": ["../../packages/queue/src"],
-      "@typhoon/ingestion": ["../../packages/ingestion/src"],
-      "@typhoon/db/drivers/pg": ["../../packages/db/src/drivers/pg"],
-      "@typhoon/db/queries": ["../../packages/db/src/queries"],
-      "@typhoon/db/connection": ["../../packages/db/src/connection"],
-      "@typhoon/ui": ["../../packages/ui/src"]
-    }
+    "verbatimModuleSyntax": true
   }
 }

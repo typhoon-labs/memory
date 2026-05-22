@@ -3,6 +3,7 @@ import { Link, useNavigate } from '@tanstack/react-router';
 import { apiFetch, Button, Input, Label, PageHeader, Separator, Textarea } from '@typhoon/ui';
 import { ChevronRightIcon } from 'lucide-react';
 import { useState } from 'react';
+
 import { usePageTitle } from '../../hooks/use-page-title';
 
 export function DatasetCreatePage() {
@@ -35,10 +36,10 @@ export function DatasetCreatePage() {
         <PageHeader
           title={
             <span className="flex items-center gap-1.5">
-              <Link to="/datasets" className="text-muted-foreground transition-colors hover:text-foreground">
+              <Link to="/datasets" className="text-muted-foreground hover:text-foreground transition-colors">
                 Datasets
               </Link>
-              <ChevronRightIcon className="size-3.5 text-muted-foreground/50" />
+              <ChevronRightIcon className="text-muted-foreground/50 size-3.5" />
               Create
             </span>
           }
@@ -47,7 +48,7 @@ export function DatasetCreatePage() {
         <div className="mt-6 space-y-5">
           <div>
             <h2 className="text-sm font-semibold">Details</h2>
-            <p className="mt-0.5 text-sm text-muted-foreground">Basic information about this dataset.</p>
+            <p className="text-muted-foreground mt-0.5 text-sm">Basic information about this dataset.</p>
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="dataset-name">Name</Label>

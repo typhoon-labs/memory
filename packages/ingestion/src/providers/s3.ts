@@ -1,63 +1,44 @@
-import {
-  copyObject,
-  createS3Client,
-  deleteObject,
-  downloadObject,
-  listObjects,
-  listObjectsByPrefix,
-  uploadObject,
-} from '@typhoon/storage';
+import { S3BlobStore } from '@typhoon/blob-store';
+
 import { getSource } from '../source-registry';
 import type { BrowseResult, SourceObject, SourceProvider } from './types';
 
 interface S3Config {
-  bucket: string;
   prefix?: string;
 }
 
-export function resolveS3Client(config: Record<string, unknown>, sourceName?: string) {
+export function resolveStore(config: Record<string, unknown>, sourceName?: string) {
   const s3Config = config as unknown as S3Config;
   const source = sourceName ? getSource(sourceName) : undefined;
-  const client = createS3Client({
-    S3_ENDPOINT: source?.credentials.endpoint ?? process.env.S3_ENDPOINT ?? 'http://localhost:9000',
-    S3_REGION: source?.credentials.region ?? process.env.S3_REGION ?? 'us-east-1',
-    S3_ACCESS_KEY: source?.credentials.accessKey ?? process.env.S3_ACCESS_KEY ?? '',
-    S3_SECRET_KEY: source?.credentials.secretKey ?? process.env.S3_SECRET_KEY ?? '',
-    S3_BUCKET: s3Config.bucket,
+  const creds = source?.credentials;
+  const bucket = source?.config?.bucket as string | undefined;
+  if (!bucket) throw new Error('S3 source must define a bucket in its config');
+  const store = new S3BlobStore({
+    endpoint: (creds?.endpoint as string | undefined) ?? process.env.S3_ENDPOINT,
+    region: (creds?.region as string | undefined) ?? process.env.S3_REGION ?? 'us-east-1',
+    accessKey: (creds?.accessKey as string | undefined) ?? (process.env.S3_ACCESS_KEY || undefined),
+    secretKey: (creds?.secretKey as string | undefined) ?? (process.env.S3_SECRET_KEY || undefined),
+    forcePathStyle: creds?.forcePathStyle !== undefined ? Boolean(creds.forcePathStyle) : true,
+    bucket,
   });
-  return { client, bucket: s3Config.bucket, prefix: s3Config.prefix ?? '' };
+  return { store, prefix: s3Config.prefix ?? '' };
 }
 
 export class S3Provider implements SourceProvider {
   async listObjects(config: Record<string, unknown>, sourceName?: string): Promise<SourceObject[]> {
-    const { client, bucket, prefix } = resolveS3Client(config, sourceName);
-    const objects = await listObjects(client, bucket, prefix);
-    return objects.map((o) => ({
-      key: o.key,
-      etag: o.etag,
-      size: o.size,
-      lastModified: o.lastModified,
-    }));
+    const { store, prefix } = resolveStore(config, sourceName);
+    return store.list(prefix);
   }
 
   async download(config: Record<string, unknown>, key: string, sourceName?: string): Promise<Buffer> {
-    const { client, bucket } = resolveS3Client(config, sourceName);
-    return downloadObject(client, bucket, key);
+    const { store } = resolveStore(config, sourceName);
+    return store.download(key);
   }
 
   async browse(config: Record<string, unknown>, path: string, sourceName?: string): Promise<BrowseResult> {
-    const { client, bucket, prefix } = resolveS3Client(config, sourceName);
+    const { store, prefix } = resolveStore(config, sourceName);
     const fullPrefix = `${prefix ? (prefix.endsWith('/') ? prefix : `${prefix}/`) : ''}${path}`;
-    const result = await listObjectsByPrefix(client, bucket, fullPrefix);
-    return {
-      folders: result.folders,
-      objects: result.objects.map((o) => ({
-        key: o.key,
-        etag: o.etag,
-        size: o.size,
-        lastModified: o.lastModified,
-      })),
-    };
+    return store.listByPrefix(fullPrefix);
   }
 
   async upload(
@@ -67,13 +48,13 @@ export class S3Provider implements SourceProvider {
     contentType?: string,
     sourceName?: string,
   ): Promise<void> {
-    const { client, bucket } = resolveS3Client(config, sourceName);
-    await uploadObject(client, bucket, key, content, contentType);
+    const { store } = resolveStore(config, sourceName);
+    await store.upload(key, content, contentType);
   }
 
   async deleteObject(config: Record<string, unknown>, key: string, sourceName?: string): Promise<void> {
-    const { client, bucket } = resolveS3Client(config, sourceName);
-    await deleteObject(client, bucket, key);
+    const { store } = resolveStore(config, sourceName);
+    await store.delete(key);
   }
 
   async copyObject(
@@ -82,13 +63,13 @@ export class S3Provider implements SourceProvider {
     destKey: string,
     sourceName?: string,
   ): Promise<void> {
-    const { client, bucket } = resolveS3Client(config, sourceName);
-    await copyObject(client, bucket, sourceKey, destKey);
+    const { store } = resolveStore(config, sourceName);
+    await store.copy(sourceKey, destKey);
   }
 
   async createFolder(config: Record<string, unknown>, path: string, sourceName?: string): Promise<void> {
-    const { client, bucket } = resolveS3Client(config, sourceName);
+    const { store } = resolveStore(config, sourceName);
     const folderKey = path.endsWith('/') ? path : `${path}/`;
-    await uploadObject(client, bucket, folderKey, '');
+    await store.upload(folderKey, '');
   }
 }

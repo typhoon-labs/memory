@@ -26,53 +26,53 @@ Typhoon is a **RAG-powered customer service chatbot** that answers questions fro
 
 ## 1. What Mastra Handles vs Custom Code
 
-| Capability | Mastra Built-in | Custom Code Needed |
-|-----------|----------------|-------------------|
-| HTTP server | Built-in Hono server, auto-exposes agents | Custom routes via `registerApiRoute()` |
-| Agent endpoints | Auto-generated generate/stream endpoints | - |
-| Chat streaming | `handleChatStream` from `@mastra/ai-sdk` | - |
-| Thread/conversation storage | `PgStore` from `@mastra/pg` | - |
-| Message history | Auto-persisted by Memory | - |
-| Working memory | `Memory` class with `workingMemory` option | - |
-| Semantic recall | `Memory` class with `semanticRecall` + `PgVector` | - |
-| Vector storage | `PgVector` from `@mastra/pg` | - |
-| Vector search tool | `createVectorQueryTool()` from `@mastra/rag` | - |
-| Chunking | `MDocument.chunk()` (9 strategies) | - |
-| Re-ranking | `rerank()` from `@mastra/rag` | - |
-| Stream data redaction | Built-in (filters system prompts, API keys) | - |
-| Metadata filtering | MongoDB-style query syntax | - |
-| PDF/DOCX/XLSX parsing | - | Custom parsers → `MDocument.fromText()` |
-| S3 sync pipeline | - | BullMQ jobs |
-| Feedback on responses | - | Custom table + routes |
-| Widget API key gating | - | Better Auth API key plugin |
-| Document management UI | - | Custom admin routes |
-| Frontend apps | - | React apps (desk, admin, widget) |
+| Capability                  | Mastra Built-in                                   | Custom Code Needed                      |
+| --------------------------- | ------------------------------------------------- | --------------------------------------- |
+| HTTP server                 | Built-in Hono server, auto-exposes agents         | Custom routes via `registerApiRoute()`  |
+| Agent endpoints             | Auto-generated generate/stream endpoints          | -                                       |
+| Chat streaming              | `handleChatStream` from `@mastra/ai-sdk`          | -                                       |
+| Thread/conversation storage | `PgStore` from `@mastra/pg`                       | -                                       |
+| Message history             | Auto-persisted by Memory                          | -                                       |
+| Working memory              | `Memory` class with `workingMemory` option        | -                                       |
+| Semantic recall             | `Memory` class with `semanticRecall` + `PgVector` | -                                       |
+| Vector storage              | `PgVector` from `@mastra/pg`                      | -                                       |
+| Vector search tool          | `createVectorQueryTool()` from `@mastra/rag`      | -                                       |
+| Chunking                    | `MDocument.chunk()` (9 strategies)                | -                                       |
+| Re-ranking                  | `rerank()` from `@mastra/rag`                     | -                                       |
+| Stream data redaction       | Built-in (filters system prompts, API keys)       | -                                       |
+| Metadata filtering          | MongoDB-style query syntax                        | -                                       |
+| PDF/DOCX/XLSX parsing       | -                                                 | Custom parsers → `MDocument.fromText()` |
+| S3 sync pipeline            | -                                                 | BullMQ jobs                             |
+| Feedback on responses       | -                                                 | Custom table + routes                   |
+| Widget API key gating       | -                                                 | Better Auth API key plugin              |
+| Document management UI      | -                                                 | Custom admin routes                     |
+| Frontend apps               | -                                                 | React apps (desk, admin, widget)        |
 
 ---
 
 ## 2. Technology Stack
 
-| Layer | Technology |
-|-------|-----------|
-| Runtime | Bun 1.3.11 |
-| Language | TypeScript 5.9+ (strict, NodeNext) |
-| Monorepo | Bun workspaces + Turborepo |
-| Lint/Format | Biome v2 |
-| Tests | Vitest |
-| **Server** | **Mastra built-in (Hono-based)** + custom routes |
-| Frontend | React 19 + Vite + TanStack Router/Query + Tailwind + shadcn/ui |
-| Agent ↔ UI Protocol | AG-UI (event-based SSE) via CopilotKit headless mode |
-| Frontend Observability | Custom OTel instrumentation (spans, metrics, events) |
-| **Agents + RAG + Memory** | **Mastra (`@mastra/core`, `@mastra/rag`, `@mastra/memory`, `@mastra/pg`)** |
-| LLM | AI SDK v6 via Mastra model router |
-| ORM | Drizzle (PostgreSQL) — only for non-Mastra tables |
-| Vectors | pgvector via `@mastra/pg` PgVector |
-| Storage | `PgStore` from `@mastra/pg` (threads, messages, memory) |
-| Files | MinIO (S3-compatible) |
-| Background Jobs | BullMQ (Redis-based) |
-| Cache | Redis 8 |
-| Auth | Better Auth (users, sessions, RBAC, API keys). OIDC plugin → Dex (local) / Okta (prod) |
-| Observability | OpenTelemetry |
+| Layer                     | Technology                                                                             |
+| ------------------------- | -------------------------------------------------------------------------------------- |
+| Runtime                   | Bun 1.3.14                                                                             |
+| Language                  | TypeScript 6.0+ (strict, ESNext/bundler)                                               |
+| Monorepo                  | Bun workspaces + Turborepo                                                             |
+| Lint/Format               | oxlint + oxfmt                                                                         |
+| Tests                     | Vitest                                                                                 |
+| **Server**                | **Mastra built-in (Hono-based)** + custom routes                                       |
+| Frontend                  | React 19 + Vite + TanStack Router/Query + Tailwind + shadcn/ui                         |
+| Agent ↔ UI Protocol       | AG-UI (event-based SSE) via CopilotKit headless mode                                   |
+| Frontend Observability    | Custom OTel instrumentation (spans, metrics, events)                                   |
+| **Agents + RAG + Memory** | **Mastra (`@mastra/core`, `@mastra/rag`, `@mastra/memory`, `@mastra/pg`)**             |
+| LLM                       | AI SDK v6 via Mastra model router                                                      |
+| ORM                       | Drizzle (PostgreSQL) — only for non-Mastra tables                                      |
+| Vectors                   | pgvector via `@mastra/pg` PgVector                                                     |
+| Storage                   | `PgStore` from `@mastra/pg` (threads, messages, memory)                                |
+| Files                     | MinIO (S3-compatible)                                                                  |
+| Background Jobs           | BullMQ (Redis-based)                                                                   |
+| Cache                     | Redis 8                                                                                |
+| Auth                      | Better Auth (users, sessions, RBAC, API keys). OIDC plugin → Dex (local) / Okta (prod) |
+| Observability             | OpenTelemetry                                                                          |
 
 ---
 
@@ -98,7 +98,7 @@ typhoon/
 │   └── widget/                  # Embeddable customer chat widget
 │
 ├── packages/
-│   ├── config/    (L0)          # Shared TS, Biome, env validation (Zod)
+│   ├── config/    (L0)          # Shared TS configs, env validation (Zod)
 │   ├── types/     (L0)          # Zod schemas for domain entities
 │   ├── db/        (L1)          # Drizzle schemas + migrations (non-Mastra tables only)
 │   ├── storage/   (L1)          # S3/MinIO client
@@ -131,10 +131,12 @@ typhoon/
 ├── package.json                 # Root workspace config
 ├── turbo.json                   # Build orchestration
 ├── tsconfig.json                # Root TS config
-└── biome.json                   # Lint/format config
+├── .oxlintrc.json               # Lint config (oxlint)
+└── .oxfmtrc.json                # Format config (oxfmt)
 ```
 
 **Layer dependency model:**
+
 ```
 Layer 2:  agents, ingestion, ui          ← Domain logic & UI
 Layer 1:  db, storage                    ← Infrastructure clients
@@ -264,6 +266,7 @@ Rules:
 ### 6.3 Future Agent Slots
 
 Add new agents by defining them and registering with the supervisor:
+
 - **Billing Agent** — handle billing inquiries
 - **Account Agent** — password resets, account changes
 - **Escalation Agent** — hand off to human
@@ -282,15 +285,15 @@ delete-file job → PgVector.deleteVectors({ filter: { documentId } })
 
 ### 7.2 Parsing (custom — only for formats Mastra doesn't handle)
 
-| Format | Approach |
-|--------|----------|
-| PDF | `pdf-parse-new` → `MDocument.fromText()` |
-| DOCX | `mammoth` → `MDocument.fromHTML()` |
-| XLSX | `xlsx` (SheetJS) → `MDocument.fromText()` |
-| Markdown | `MDocument.fromMarkdown()` (Mastra built-in) |
-| HTML | `MDocument.fromHTML()` (Mastra built-in) |
-| Plain text | `MDocument.fromText()` (Mastra built-in) |
-| JSON | `MDocument.fromJSON()` (Mastra built-in) |
+| Format     | Approach                                     |
+| ---------- | -------------------------------------------- |
+| PDF        | `pdf-parse-new` → `MDocument.fromText()`     |
+| DOCX       | `mammoth` → `MDocument.fromHTML()`           |
+| XLSX       | `xlsx` (SheetJS) → `MDocument.fromText()`    |
+| Markdown   | `MDocument.fromMarkdown()` (Mastra built-in) |
+| HTML       | `MDocument.fromHTML()` (Mastra built-in)     |
+| Plain text | `MDocument.fromText()` (Mastra built-in)     |
+| JSON       | `MDocument.fromJSON()` (Mastra built-in)     |
 
 ### 7.3 Chunking + Embedding + Storage (all Mastra)
 
@@ -300,11 +303,12 @@ import { MDocument } from '@mastra/rag';
 
 async function processFile(content: string, format: string, doc: Document) {
   // 1. Create MDocument based on format
-  const mDoc = format === 'html'
-    ? MDocument.fromHTML(content)
-    : format === 'markdown'
-    ? MDocument.fromMarkdown(content)
-    : MDocument.fromText(content);
+  const mDoc =
+    format === 'html'
+      ? MDocument.fromHTML(content)
+      : format === 'markdown'
+        ? MDocument.fromMarkdown(content)
+        : MDocument.fromText(content);
 
   // 2. Chunk using Mastra's built-in strategies
   const chunks = await mDoc.chunk({
@@ -316,7 +320,7 @@ async function processFile(content: string, format: string, doc: Document) {
   // 3. Embed using Mastra's model router
   const { embeddings } = await embedMany({
     model: embeddingModel,
-    values: chunks.map(c => c.text),
+    values: chunks.map((c) => c.text),
   });
 
   // 4. Upsert to PgVector (Mastra handles batching)
@@ -342,19 +346,22 @@ async function processFile(content: string, format: string, doc: Document) {
 Mastra's `PgStore` handles threads, messages, and memory tables automatically. We only need Drizzle for domain-specific tables.
 
 ### `sync_targets` — S3 bucket configurations
+
 ```
 id, name, bucketName, prefix, region, endpoint, cronSchedule, isActive, createdAt, updatedAt
 ```
 
 ### `documents` — Document metadata from S3 sync
+
 ```
 id, syncTargetId, sourceKey, sourceEtag, mimeType, fileSize, title, author, pageCount,
-status (pending|processing|ready|parse_error|deleted), errorMessage,
+status (pending|processing|ready|error|deleted), errorMessage,
 chunkCount, contentHash, lastSyncedAt, createdAt, updatedAt
 UNIQUE(syncTargetId, sourceKey)
 ```
 
 ### `sync_jobs` — Sync job tracking
+
 ```
 id, syncTargetId, status (running|completed|failed),
 filesScanned, filesNew, filesUpdated, filesDeleted, filesErrored,
@@ -362,11 +369,13 @@ errorMessage, startedAt, completedAt
 ```
 
 ### `feedback` — Rep feedback on AI responses
+
 ```
 id, threadId, messageId, userId, rating (positive|negative), comment, createdAt
 ```
 
 **Tables we DON'T need (handled by frameworks):**
+
 - ~~conversations~~ → Mastra threads (`PgStore`)
 - ~~messages~~ → Mastra messages (`PgStore`)
 - ~~users~~ → Better Auth (manages user table automatically)
@@ -380,6 +389,7 @@ id, threadId, messageId, userId, rating (positive|negative), comment, createdAt
 Registered via `registerApiRoute()` in the Mastra instance. All other endpoints (agent generate/stream, memory threads/messages) are auto-generated by Mastra.
 
 ### Sync Targets (admin)
+
 ```
 GET    /v1/sync-targets            List configured S3 sources
 POST   /v1/sync-targets            Add S3 source
@@ -390,29 +400,34 @@ GET    /v1/sync-targets/:id/jobs   List sync job history
 ```
 
 ### Documents (read-only)
+
 ```
 GET    /v1/documents               List documents (filterable by source, status, format)
 GET    /v1/documents/:id           Get document detail
 ```
 
 ### Feedback
+
 ```
 POST   /v1/feedback                Submit feedback on an AI response
 GET    /v1/feedback                List feedback (admin)
 ```
 
 ### Widget (API key gated)
+
 ```
 POST   /v1/widget/chat             Customer chat (API key auth, SSE)
 GET    /v1/widget/config           Widget branding/welcome message
 ```
 
 ### Auth (Better Auth — auto-mounted)
+
 ```
 Better Auth handles: /v1/auth/* (login, register, session, OIDC callback, API key management)
 ```
 
 ### Auto-generated by Mastra (no custom code needed)
+
 ```
 POST   /api/agents/:agentId/generate    Agent generate
 POST   /api/agents/:agentId/stream      Agent stream
@@ -433,15 +448,16 @@ PUT    /api/memory/working-memory        Update working memory
 
 **Search + Chat hybrid** — two primary modes.
 
-| Page | Route | Description |
-|------|-------|-------------|
-| Dashboard | `/` | Recent conversations, search bar |
-| Chat | `/chat` | New conversation with AI. Uses `handleChatStream` + Mastra memory |
-| Chat Detail | `/chat/:threadId` | Existing conversation with full history |
-| Search | `/search` | Direct KB search via `createVectorQueryTool` |
-| Documents | `/documents` | Browse synced documents |
+| Page        | Route             | Description                                                       |
+| ----------- | ----------------- | ----------------------------------------------------------------- |
+| Dashboard   | `/`               | Recent conversations, search bar                                  |
+| Chat        | `/chat`           | New conversation with AI. Uses `handleChatStream` + Mastra memory |
+| Chat Detail | `/chat/:threadId` | Existing conversation with full history                           |
+| Search      | `/search`         | Direct KB search via `createVectorQueryTool`                      |
+| Documents   | `/documents`      | Browse synced documents                                           |
 
 **Key Components:**
+
 - `ChatInterface` — Uses AI SDK UI hooks (`useChat`) with Mastra streaming
 - `SourceCitations` — Inline citations from agent tool results
 - `SearchResults` — Document chunks with relevance scores
@@ -449,13 +465,16 @@ PUT    /api/memory/working-memory        Update working memory
 - `ConversationList` — Sidebar listing Mastra threads
 
 **Frontend integration (CopilotKit headless + AG-UI):**
+
 ```tsx
 // CopilotKit provider wraps the app (AG-UI protocol handling)
 <CopilotKit agentEndpoint="/api/agents/typhoon-supervisor">
-  <OtelAgentProvider>  {/* Custom OTel instrumentation wrapper */}
+  <OtelAgentProvider>
+    {' '}
+    {/* Custom OTel instrumentation wrapper */}
     <App />
   </OtelAgentProvider>
-</CopilotKit>
+</CopilotKit>;
 
 // In chat components — CopilotKit hooks for AG-UI, shadcn for UI
 const { messages, sendMessage, isLoading } = useAgent({
@@ -471,6 +490,7 @@ useRenderTool('search-knowledge-base', ({ args, result }) => (
 ```
 
 **OTel instrumentation (`packages/ui/src/providers/otel-agent-provider.tsx`):**
+
 - Conversation traces: span per chat turn (threadId, agentId, duration, status)
 - Tool call spans: per-tool timing and results (search-kb, get-context)
 - Streaming metrics: time-to-first-token, total duration, token count
@@ -481,16 +501,16 @@ useRenderTool('search-knowledge-base', ({ args, result }) => (
 
 ### 10.2 Admin Dashboard (`apps/admin`)
 
-| Page | Route | Description |
-|------|-------|-------------|
-| Dashboard | `/` | System health, document counts, conversation volume |
-| Sync Sources | `/sources` | Manage S3 bucket configs, trigger syncs |
-| Sync Jobs | `/sources/:id/jobs` | View sync history |
-| Documents | `/documents` | Browse all documents by status/source |
-| Conversations | `/conversations` | Review rep conversations (via Mastra thread API) |
-| Feedback | `/feedback` | Review positive/negative feedback |
-| API Keys | `/api-keys` | Create/revoke deployment API keys for widget. Keys configured in widget `<script>` tag. Backed by Better Auth API key plugin |
-| Settings | `/settings` | Branding, widget config |
+| Page          | Route               | Description                                                                                                                  |
+| ------------- | ------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Dashboard     | `/`                 | System health, document counts, conversation volume                                                                          |
+| Sync Sources  | `/sources`          | Manage S3 bucket configs, trigger syncs                                                                                      |
+| Sync Jobs     | `/sources/:id/jobs` | View sync history                                                                                                            |
+| Documents     | `/documents`        | Browse all documents by status/source                                                                                        |
+| Conversations | `/conversations`    | Review rep conversations (via Mastra thread API)                                                                             |
+| Feedback      | `/feedback`         | Review positive/negative feedback                                                                                            |
+| API Keys      | `/api-keys`         | Create/revoke deployment API keys for widget. Keys configured in widget `<script>` tag. Backed by Better Auth API key plugin |
+| Settings      | `/settings`         | Branding, widget config                                                                                                      |
 
 ### 10.3 Customer Widget (`apps/widget`)
 
@@ -503,12 +523,12 @@ useRenderTool('search-knowledge-base', ({ args, result }) => (
 
 ## 11. Background Jobs (BullMQ)
 
-| Queue | Job | Trigger | Purpose |
-|-------|-----|---------|---------|
-| `sync` | `scan` | Repeatable cron (default 6h) | List S3, diff, enqueue per-file jobs |
-| `sync` | `process-file` | Enqueued by scan | Download → parse → MDocument.chunk() → PgVector.upsert() |
-| `sync` | `delete-file` | Enqueued by scan | PgVector.deleteVectors(), mark deleted |
-| `reports` | `feedback-digest` | Cron daily 9 AM | Summarize feedback for admins |
+| Queue     | Job               | Trigger                      | Purpose                                                  |
+| --------- | ----------------- | ---------------------------- | -------------------------------------------------------- |
+| `sync`    | `scan`            | Repeatable cron (default 6h) | List S3, diff, enqueue per-file jobs                     |
+| `sync`    | `process-file`    | Enqueued by scan             | Download → parse → MDocument.chunk() → PgVector.upsert() |
+| `sync`    | `delete-file`     | Enqueued by scan             | PgVector.deleteVectors(), mark deleted                   |
+| `reports` | `feedback-digest` | Cron daily 9 AM              | Summarize feedback for admins                            |
 
 ---
 
@@ -568,14 +588,16 @@ Utilities:
 ## 13. Implementation Phases
 
 ### Phase 1 — Foundation (Layer 0-1)
-1. Scaffold monorepo: root `package.json`, `turbo.json`, `tsconfig.json`, `biome.json`
-2. `@typhoon/config` — shared TS config, Biome config, env validation schemas
+
+1. Scaffold monorepo: root `package.json`, `turbo.json`, `tsconfig.json`, `.oxlintrc.json`, `.oxfmtrc.json`
+2. `@typhoon/config` — shared TS configs, env validation schemas
 3. `@typhoon/types` — Zod schemas for domain entities
 4. `@typhoon/db` — Drizzle schemas + migrations (sync_targets, documents, sync_jobs, feedback). Better Auth manages its own tables.
-5. `@typhoon/storage` — S3/MinIO client
+5. `@typhoon/blob-store` — Interface-based blob storage (S3/MinIO adapter)
 6. Docker Compose (PostgreSQL + pgvector, Redis, MinIO; Dex as optional profile for OIDC testing)
 
 ### Phase 2 — Mastra + Ingestion (Layer 2)
+
 1. `apps/api` — Mastra instance: PgStore, PgVector, Memory config, PgVector index creation
 2. `@typhoon/ingestion` — PDF/DOCX/XLSX parsers, MDocument pipeline, BullMQ sync jobs
 3. `apps/worker` — BullMQ job consumer for ingestion pipeline
@@ -583,12 +605,14 @@ Utilities:
 5. Custom routes in `apps/api`: sync target management, document browsing
 
 ### Phase 3 — Agents + Chat
+
 1. `@typhoon/agents` — Knowledge Agent with `createVectorQueryTool`, Supervisor Agent
 2. Wire agents into Mastra instance with Memory (message history + semantic recall + working memory)
 3. Verify auto-generated agent endpoints (stream/generate)
 4. Custom routes: feedback, widget chat (API key gated), API key management
 
 ### Phase 4 — UI
+
 1. `@typhoon/ui` — Shared component library (shadcn/ui) + CopilotKit headless setup + OTel agent provider
 2. `apps/desk` — Rep workspace: CopilotKit sidebar (AG-UI) + search + conversation list + custom tool renderers (KB search cards, citations) + feedback
 3. `apps/admin` — Sync sources, documents, conversations, feedback, API keys
@@ -605,4 +629,4 @@ Utilities:
 5. **Re-sync:** Update document in S3 → trigger sync → ETag change detected → chunks re-embedded
 6. **Deletion:** Delete document from S3 → sync → vectors removed, document marked deleted
 7. **Widget gating:** Verify widget returns 403 with no API key → admin creates key → widget works → customer gets answer with sources
-8. **Quality gates:** `tsc --noEmit`, `biome check .`, `vitest run`
+8. **Quality gates:** `tsc --noEmit`, `oxfmt --check .`, `oxlint .`, `vitest run`

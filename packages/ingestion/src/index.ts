@@ -8,23 +8,22 @@ export type { ParseResult } from './parsers/registry';
 export { getMDocFormat, getParser, needsCustomParser } from './parsers/registry';
 export type { ProcessFileInput, ProcessFileResult } from './pipeline';
 export {
+  buildSearchMetaFields,
   deleteDocumentVectors,
-  extractMetadataFromContent,
+  generateDocumentMetadata,
   processFile,
+  refreshDocumentSearchMeta,
   updateDocumentVectorMetadata,
   updateDocumentVectorSource,
   updateDocumentVectorTitle,
 } from './pipeline';
 export { getProvider } from './providers/index';
 export type { BrowseResult, SourceObject, SourceProvider } from './providers/types';
-export type { NamedSource } from './source-registry';
+export type { IngestionRepos } from './repos';
+export type { CredentialValue, NamedSource } from './source-registry';
 export { clearSourceRegistry, getSource, listSources, registerSource } from './source-registry';
-export type { SyncDiff } from './sync';
+export type { ExistingDoc, SyncDiff } from './sync';
 export { computeSyncDiff } from './sync';
-export {
-  clearSyncTargetRegistry,
-  listRegisteredSyncTargets,
-  registerSyncTarget,
-} from './sync-target-registry';
+export { clearSyncTargetRegistry, listRegisteredSyncTargets, registerSyncTarget } from './sync-target-registry';
 export { asUnrecoverable, isUnrecoverable } from './util/classify-error';
 export { StageTimeoutError, withTimeout } from './util/with-timeout';

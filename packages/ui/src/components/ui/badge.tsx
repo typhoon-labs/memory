@@ -5,21 +5,21 @@ import type * as React from 'react';
 import { cn } from '../../lib/utils';
 
 const badgeVariants = cva(
-  'inline-flex items-center justify-center rounded-full border border-transparent px-2 py-0.5 text-xs font-medium w-fit whitespace-nowrap shrink-0 [&>svg]:size-3 gap-1 [&>svg]:pointer-events-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive transition-[color,box-shadow] overflow-hidden',
+  'focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive inline-flex w-fit shrink-0 items-center justify-center gap-1 overflow-hidden rounded-full border border-transparent px-2 py-0.5 text-xs font-medium whitespace-nowrap transition-[color,box-shadow] focus-visible:ring-[3px] [&>svg]:pointer-events-none [&>svg]:size-3',
   {
     variants: {
       variant: {
-        default: 'border border-border bg-transparent text-muted-foreground text-2xs font-medium',
-        secondary: 'border border-border bg-transparent text-muted-foreground text-2xs font-medium',
+        default: 'border-border text-muted-foreground text-2xs border bg-transparent font-medium',
+        secondary: 'border-border text-muted-foreground text-2xs border bg-transparent font-medium',
         destructive:
-          'bg-destructive text-white [a&]:hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60',
-        outline: 'border border-input bg-transparent text-accent-foreground text-2xs font-medium',
+          'bg-destructive [a&]:hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60 text-white',
+        outline: 'border-input text-accent-foreground text-2xs border bg-transparent font-medium',
         ghost: '[a&]:hover:bg-accent [a&]:hover:text-accent-foreground',
         link: 'text-primary underline-offset-4 [a&]:hover:underline',
-        success: 'border border-emerald-500/20 bg-emerald-500/10 text-emerald-400 text-2xs font-medium',
-        info: 'border border-blue-500/20 bg-blue-500/10 text-blue-400 text-2xs font-medium',
-        warning: 'border border-amber-500/20 bg-amber-500/10 text-amber-400 text-2xs font-medium',
-        error: 'border border-red-500/20 bg-red-500/10 text-red-400 text-2xs font-medium',
+        success: 'text-2xs border border-emerald-500/20 bg-emerald-500/10 font-medium text-emerald-400',
+        info: 'text-2xs border border-blue-500/20 bg-blue-500/10 font-medium text-blue-400',
+        warning: 'text-2xs border border-amber-500/20 bg-amber-500/10 font-medium text-amber-400',
+        error: 'text-2xs border border-red-500/20 bg-red-500/10 font-medium text-red-400',
       },
     },
     defaultVariants: {

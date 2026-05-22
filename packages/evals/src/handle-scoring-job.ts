@@ -1,12 +1,21 @@
-import type { MastraModelConfig } from '@mastra/core/llm';
 import { createAppLogger } from '@typhoon/logger';
-import { extractScoringData } from './extract-scoring-data';
+
+import { extractScoringData, formatResponseForScoring } from './extract-scoring-data';
 import { RETRIEVAL_SCORERS } from './scorer-categories';
-import { constructScorer, type ScorerDefinitionVersion } from './scorer-loader';
+import { constructScorer, type ModelFactory, type ScorerDefinitionVersion } from './scorer-loader';
 
 const log = createAppLogger('scoring');
 
 // ── Types ───────────────────────────────────────────────────────────
+
+/** Chunk metadata returned by hydrateChunks. */
+export interface ChunkMeta {
+  text?: string;
+  title?: string;
+  source?: string;
+  section?: string;
+  syncTargetName?: string;
+}
 
 export interface ScoringInput {
   /** `messages.externalId` — may be empty if the worker should resolve the latest assistant message. */
@@ -25,8 +34,8 @@ export interface ScoringDeps {
   } | null>;
   /** Resolve the latest assistant message externalId in a thread (by thread externalId). */
   resolveLatestAssistantMessage: (threadExternalId: string) => Promise<string | null>;
-  /** Hydrate chunk text from vector store by chunk IDs. Returns map of chunkId → text. */
-  hydrateChunks: (chunkIds: string[]) => Promise<Map<string, string>>;
+  /** Hydrate chunk metadata from vector store by chunk IDs. */
+  hydrateChunks: (chunkIds: string[]) => Promise<Map<string, ChunkMeta>>;
   /** Check if a score already exists for this entity + scorer. */
   hasExistingScore: (entityId: string, scorerId: string) => Promise<boolean>;
   /** Persist a score record. */
@@ -128,7 +137,7 @@ export const BUILTIN_SCORER_DEFS: ScorerDefinitionVersion[] = [
 export async function prepareScoring(
   input: ScoringInput,
   deps: Pick<ScoringDeps, 'fetchMessages' | 'resolveLatestAssistantMessage' | 'hydrateChunks' | 'hasExistingScore'>,
-  model: MastraModelConfig,
+  createScoringModel: ModelFactory,
   scorerDefinitions?: ScorerDefinitionVersion[],
 ): Promise<PreparedScoring> {
   const { threadId } = input;
@@ -155,24 +164,30 @@ export async function prepareScoring(
     throw Object.assign(new Error(`Cannot extract scoring data from message: ${messageId}`), { unrecoverable: true });
   }
 
-  // 3. Hydrate chunk text if needed
+  // 3. Hydrate chunk metadata (text, title, source, etc.) from vector store
   if (scoringData.chunkSources.length > 0) {
-    const needsHydration = scoringData.chunkSources.some((cs) => !cs.text);
-    if (needsHydration) {
-      const chunkIds = scoringData.chunkSources.map((cs) => cs.chunkId);
-      const textMap = await deps.hydrateChunks(chunkIds);
-      for (const cs of scoringData.chunkSources) {
-        if (!cs.text) cs.text = textMap.get(cs.chunkId) ?? '';
-      }
+    const chunkIds = scoringData.chunkSources.map((cs) => cs.chunkId);
+    const metaMap = await deps.hydrateChunks(chunkIds);
+    for (const cs of scoringData.chunkSources) {
+      const meta = metaMap.get(cs.chunkId);
+      if (!meta) continue;
+      if (!cs.text && meta.text) cs.text = meta.text;
+      if (!cs.title && meta.title) cs.title = meta.title;
+      if (!cs.source && meta.source) cs.source = meta.source;
+      if (!cs.section && meta.section) cs.section = meta.section;
+      if (!cs.syncTargetName && meta.syncTargetName) cs.syncTargetName = meta.syncTargetName;
     }
   }
 
-  // 4. Build context array for scorers
+  // 4. Format response text for scorer readability (collapse [Source: N.M] → [N])
+  const responseText = formatResponseForScoring(scoringData.responseText, scoringData.chunkSources);
+
+  // 5. Build context array for scorers
   const context = scoringData.chunkSources
     .filter((cs): cs is typeof cs & { text: string } => !!cs.text)
     .map((cs) => cs.text);
 
-  // 5. Determine applicable scorers and check idempotency
+  // 6. Determine applicable scorers and check idempotency
   const defs = scorerDefinitions ?? BUILTIN_SCORER_DEFS;
   const scorersToRun: ScorerDefinitionVersion[] = [];
   const contextSkippedScorers: ScorerDefinitionVersion[] = [];
@@ -180,7 +195,7 @@ export async function prepareScoring(
 
   for (const def of defs) {
     // Check if scorer can be constructed (handles context-dependency, unknown types)
-    const entry = constructScorer(def, model, context);
+    const entry = constructScorer(def, createScoringModel, context);
     if (!entry) {
       // Track retrieval scorers skipped due to empty context
       if (RETRIEVAL_SCORERS.has(def.type) && context.length === 0) {
@@ -189,6 +204,7 @@ export async function prepareScoring(
       continue;
     }
 
+    // oxlint-disable-next-line no-await-in-loop -- sequential: idempotency check per scorer
     const exists = await deps.hasExistingScore(messageId, entry.id);
     if (exists) {
       skippedCount++;
@@ -208,7 +224,7 @@ export async function prepareScoring(
   return {
     messageId,
     userQuestion: scoringData.userQuestion,
-    responseText: scoringData.responseText,
+    responseText,
     context,
     scorersToRun,
     skippedCount,
@@ -240,12 +256,12 @@ export async function runSingleScorer(
     };
   },
   deps: Pick<ScoringDeps, 'hasExistingScore' | 'saveScore'>,
-  model: MastraModelConfig,
+  createScoringModel: ModelFactory,
 ): Promise<ScorerRunResult> {
   const { scorerDefinition, userQuestion, responseText, context, persist } = data;
 
   // Construct scorer from definition
-  const entry = constructScorer(scorerDefinition, model, context);
+  const entry = constructScorer(scorerDefinition, createScoringModel, context);
   if (!entry) {
     throw Object.assign(new Error(`Cannot construct scorer: ${scorerDefinition.name}`), { unrecoverable: true });
   }
@@ -270,7 +286,7 @@ export async function runSingleScorer(
   };
   const scorerOutput = [{ role: 'assistant' as const, content: { content: responseText } }];
 
-  // biome-ignore lint/suspicious/noExplicitAny: Scorer run() types vary between prebuilt scorers
+  // oxlint-disable-next-line @typescript-eslint/no-explicit-any -- Scorer run() types vary between prebuilt scorers
   const scorerResult = await (scorer as any).run({
     input: scorerInput,
     output: scorerOutput,

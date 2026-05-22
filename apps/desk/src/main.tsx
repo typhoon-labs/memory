@@ -4,6 +4,7 @@ import { createRouter, RouterProvider } from '@tanstack/react-router';
 import { AuthProvider, ThemeProvider } from '@typhoon/ui';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+
 import { routeTree } from './routes/route-tree';
 
 const queryClient = new QueryClient({
@@ -13,7 +14,7 @@ const queryClient = new QueryClient({
 });
 const router = createRouter({ routeTree });
 
-// biome-ignore lint/style/noNonNullAssertion: root element is guaranteed by index.html
+// oxlint-disable-next-line @typescript-eslint/no-non-null-assertion -- root element is guaranteed by index.html
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ThemeProvider defaultTheme="system" storageKey="typhoon-theme">

@@ -3,6 +3,7 @@ import type { ColumnDef } from '@typhoon/ui';
 import { apiFetch, DataTable, EmptyState, formatRelativeTime, StatusBadge } from '@typhoon/ui';
 import { ClockIcon } from 'lucide-react';
 import { useState } from 'react';
+
 import type { SyncJob } from './shared';
 import { formatDuration, JOB_STATUS_MAP } from './shared';
 import { SyncJobDetailSheet } from './sync-job-detail-sheet';
@@ -81,7 +82,7 @@ export function SyncLogTab({ sourceId }: { sourceId: string }) {
   });
 
   const sortedJobs = jobs
-    ? [...jobs].sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime())
+    ? [...jobs].toSorted((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime())
     : [];
 
   return (

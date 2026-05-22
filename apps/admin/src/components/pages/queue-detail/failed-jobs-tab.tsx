@@ -71,7 +71,7 @@ export function FailedJobsTab({ queueName }: { queueName: string }) {
         accessorKey: 'failedReason',
         header: 'Error',
         cell: ({ row }) => (
-          <span className="max-w-xs truncate text-xs text-muted-foreground" title={row.original.failedReason ?? ''}>
+          <span className="text-muted-foreground max-w-xs truncate text-xs" title={row.original.failedReason ?? ''}>
             {row.original.failedReason ?? '-'}
           </span>
         ),
@@ -85,15 +85,14 @@ export function FailedJobsTab({ queueName }: { queueName: string }) {
         accessorKey: 'createdAt',
         header: 'Failed At',
         cell: ({ row }) => (
-          <span className="text-xs text-muted-foreground">{formatRelativeTime(row.original.createdAt)}</span>
+          <span className="text-muted-foreground text-xs">{formatRelativeTime(row.original.createdAt)}</span>
         ),
       },
       {
         id: 'actions',
         header: '',
         cell: ({ row }) => (
-          // biome-ignore lint/a11y/useKeyWithClickEvents: stop-propagation wrapper
-          // biome-ignore lint/a11y/noStaticElementInteractions: stop-propagation wrapper
+          // oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- stop-propagation wrapper
           <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
             <AlertDialog>
               <AlertDialogTrigger asChild>
@@ -163,16 +162,16 @@ export function FailedJobsTab({ queueName }: { queueName: string }) {
                 <Section label="Failed At">{new Date(selectedJob.createdAt).toLocaleString()}</Section>
                 {selectedJob.syncTargetId && <Section label="Sync Target">{selectedJob.syncTargetId}</Section>}
                 {selectedJob.documentId && <Section label="Document">{selectedJob.documentId}</Section>}
-                {selectedJob.data && (
+                {selectedJob.data !== undefined && selectedJob.data !== null && (
                   <Section label="Job Data">
-                    <pre className="mt-1 max-h-40 overflow-auto rounded bg-muted p-2 text-xs">
+                    <pre className="bg-muted mt-1 max-h-40 overflow-auto rounded p-2 text-xs">
                       {JSON.stringify(selectedJob.data, null, 2)}
                     </pre>
                   </Section>
                 )}
                 {selectedJob.stacktrace && (
                   <Section label="Stacktrace">
-                    <pre className="mt-1 max-h-60 overflow-auto rounded bg-muted p-2 text-xs whitespace-pre-wrap">
+                    <pre className="bg-muted mt-1 max-h-60 overflow-auto rounded p-2 text-xs whitespace-pre-wrap">
                       {selectedJob.stacktrace}
                     </pre>
                   </Section>
@@ -189,7 +188,7 @@ export function FailedJobsTab({ queueName }: { queueName: string }) {
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <div className="text-xs font-medium text-muted-foreground">{label}</div>
+      <div className="text-muted-foreground text-xs font-medium">{label}</div>
       <div className="mt-0.5 text-sm">{children}</div>
     </div>
   );

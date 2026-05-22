@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { extractScoringData } from './extract-scoring-data';
+
+import { extractScoringData, formatResponseForScoring } from './extract-scoring-data';
 
 /** Helper: build a v6 text message content. */
 function textContent(text: string) {
@@ -39,26 +40,30 @@ describe('extractScoringData', () => {
     const result = extractScoringData(assistant, user);
 
     expect(result).not.toBeNull();
-    expect(result!.responseText).toBe('The answer is 42.');
-    expect(result!.userQuestion).toBe('What is the answer?');
-    expect(result!.chunkSources).toHaveLength(2);
-    expect(result!.chunkSources[0]).toEqual({
+    expect(result?.responseText).toBe('The answer is 42.');
+    expect(result?.userQuestion).toBe('What is the answer?');
+    expect(result?.chunkSources).toHaveLength(2);
+    expect(result?.chunkSources[0]).toEqual({
       chunkId: 'c-1',
-      displayIndex: 0,
+      displayIndex: '0',
       score: 0.95,
       text: 'chunk text',
       documentId: 'd-1',
       title: 'Doc',
+      section: undefined,
       source: 's3://bucket/key',
+      syncTargetName: undefined,
     });
-    expect(result!.chunkSources[1]).toEqual({
+    expect(result?.chunkSources[1]).toEqual({
       chunkId: 'c-2',
-      displayIndex: 1,
+      displayIndex: '1',
       score: 0.8,
       text: undefined,
       documentId: undefined,
       title: undefined,
+      section: undefined,
       source: undefined,
+      syncTargetName: undefined,
     });
   });
 
@@ -69,9 +74,9 @@ describe('extractScoringData', () => {
     const result = extractScoringData(assistant, user);
 
     expect(result).not.toBeNull();
-    expect(result!.responseText).toBe('I can help with that.');
-    expect(result!.userQuestion).toBe('Help me');
-    expect(result!.chunkSources).toEqual([]);
+    expect(result?.responseText).toBe('I can help with that.');
+    expect(result?.userQuestion).toBe('Help me');
+    expect(result?.chunkSources).toEqual([]);
   });
 
   it('returns null when assistant has no text content', () => {
@@ -103,9 +108,9 @@ describe('extractScoringData', () => {
     const result = extractScoringData(assistant, user);
 
     expect(result).not.toBeNull();
-    expect(result!.responseText).toBe('Legacy response');
-    expect(result!.userQuestion).toBe('Legacy question');
-    expect(result!.chunkSources).toEqual([]);
+    expect(result?.responseText).toBe('Legacy response');
+    expect(result?.userQuestion).toBe('Legacy question');
+    expect(result?.chunkSources).toEqual([]);
   });
 
   it('extracts chunks from Mastra v6 toolInvocation format', () => {
@@ -126,9 +131,9 @@ describe('extractScoringData', () => {
     const result = extractScoringData(assistant, user);
 
     expect(result).not.toBeNull();
-    expect(result!.chunkSources).toHaveLength(1);
-    expect(result!.chunkSources[0].chunkId).toBe('c-v6');
-    expect(result!.chunkSources[0].documentId).toBe('d-v6');
+    expect(result?.chunkSources).toHaveLength(1);
+    expect(result?.chunkSources[0].chunkId).toBe('c-v6');
+    expect(result?.chunkSources[0].documentId).toBe('d-v6');
   });
 
   it('aggregates chunks from multiple tool-invocation parts', () => {
@@ -152,9 +157,9 @@ describe('extractScoringData', () => {
     const result = extractScoringData(assistant, user);
 
     expect(result).not.toBeNull();
-    expect(result!.chunkSources).toHaveLength(2);
-    expect(result!.chunkSources[0].chunkId).toBe('c-1');
-    expect(result!.chunkSources[1].chunkId).toBe('c-2');
+    expect(result?.chunkSources).toHaveLength(2);
+    expect(result?.chunkSources[0].chunkId).toBe('c-1');
+    expect(result?.chunkSources[1].chunkId).toBe('c-2');
   });
 
   it('ignores tool parts that are not in output-available state', () => {
@@ -173,7 +178,7 @@ describe('extractScoringData', () => {
     const result = extractScoringData(assistant, user);
 
     expect(result).not.toBeNull();
-    expect(result!.chunkSources).toEqual([]);
+    expect(result?.chunkSources).toEqual([]);
   });
 
   it('skips chunk entries without a chunkId', () => {
@@ -185,8 +190,8 @@ describe('extractScoringData', () => {
 
     const result = extractScoringData(assistant, user);
 
-    expect(result!.chunkSources).toHaveLength(1);
-    expect(result!.chunkSources[0].chunkId).toBe('c-1');
+    expect(result?.chunkSources).toHaveLength(1);
+    expect(result?.chunkSources[0].chunkId).toBe('c-1');
   });
 
   it('handles malformed content objects without throwing', () => {
@@ -206,6 +211,74 @@ describe('extractScoringData', () => {
 
     const result = extractScoringData(assistant, user);
 
-    expect(result!.responseText).toBe('First paragraph.\nSecond paragraph.');
+    expect(result?.responseText).toBe('First paragraph.\nSecond paragraph.');
+  });
+});
+
+describe('formatResponseForScoring', () => {
+  const sources = [
+    {
+      chunkId: 'c-1',
+      displayIndex: '1.1',
+      title: 'Privacy Policy EU',
+      source: 'support/privacy-policy-eu.txt',
+      syncTargetName: 'Support Docs',
+    },
+    {
+      chunkId: 'c-2',
+      displayIndex: '1.2',
+      title: 'Privacy Policy EU',
+      source: 'support/privacy-policy-eu.txt',
+      syncTargetName: 'Support Docs',
+    },
+    {
+      chunkId: 'c-3',
+      displayIndex: '2',
+      title: 'Privacy Policy',
+      source: 'support/privacy-policy.txt',
+      syncTargetName: 'Support Docs',
+    },
+  ];
+
+  it('collapses [Source: N.M] to [N]', () => {
+    const text = 'Cookies are used [Source: 1.1].';
+    const result = formatResponseForScoring(text, sources);
+    expect(result).toContain('Cookies are used [1].');
+  });
+
+  it('collapses multi-ref [Source: 1.1, 1.2] to [1]', () => {
+    const text = 'See policy [Source: 1.1, 1.2].';
+    const result = formatResponseForScoring(text, sources);
+    expect(result).toContain('See policy [1].');
+  });
+
+  it('preserves distinct document refs [Source: 1.1, 2]', () => {
+    const text = 'Both policies apply [Source: 1.1, 2].';
+    const result = formatResponseForScoring(text, sources);
+    expect(result).toContain('Both policies apply [1, 2].');
+  });
+
+  it('does not append a footer (footer would confuse scorers)', () => {
+    const text = 'Answer [Source: 2].';
+    const result = formatResponseForScoring(text, sources);
+    expect(result).not.toContain('Sources:');
+    expect(result).toBe('Answer [2].');
+  });
+
+  it('returns text unchanged when no chunk sources', () => {
+    const text = 'No citations here.';
+    expect(formatResponseForScoring(text, [])).toBe(text);
+  });
+
+  it('returns text unchanged when no [Source:] patterns', () => {
+    const text = 'Hello! How can I help?';
+    const result = formatResponseForScoring(text, sources);
+    expect(result).toBe(text);
+  });
+
+  it('handles multiple document refs without adding footer', () => {
+    const text = 'A [Source: 2]. B [Source: 1.1].';
+    const result = formatResponseForScoring(text, sources);
+    expect(result).toBe('A [2]. B [1].');
   });
 });

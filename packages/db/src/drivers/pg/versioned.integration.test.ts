@@ -1,4 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+
 import { agents, agentVersions } from '../../schema/versioned/agents';
 import { createTestConnection } from './test-utils';
 import { createVersionedDriver } from './versioned';
@@ -100,6 +101,7 @@ describe('createVersionedDriver (integration)', () => {
 
     it('list with pagination', async () => {
       for (let i = 0; i < 5; i++) {
+        // oxlint-disable-next-line no-await-in-loop -- test setup: sequential DB seeding
         await driver.create(db, {
           id: crypto.randomUUID(),
           status: 'draft',
@@ -267,6 +269,7 @@ describe('createVersionedDriver (integration)', () => {
 
     it('listVersions with pagination', async () => {
       for (let i = 1; i <= 5; i++) {
+        // oxlint-disable-next-line no-await-in-loop -- test setup: sequential DB seeding
         await driver.createVersion(db, {
           id: crypto.randomUUID(),
           agentId: agentVId,

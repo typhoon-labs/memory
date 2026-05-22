@@ -42,11 +42,12 @@ export interface Document {
   description: string | null;
   author: string | null;
   pageCount: number | null;
-  status: 'pending' | 'processing' | 'ready' | 'parse_error' | 'embed_error' | 'deleted';
+  status: 'pending' | 'processing' | 'ready' | 'error' | 'deleted';
   errorMessage: string | null;
   chunkCount: number;
   customMetadata: Record<string, unknown>;
   contentHash: string | null;
+  searchMetaDirty: boolean;
   lastSyncedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -63,14 +64,13 @@ export const DOC_STATUS_MAP: Record<string, StatusBadgeVariant> = {
   ready: 'success',
   processing: 'warning',
   pending: 'pending',
-  parse_error: 'error',
-  embed_error: 'error',
+  error: 'error',
   deleted: 'pending',
 };
 
-export function formatConfig(sourceType: string, config: Record<string, unknown>): string {
+export function formatConfig(sourceType: string, config: Record<string, unknown>, sourceBucket?: string): string {
   if (sourceType === 's3') {
-    const bucket = config.bucket as string;
+    const bucket = sourceBucket ?? 'unknown';
     const prefix = (config.prefix as string) ?? '';
     return `s3://${bucket}/${prefix}`;
   }

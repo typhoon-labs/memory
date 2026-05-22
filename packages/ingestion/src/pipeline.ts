@@ -1,11 +1,21 @@
 import { createHash } from 'node:crypto';
+
 import { MDocument } from '@mastra/rag';
-import { createEmbeddingModel, createExtractionModel, EMBEDDING_MAX_CHARS, EMBEDDING_MAX_TOKENS } from '@typhoon/ai';
+import {
+  createEmbeddingModel,
+  createMetadataExtractionModel,
+  EMBEDDING_MAX_CHARS,
+  EMBEDDING_MAX_TOKENS,
+  METADATA_EXTRACTION_MAX_CHARS,
+} from '@typhoon/ai';
 import type { PgVector } from '@typhoon/db/drivers/pg';
 import { createAppLogger } from '@typhoon/logger';
 import { chunkSizeChars, embedRetryCount, embedTokenUsage, getTracer, SpanStatusCode } from '@typhoon/telemetry';
-import type { LanguageModel } from 'ai';
-import { embed, embedMany, generateObject, generateText } from 'ai';
+import type { SearchPriority } from '@typhoon/types';
+import { SEARCH_PRIORITY_TO_WEIGHT } from '@typhoon/types';
+import type { EmbeddingModel, LanguageModel } from 'ai';
+import { embed, embedMany, generateText, Output } from 'ai';
+
 import { getMDocFormat, getParser, needsCustomParser } from './parsers/registry';
 import { createRateLimiter } from './util/rate-limiter';
 import { recordStageDuration } from './util/stage-metrics';
@@ -68,16 +78,36 @@ export interface ProcessFileInput {
   isCancelled?: () => Promise<boolean>;
   /** User-defined metadata to include in vector chunk JSONB (propagated from document). */
   customMetadata?: Record<string, unknown>;
+  /** Metadata schema for structured extraction (custom fields). When provided, the metadata LLM call extracts these fields alongside title/description. */
+  metadataSchema?: Record<
+    string,
+    { type: 'string' | 'number' | 'boolean' | 'string[]'; allowedValues?: unknown[]; description?: string }
+  >;
+  /** Field-level search controls (searchable, searchPriority). Always passed when a metadata template exists, even without autoExtractMetadata. Powers `buildSearchMetaFields()` for weighted tsvector. */
+  fieldSchema?: Record<string, { searchable?: boolean; searchPriority?: SearchPriority }>;
 }
 
 export interface ProcessFileResult {
   chunkCount: number;
   title: string | null;
   description: string | null;
+  customMetadata: Record<string, unknown>;
 }
 
 export async function processFile(input: ProcessFileInput, vectorStore: PgVector): Promise<ProcessFileResult> {
-  const { content, filename, documentId, syncTargetId, sourceKey, title, onStage, isCancelled, customMetadata } = input;
+  const {
+    content,
+    filename,
+    documentId,
+    syncTargetId,
+    sourceKey,
+    title,
+    onStage,
+    isCancelled,
+    customMetadata,
+    metadataSchema,
+    fieldSchema,
+  } = input;
   const tStart = Date.now();
   const announce = async (stage: string) => {
     if (onStage) await onStage(stage);
@@ -126,7 +156,7 @@ export async function processFile(input: ProcessFileInput, vectorStore: PgVector
         if (!text.trim()) {
           log.info('Empty content, skipping', { filename });
           rootSpan.setStatus({ code: SpanStatusCode.OK });
-          return { chunkCount: 0, title: null, description: null };
+          return { chunkCount: 0, title: null, description: null, customMetadata: customMetadata ?? {} };
         }
 
         // 2. Create MDocument based on format
@@ -146,15 +176,16 @@ export async function processFile(input: ProcessFileInput, vectorStore: PgVector
         }
 
         // 3. Chunk using Mastra's built-in strategy with metadata extraction
-        // biome-ignore lint/suspicious/noExplicitAny: Mastra extract types expect MastraLanguageModel but AI SDK LanguageModelV3 works at runtime
-        const extractionLlm = createExtractionModel() as any;
+        // oxlint-disable-next-line @typescript-eslint/no-explicit-any -- Mastra extract types expect MastraLanguageModel but AI SDK LanguageModelV3 works at runtime
+        const extractionLlm = createMetadataExtractionModel() as any;
         const extract = {
           keywords: { llm: extractionLlm, keywords: 5 },
         };
 
         const chunkOptions = buildChunkOptions(format, extract);
 
-        if (await checkCancelled()) return { chunkCount: 0, title: null, description: null };
+        if (await checkCancelled())
+          return { chunkCount: 0, title: null, description: null, customMetadata: customMetadata ?? {} };
 
         await announce('chunk');
         let chunkMs = 0;
@@ -164,7 +195,9 @@ export async function processFile(input: ProcessFileInput, vectorStore: PgVector
         const chunks = await tracer.startActiveSpan('chunk', async (chunkSpan) => {
           const tChunk = Date.now();
           const rawChunks = await withTimeout(mDoc.chunk(chunkOptions), STAGE_TIMEOUTS.chunk, 'chunk');
-          const result = enforceChunkSizeLimit(rawChunks, EMBEDDING_MAX_CHARS).filter((c) => c.text.trim());
+          const result = enforceChunkSizeLimit(rawChunks, EMBEDDING_MAX_CHARS, chunkOptions.overlap ?? 0).filter((c) =>
+            c.text.trim(),
+          );
           chunkMs = Date.now() - tChunk;
           recordStageDuration('chunk', chunkMs);
 
@@ -196,16 +229,16 @@ export async function processFile(input: ProcessFileInput, vectorStore: PgVector
 
         if (chunks.length === 0) {
           rootSpan.setStatus({ code: SpanStatusCode.OK });
-          return { chunkCount: 0, title: null, description: null };
+          return { chunkCount: 0, title: null, description: null, customMetadata: customMetadata ?? {} };
         }
 
-        // 4. Generate document-level title and description
+        // 4. Generate document-level title, description, and custom metadata
         await announce('metadata');
         let metaMs = 0;
         const docMeta = await tracer.startActiveSpan('metadata', async (metaSpan) => {
           const tMeta = Date.now();
           const result = await withTimeout(
-            generateDocumentMetadata(text, extractionLlm),
+            generateDocumentMetadata(text, extractionLlm, metadataSchema),
             STAGE_TIMEOUTS.metadata,
             'metadata',
           );
@@ -213,11 +246,17 @@ export async function processFile(input: ProcessFileInput, vectorStore: PgVector
           recordStageDuration('metadata', metaMs);
           metaSpan.setAttribute('metadata.title', result.title);
           metaSpan.end();
-          log.info('Generated document metadata', { filename, title: result.title, ms: metaMs });
+          log.info('Generated document metadata', {
+            filename,
+            title: result.title,
+            customFields: Object.keys(result.customMetadata),
+            ms: metaMs,
+          });
           return result;
         });
 
-        if (await checkCancelled()) return { chunkCount: 0, title: null, description: null };
+        if (await checkCancelled())
+          return { chunkCount: 0, title: null, description: null, customMetadata: customMetadata ?? {} };
 
         // 5. Embed using AI SDK (rate-limited, adaptive chunk sizing)
         await announce('embed');
@@ -250,7 +289,7 @@ export async function processFile(input: ProcessFileInput, vectorStore: PgVector
               if (EMBED_BATCH_SIZE > 1 && batch.length > 1) {
                 try {
                   const result = await withTimeout(
-                    embedMany({ model: embeddingModel, values: batch.map((c) => c.text) }),
+                    embedMany({ model: embeddingModel as unknown as EmbeddingModel, values: batch.map((c) => c.text) }),
                     STAGE_TIMEOUTS.embed,
                     'embed',
                   );
@@ -258,8 +297,7 @@ export async function processFile(input: ProcessFileInput, vectorStore: PgVector
                     for (let j = 0; j < batch.length; j++) {
                       embedded.push({ ...batch[j], embedding: result.embeddings[j] });
                     }
-                    // biome-ignore lint/suspicious/noExplicitAny: usage shape varies by provider
-                    const usage = (result as any).usage;
+                    const usage = (result as unknown as { usage?: { tokens?: number } }).usage;
                     if (usage?.tokens)
                       onTokens(
                         batch.reduce((a, c) => a + c.text.length, 0),
@@ -280,6 +318,7 @@ export async function processFile(input: ProcessFileInput, vectorStore: PgVector
               }
               // Per-chunk embed (default when EMBED_BATCH_SIZE=1, or batch fallback)
               for (const item of batch) {
+                // oxlint-disable-next-line no-await-in-loop -- sequential: rate-limited embedding with retry
                 const result = await embedChunkWithRetry(item, embeddingModel, 0, 3, onTokens);
                 retryCount += result.retries;
                 embedded.push(...result.results);
@@ -306,6 +345,7 @@ export async function processFile(input: ProcessFileInput, vectorStore: PgVector
             }
 
             if (pendingBatch.length >= EMBED_BATCH_SIZE) {
+              // oxlint-disable-next-line no-await-in-loop -- sequential: flush batches as they fill up
               await flushBatch();
             }
           }
@@ -348,10 +388,13 @@ export async function processFile(input: ProcessFileInput, vectorStore: PgVector
           }
         }
 
-        if (await checkCancelled()) return { chunkCount: 0, title: null, description: null };
+        if (await checkCancelled())
+          return { chunkCount: 0, title: null, description: null, customMetadata: customMetadata ?? {} };
 
-        // 7. Upsert to PgVector with extracted metadata
+        // 7. Upsert to PgVector with extracted metadata + search meta fields
         const docTitle = title ?? docMeta.title;
+        const mergedMetadata = { ...customMetadata, ...docMeta.customMetadata };
+        const searchMetaFields = buildSearchMetaFields(mergedMetadata, fieldSchema);
         await announce('upsert');
         let upsertMs = 0;
         await tracer.startActiveSpan('upsert', async (upsertSpan) => {
@@ -372,7 +415,8 @@ export async function processFile(input: ProcessFileInput, vectorStore: PgVector
                 section: (entry.metadata as Record<string, unknown>)?.section ?? '',
                 keywords: (entry.metadata as Record<string, unknown>)?.excerptKeywords ?? '',
                 startIndex: startIndices[i],
-                ...customMetadata,
+                ...mergedMetadata,
+                ...searchMetaFields,
               })),
             }),
             STAGE_TIMEOUTS.upsert,
@@ -420,7 +464,12 @@ export async function processFile(input: ProcessFileInput, vectorStore: PgVector
           totalMs: Date.now() - tStart,
         });
 
-        return { chunkCount: embedded.length, title: docTitle, description: docMeta.description || null };
+        return {
+          chunkCount: embedded.length,
+          title: docTitle,
+          description: docMeta.description || null,
+          customMetadata: mergedMetadata,
+        };
       } catch (error) {
         rootSpan.setStatus({
           code: SpanStatusCode.ERROR,
@@ -438,11 +487,15 @@ export async function processFile(input: ProcessFileInput, vectorStore: PgVector
 /**
  * Split any chunk exceeding the embedding model's input limit.
  * Splits on paragraph boundaries, then sentence boundaries, then hard character split.
+ * When `overlap` > 0, trailing content from each chunk is carried into the next:
+ * whole parts (paragraphs/sentences) if they fit the budget, otherwise the last
+ * `overlap` characters of the final part. Hard character splits get no overlap.
  * Preserves metadata from the parent chunk on each sub-chunk.
  */
 export function enforceChunkSizeLimit(
   chunks: Array<{ text: string; metadata: Record<string, unknown> }>,
   maxChars: number,
+  overlap = 0,
 ): Array<{ text: string; metadata: Record<string, unknown> }> {
   const result: Array<{ text: string; metadata: Record<string, unknown> }> = [];
 
@@ -457,7 +510,7 @@ export function enforceChunkSizeLimit(
       maxChars,
     });
 
-    const subTexts = splitOversizedText(chunk.text, maxChars);
+    const subTexts = splitOversizedText(chunk.text, maxChars, overlap);
     for (const sub of subTexts) {
       result.push({ text: sub, metadata: { ...chunk.metadata } });
     }
@@ -466,20 +519,20 @@ export function enforceChunkSizeLimit(
   return result;
 }
 
-function splitOversizedText(text: string, maxChars: number): string[] {
+function splitOversizedText(text: string, maxChars: number, overlap = 0): string[] {
   // Try paragraph boundaries first
   const paragraphs = text.split(/\n\n+/);
   if (paragraphs.length > 1) {
-    return reassemble(paragraphs, maxChars, '\n\n');
+    return reassemble(paragraphs, maxChars, '\n\n', overlap);
   }
 
   // Fall back to sentence boundaries
   const sentences = text.split(/(?<=\.)\s+/);
   if (sentences.length > 1) {
-    return reassemble(sentences, maxChars, ' ');
+    return reassemble(sentences, maxChars, ' ', overlap);
   }
 
-  // Last resort: hard character split
+  // Last resort: hard character split (no overlap — boundaries are arbitrary)
   const pieces: string[] = [];
   for (let i = 0; i < text.length; i += maxChars) {
     pieces.push(text.slice(i, i + maxChars));
@@ -487,25 +540,56 @@ function splitOversizedText(text: string, maxChars: number): string[] {
   return pieces;
 }
 
-function reassemble(parts: string[], maxChars: number, joiner: string): string[] {
+/**
+ * Walk backwards through `parts` and return trailing parts that fit within `budget` chars (joined).
+ * If no whole part fits, fall back to the last `budget` characters of the final part.
+ */
+function overlapParts(parts: string[], joiner: string, budget: number): string[] {
+  if (parts.length === 0 || budget <= 0) return [];
+  const selected: string[] = [];
+  let size = 0;
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const sep = selected.length > 0 ? joiner.length : 0;
+    if (size + parts[i].length + sep > budget) break;
+    selected.unshift(parts[i]);
+    size += parts[i].length + sep;
+  }
+  // If no whole part fits, take the trailing characters of the last part
+  if (selected.length === 0) {
+    const last = parts[parts.length - 1];
+    selected.push(last.slice(-budget));
+  }
+  return selected;
+}
+
+function reassemble(parts: string[], maxChars: number, joiner: string, overlap = 0): string[] {
   const result: string[] = [];
-  let current = '';
+  let currentParts: string[] = [];
+  let currentLen = 0;
 
   for (const part of parts) {
-    const candidate = current ? current + joiner + part : part;
-    if (candidate.length <= maxChars) {
-      current = candidate;
+    const sep = currentParts.length > 0 ? joiner.length : 0;
+    const candidateLen = currentLen + sep + part.length;
+
+    if (candidateLen <= maxChars) {
+      currentParts.push(part);
+      currentLen = candidateLen;
     } else {
-      if (current) result.push(current);
+      if (currentParts.length > 0) {
+        result.push(currentParts.join(joiner));
+      }
       if (part.length > maxChars) {
-        result.push(...splitOversizedText(part, maxChars));
-        current = '';
+        result.push(...splitOversizedText(part, maxChars, overlap));
+        currentParts = [];
+        currentLen = 0;
       } else {
-        current = part;
+        const seed = overlap > 0 ? overlapParts(currentParts, joiner, overlap) : [];
+        currentParts = [...seed, part];
+        currentLen = currentParts.join(joiner).length;
       }
     }
   }
-  if (current) result.push(current);
+  if (currentParts.length > 0) result.push(currentParts.join(joiner));
   return result;
 }
 
@@ -567,8 +651,10 @@ async function embedChunkWithRetry(
     { attributes: { 'chunk.chars': chunk.text.length, 'chunk.depth': depth } },
     async (span) => {
       try {
-        // biome-ignore lint/suspicious/noExplicitAny: usage shape varies by provider
-        const response = (await embed({ model, value: chunk.text })) as any;
+        const response = (await embed({ model: model as unknown as EmbeddingModel, value: chunk.text })) as unknown as {
+          embedding: number[];
+          usage?: { tokens?: number };
+        };
         if (response.usage?.tokens) {
           onTokens?.(chunk.text.length, response.usage.tokens);
           span.setAttribute('chunk.tokens', response.usage.tokens);
@@ -604,6 +690,7 @@ async function embedChunkWithRetry(
         const allResults: EmbeddedChunk[] = [];
         let totalRetries = 1;
         for (const sub of subTexts) {
+          // oxlint-disable-next-line no-await-in-loop -- sequential: recursive retry embedding of sub-chunks
           const inner = await embedChunkWithRetry(
             { text: sub, metadata: { ...chunk.metadata } },
             model,
@@ -651,23 +738,101 @@ export function buildChunkOptions(format: string, extract: Record<string, unknow
   }
 }
 
+/**
+ * Generate document title, description, and optional custom metadata in a single
+ * structured output LLM call. Uses `Output.object` with a Zod schema that always
+ * includes title + description, plus any custom fields from the metadata schema.
+ */
 export async function generateDocumentMetadata(
   text: string,
   llm: LanguageModel,
-): Promise<{ title: string; description: string }> {
-  const sample = text.slice(0, 2000);
-  const { text: response } = await generateText({
-    model: llm,
-    temperature: 0,
-    system:
-      'You generate metadata for documents. Respond with exactly two lines, no markdown formatting.\nLine 1: A short descriptive title for the document.\nLine 2: A single sentence describing what the document is about.',
-    prompt: sample,
+  metadataSchema?: Record<
+    string,
+    { type: 'string' | 'number' | 'boolean' | 'string[]'; allowedValues?: unknown[]; description?: string }
+  >,
+): Promise<{ title: string; description: string; customMetadata: Record<string, unknown> }> {
+  const { buildDocumentMetadataSchema } = await import('@typhoon/types');
+  const sample = text.slice(0, METADATA_EXTRACTION_MAX_CHARS);
+  const zodSchema = buildDocumentMetadataSchema(metadataSchema);
+
+  const hasCustomFields = metadataSchema && Object.keys(metadataSchema).length > 0;
+
+  let fieldDescriptions = '';
+  if (hasCustomFields) {
+    fieldDescriptions = Object.entries(metadataSchema)
+      .map(([key, field]) => {
+        let desc = `- ${key} (${field.type})`;
+        if (field.description) desc += `: ${field.description}`;
+        if (field.allowedValues?.length) desc += ` [allowed: ${field.allowedValues.join(', ')}]`;
+        return desc;
+      })
+      .join('\n');
+  }
+
+  const prompt = `Extract metadata from the following document text.
+
+Rules:
+- title: A short descriptive title for the document.
+- description: A single sentence describing what the document is about.${
+    hasCustomFields
+      ? `
+- For fields with allowed values, choose the MOST SPECIFIC value that matches the document content. Do not default to generic or catch-all values when a more specific value applies.
+- If a custom field cannot be determined from the text, return null for it.
+- Base your extraction on the actual content of the document, not assumptions.
+
+Additional fields to extract:
+${fieldDescriptions}`
+      : ''
+  }
+
+Document text:
+${sample}`;
+
+  const tStart = Date.now();
+  log.debug('Calling generateText for document metadata', {
+    promptLength: prompt.length,
+    textSampleLength: sample.length,
+    hasCustomFields: !!hasCustomFields,
+    customFieldCount: hasCustomFields ? Object.keys(metadataSchema).length : 0,
   });
-  const lines = response.trim().split('\n').filter(Boolean);
-  return {
-    title: (lines[0]?.trim() ?? 'Untitled').replace(/^#+\s*/, ''),
-    description: (lines[1]?.trim() ?? '').replace(/^#+\s*/, ''),
-  };
+
+  const { output } = await generateText({
+    model: llm,
+    output: Output.object({ schema: zodSchema }),
+    prompt,
+    temperature: 0,
+  });
+
+  const object = (output ?? {}) as Record<string, unknown>;
+  const title = (typeof object.title === 'string' ? object.title : 'Untitled').replace(/^#+\s*/, '');
+  const description = typeof object.description === 'string' ? object.description : '';
+
+  // Separate custom fields from title/description and validate against schema
+  const customMetadata: Record<string, unknown> = {};
+  if (hasCustomFields) {
+    for (const [key, value] of Object.entries(object)) {
+      if (key === 'title' || key === 'description') continue;
+      if (value === undefined || value === null) continue;
+      if (!(key in metadataSchema)) continue;
+      const field = metadataSchema[key];
+      if (field.allowedValues?.length) {
+        if (Array.isArray(value)) {
+          if (!value.every((v) => field.allowedValues?.includes(v))) continue;
+        } else {
+          if (!field.allowedValues.includes(value)) continue;
+        }
+      }
+      customMetadata[key] = value;
+    }
+  }
+
+  log.debug('Document metadata result', {
+    title,
+    customFieldsExtracted: Object.keys(customMetadata),
+    ms: Date.now() - tStart,
+  });
+
+  return { title, description, customMetadata };
 }
 
 /** Generate a deterministic chunk ID from its content so re-ingestion produces stable IDs. */
@@ -676,6 +841,39 @@ export function makeChunkId(documentId: string, startIndex: number | null, text:
     .update(`${documentId}:${startIndex ?? ''}:${text.slice(0, 200)}`)
     .digest('hex')
     .slice(0, 32);
+}
+
+/**
+ * Group searchable custom metadata values by their tsvector weight tier.
+ * Returns `_searchMeta_{A,B,C,D}` keys ready to spread into chunk metadata.
+ * The tsvector trigger indexes each key at the corresponding PostgreSQL weight.
+ */
+export function buildSearchMetaFields(
+  customMetadata: Record<string, unknown>,
+  fieldSchema?: Record<string, { searchable?: boolean; searchPriority?: SearchPriority; [key: string]: unknown }>,
+): Record<string, string> {
+  const buckets: Record<string, string[]> = { A: [], B: [], C: [], D: [] };
+
+  for (const [key, value] of Object.entries(customMetadata)) {
+    if (value === null || value === undefined || value === '') continue;
+
+    const field = fieldSchema?.[key];
+    // Opt-in: only include fields explicitly marked searchable or with a searchPriority
+    if (!field?.searchable && !field?.searchPriority) continue;
+
+    const priority: SearchPriority = field?.searchPriority ?? 'moderate';
+    const weight = SEARCH_PRIORITY_TO_WEIGHT[priority];
+    const text = Array.isArray(value) ? value.join(' ') : String(value);
+    buckets[weight].push(text);
+  }
+
+  const result: Record<string, string> = {};
+  for (const [tier, values] of Object.entries(buckets)) {
+    if (values.length > 0) {
+      result[`_searchMeta_${tier}`] = values.join(' ');
+    }
+  }
+  return result;
 }
 
 export async function deleteDocumentVectors(vectorStore: PgVector, documentId: string): Promise<void> {
@@ -714,6 +912,21 @@ export async function updateDocumentVectorMetadata(
   );
 }
 
+/** Strip old _searchMeta_* fields and merge new ones into chunk metadata. Triggers tsvector recomputation. */
+export async function refreshDocumentSearchMeta(
+  sqlInstance: { unsafe: (...args: never[]) => unknown },
+  documentId: string,
+  searchMetaFields: Record<string, string>,
+): Promise<void> {
+  const fn = sqlInstance.unsafe as (query: string, params: (string | null)[]) => Promise<unknown>;
+  await fn(
+    `UPDATE "knowledge_base"
+     SET metadata = (metadata - '_searchMeta_A' - '_searchMeta_B' - '_searchMeta_C' - '_searchMeta_D') || $2::jsonb
+     WHERE metadata->>'documentId' = $1`,
+    [documentId, JSON.stringify(searchMetaFields)],
+  );
+}
+
 /** Update the title field in chunk metadata when a document's title is edited. */
 export async function updateDocumentVectorTitle(
   sqlInstance: { unsafe: (...args: never[]) => unknown },
@@ -727,66 +940,4 @@ export async function updateDocumentVectorTitle(
      WHERE metadata->>'documentId' = $1`,
     [documentId, newTitle],
   );
-}
-
-/**
- * Use an LLM to extract custom metadata values from document text based on a
- * metadata schema. Uses structured output for reliable JSON generation.
- * Returns only valid, extracted fields.
- */
-export async function extractMetadataFromContent(
-  text: string,
-  schema: Record<string, { type: string; allowedValues?: unknown[]; description?: string }>,
-  llm: LanguageModel,
-): Promise<Record<string, unknown>> {
-  const { buildZodFromMetadataSchema } = await import('@typhoon/types');
-  // biome-ignore lint/suspicious/noExplicitAny: schema types are compatible at runtime
-  const zodSchema = buildZodFromMetadataSchema(schema as any);
-
-  const fieldDescriptions = Object.entries(schema)
-    .map(([key, field]) => {
-      let desc = `- ${key} (${field.type})`;
-      if (field.description) desc += `: ${field.description}`;
-      if (field.allowedValues?.length) desc += ` [allowed: ${field.allowedValues.join(', ')}]`;
-      return desc;
-    })
-    .join('\n');
-
-  const prompt = `Extract metadata from the following document text.
-
-Rules:
-- For fields with allowed values, choose the MOST SPECIFIC value that matches the document content. Do not default to generic or catch-all values when a more specific value applies.
-- If a field cannot be determined from the text, omit it.
-- Base your extraction on the actual content of the document, not assumptions.
-
-Fields to extract:
-${fieldDescriptions}
-
-Document text (first 4000 chars):
-${text.slice(0, 4000)}`;
-
-  try {
-    const { object } = await generateObject({
-      model: llm,
-      schema: zodSchema,
-      prompt,
-      temperature: 0,
-    });
-
-    const result: Record<string, unknown> = {};
-
-    // Validate extracted values against schema constraints (safety net)
-    for (const [key, value] of Object.entries(object)) {
-      if (value === undefined || value === null) continue;
-      if (!(key in schema)) continue;
-      const field = schema[key];
-      if (field.allowedValues?.length && !field.allowedValues.includes(value)) continue;
-      result[key] = value;
-    }
-
-    return result;
-  } catch (err) {
-    log.warn('LLM metadata extraction failed', { error: err instanceof Error ? err.message : String(err) });
-    return {};
-  }
 }

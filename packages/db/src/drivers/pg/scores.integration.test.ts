@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+
 import { DrizzleScoresStorage } from './scores';
 import { createTestConnection } from './test-utils';
 
@@ -83,10 +84,10 @@ describe('DrizzleScoresStorage (integration)', () => {
       entity: {},
     } as never);
 
-    const result = await storage.listScoresByScorerId({
+    const result = (await storage.listScoresByScorerId({
       scorerId: 'sc-A',
       pagination: { page: 0, perPage: 10 },
-    });
+    })) as { scores: unknown[] };
     expect(result.scores.length).toBe(2);
   });
 
@@ -106,10 +107,10 @@ describe('DrizzleScoresStorage (integration)', () => {
       entity: {},
     } as never);
 
-    const result = await storage.listScoresByRunId({
+    const result = (await storage.listScoresByRunId({
       runId: 'target-run',
       pagination: { page: 0, perPage: 10 },
-    });
+    })) as { scores: unknown[] };
     expect(result.scores.length).toBe(1);
   });
 });

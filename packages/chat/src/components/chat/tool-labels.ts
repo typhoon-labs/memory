@@ -34,8 +34,8 @@ export function resolveToolStatus(toolName: string): string {
   if (label) return label;
 
   const humanised = toolName
-    .replace(/-/g, ' ')
-    .replace(/([A-Z])/g, ' $1')
+    .replaceAll('-', ' ')
+    .replaceAll(/([A-Z])/g, ' $1')
     .replace(/^./, (c) => c.toUpperCase())
     .trim();
   return `Using ${humanised}`;

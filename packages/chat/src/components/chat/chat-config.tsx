@@ -9,7 +9,14 @@ export interface ChatConfig {
   /** Map of messageId to current feedback (rating + optional comment). */
   feedbackState?: Map<string, { rating: 'positive' | 'negative'; comment?: string }>;
   /** Called when user clicks "Open document" on an inline citation. */
-  onDocumentOpen?: (documentId: string, options?: { startIndex?: number; chunkText?: string }) => void;
+  onDocumentOpen?: (
+    documentId: string,
+    options?: {
+      startIndex?: number;
+      chunkText?: string;
+      chunks?: Array<{ startIndex?: number; chunkText?: string }>;
+    },
+  ) => void;
   /** When true, feedback is read-only: only the active rating is shown, clicks are ignored. */
   feedbackReadOnly?: boolean;
   /** When true, tool call steps show expandable debug details. */

@@ -3,6 +3,7 @@ import { useDraggable, useDroppable } from '@dnd-kit/react';
 import { Checkbox } from '@typhoon/ui';
 import { FileTextIcon, FolderIcon, XIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
+
 import type { DragItem } from './use-file-move';
 
 // ── Draggable file row ─────────────────────────────────────────
@@ -21,7 +22,7 @@ export function DraggableFileRow({
   const { ref } = useDraggable({ id, type: 'file', disabled });
 
   return (
-    <tr ref={ref} className={`cursor-pointer transition-colors hover:bg-accent ${isDragging ? 'opacity-40' : ''}`}>
+    <tr ref={ref} className={`hover:bg-accent cursor-pointer transition-colors ${isDragging ? 'opacity-40' : ''}`}>
       {children}
     </tr>
   );
@@ -57,7 +58,7 @@ export function DroppableFolderRow({
         dragRef(node);
         dropRef(node);
       }}
-      className={`transition-colors hover:bg-accent ${isDragging ? 'opacity-40' : ''} ${isDropTarget ? 'ring-2 ring-primary bg-primary/5' : ''}`}
+      className={`hover:bg-accent transition-colors ${isDragging ? 'opacity-40' : ''} ${isDropTarget ? 'ring-primary bg-primary/5 ring-2' : ''}`}
     >
       {children}
     </tr>
@@ -93,7 +94,7 @@ export function DroppableBreadcrumb({
       ref={ref}
       type="button"
       onClick={onClick}
-      className={`rounded px-1 text-muted-foreground transition-colors hover:text-foreground ${isDropTarget ? 'bg-primary/10 text-foreground' : ''}`}
+      className={`text-muted-foreground hover:text-foreground rounded px-1 transition-colors ${isDropTarget ? 'bg-primary/10 text-foreground' : ''}`}
     >
       {children}
     </button>
@@ -122,20 +123,20 @@ export function DragOverlayContent({ items }: { items: DragItem[] }) {
     }
 
     return (
-      <div className="pointer-events-none flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm opacity-60 shadow-lg">
-        <Icon className="size-4 shrink-0 text-muted-foreground" />
+      <div className="border-border bg-card pointer-events-none flex items-center gap-2 rounded-md border px-3 py-2 text-sm opacity-60 shadow-lg">
+        <Icon className="text-muted-foreground size-4 shrink-0" />
         <div className="min-w-0">
           <div className="max-w-48 truncate font-medium">{primary}</div>
-          {subtitle && <div className="max-w-48 truncate text-xs text-muted-foreground">{subtitle}</div>}
+          {subtitle && <div className="text-muted-foreground max-w-48 truncate text-xs">{subtitle}</div>}
         </div>
       </div>
     );
   }
 
   return (
-    <div className="pointer-events-none rounded-md border border-border bg-card px-3 py-2 text-sm opacity-60 shadow-lg">
+    <div className="border-border bg-card pointer-events-none rounded-md border px-3 py-2 text-sm opacity-60 shadow-lg">
       <div className="flex items-center gap-2">
-        <FileTextIcon className="size-4 shrink-0 text-muted-foreground" />
+        <FileTextIcon className="text-muted-foreground size-4 shrink-0" />
         <span className="font-medium">Moving {items.length} items</span>
       </div>
     </div>
@@ -148,7 +149,7 @@ export function MoveErrorBanner({ error, onDismiss }: { error: string | null; on
   if (!error) return null;
 
   return (
-    <div className="mb-3 flex items-center justify-between gap-2 rounded-md border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+    <div className="border-destructive/20 bg-destructive/10 text-destructive mb-3 flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm">
       <span>{error}</span>
       <button type="button" onClick={onDismiss} className="shrink-0 p-0.5 hover:opacity-70" aria-label="Dismiss error">
         <XIcon className="size-3.5" />

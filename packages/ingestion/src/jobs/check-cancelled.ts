@@ -1,6 +1,4 @@
-import type { Db } from '@typhoon/db';
-import { syncJobs } from '@typhoon/db';
-import { eq } from 'drizzle-orm';
+import type { SyncJobRepo } from '@typhoon/db/repos';
 
 /**
  * Check whether the parent sync job has been cancelled. Designed to be called
@@ -10,10 +8,10 @@ import { eq } from 'drizzle-orm';
  * Returns `false` when `syncJobId` is undefined (e.g. direct uploads that
  * aren't part of a sync workflow).
  */
-export async function isSyncJobCancelled(db: Db, syncJobId: string | undefined): Promise<boolean> {
+export async function isSyncJobCancelled(syncJobRepo: SyncJobRepo, syncJobId: string | undefined): Promise<boolean> {
   if (!syncJobId) return false;
 
-  const [job] = await db.select({ status: syncJobs.status }).from(syncJobs).where(eq(syncJobs.id, syncJobId));
+  const status = await syncJobRepo.findStatusById(syncJobId);
 
-  return job?.status === 'cancelled';
+  return status === 'cancelled';
 }

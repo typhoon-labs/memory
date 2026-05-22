@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('@opentelemetry/api', () => ({
-  trace: { getTracer: vi.fn().mockReturnValue({ startSpan: vi.fn() }) },
+  trace: {
+    getTracer: vi.fn().mockReturnValue({ startSpan: vi.fn() }),
+    getActiveSpan: vi.fn().mockReturnValue(null),
+  },
   metrics: { getMeter: vi.fn().mockReturnValue({ createCounter: vi.fn() }) },
   SpanStatusCode: { UNSET: 0, OK: 1, ERROR: 2 },
 }));
@@ -79,6 +82,11 @@ describe('index exports', () => {
     expect(chunkSizeChars).toBeDefined();
     expect(embedRetryCount).toBeDefined();
     expect(embedTokenUsage).toBeDefined();
+  });
+
+  it('exports getActiveTraceId that returns null when no active span', async () => {
+    const { getActiveTraceId } = await import('./index');
+    expect(getActiveTraceId()).toBeNull();
   });
 
   it('re-exports sync metrics', async () => {

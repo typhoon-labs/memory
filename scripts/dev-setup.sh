@@ -7,7 +7,7 @@ echo "=== Typhoon Development Setup ==="
 echo "Checking prerequisites..."
 
 if ! command -v bun &> /dev/null; then
-  echo "Error: bun is not installed. Install it from https://bun.sh (v1.3.11+ required)"
+  echo "Error: bun is not installed. Install it from https://bun.sh (v1.3.14+ required)"
   exit 1
 fi
 
@@ -26,7 +26,7 @@ if ! docker compose version &> /dev/null; then
   exit 1
 fi
 
-echo "  bun $(bun --version), docker $(docker --version | grep -oP '\d+\.\d+\.\d+'), compose $(docker compose version --short)"
+echo "  bun $(bun --version), docker $(docker --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+'), compose $(docker compose version --short)"
 
 # 1. Install dependencies
 echo "Installing dependencies..."

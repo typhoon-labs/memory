@@ -4,6 +4,7 @@ import { Children, useMemo } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import rehypeSlug from 'rehype-slug';
 import remarkGfm from 'remark-gfm';
+
 import { CsvTableViewer } from './CsvTableViewer';
 import { ExternalLinkDialog } from './ExternalLinkDialog';
 import { markdownComponents } from './markdown-components';
@@ -23,7 +24,7 @@ function isTabularMime(mimeType: string | null | undefined): boolean {
 // navigator) can find them via querySelectorAll('mark.search-match').
 
 function escapeRegex(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return str.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function highlightText(text: string, terms: string[]): React.ReactNode {
@@ -32,7 +33,6 @@ function highlightText(text: string, terms: string[]): React.ReactNode {
   const nodes: React.ReactNode[] = [];
   let lastIndex = 0;
   let m: RegExpExecArray | null;
-  // biome-ignore lint/suspicious/noAssignInExpressions: standard regex exec loop
   while ((m = pattern.exec(text)) !== null) {
     if (m.index > lastIndex) nodes.push(text.slice(lastIndex, m.index));
     nodes.push(
@@ -80,17 +80,17 @@ export function createDocumentMarkdownComponents(
   return {
     ...(markdownComponents as unknown as Components),
     h1: ({ children, id }) => (
-      <h1 id={id} className="mt-6 mb-2 text-xl font-semibold leading-tight first:mt-0">
+      <h1 id={id} className="mt-6 mb-2 text-xl leading-tight font-semibold first:mt-0">
         {highlightChildren(children, terms)}
       </h1>
     ),
     h2: ({ children, id }) => (
-      <h2 id={id} className="mt-5 mb-1.5 text-lg font-semibold leading-tight first:mt-0">
+      <h2 id={id} className="mt-5 mb-1.5 text-lg leading-tight font-semibold first:mt-0">
         {highlightChildren(children, terms)}
       </h2>
     ),
     h3: ({ children, id }) => (
-      <h3 id={id} className="mt-4 mb-1 text-base font-semibold leading-snug first:mt-0">
+      <h3 id={id} className="mt-4 mb-1 text-base leading-snug font-semibold first:mt-0">
         {highlightChildren(children, terms)}
       </h3>
     ),
@@ -105,7 +105,7 @@ export function createDocumentMarkdownComponents(
       </h5>
     ),
     h6: ({ children, id }) => (
-      <h6 id={id} className="mt-3 text-sm font-medium text-muted-foreground first:mt-0">
+      <h6 id={id} className="text-muted-foreground mt-3 text-sm font-medium first:mt-0">
         {highlightChildren(children, terms)}
       </h6>
     ),
@@ -141,21 +141,21 @@ export function createDocumentMarkdownComponents(
         <ExternalLinkDialog href={href ?? '#'}>
           <button
             type="button"
-            className="inline cursor-pointer text-primary underline underline-offset-2 hover:opacity-80"
+            className="text-primary inline cursor-pointer underline underline-offset-2 hover:opacity-80"
           >
             {highlightChildren(children, terms)}
-            <ExternalLinkIcon className="ml-0.5 mb-0.5 inline size-3 opacity-60" />
+            <ExternalLinkIcon className="mb-0.5 ml-0.5 inline size-3 opacity-60" />
           </button>
         </ExternalLinkDialog>
       );
     },
     th: ({ children }) => (
-      <th className="whitespace-nowrap border-r border-border px-4 py-2 text-left text-[0.8125rem] font-semibold last:border-r-0">
+      <th className="border-border border-r px-4 py-2 text-left text-[0.8125rem] font-semibold whitespace-nowrap last:border-r-0">
         {highlightChildren(children, terms)}
       </th>
     ),
     td: ({ children }) => (
-      <td className="border-t border-r border-border px-4 py-2 text-sm last:border-r-0">
+      <td className="border-border border-t border-r px-4 py-2 text-sm last:border-r-0">
         {highlightChildren(children, terms)}
       </td>
     ),

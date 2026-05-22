@@ -14,7 +14,7 @@
     },
     "lint": {
       "dependsOn": [],
-      "inputs": ["src/**", "tests/**", "biome.json", "package.json"],
+      "inputs": ["src/**", "tests/**", ".oxlintrc.json", ".oxfmtrc.json", "package.json"],
       "outputs": []
     },
     "typecheck": {

@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch, StatCard, useAuth } from '@typhoon/ui';
 import { CalendarIcon, FileTextIcon, MessageSquareIcon, ThumbsUpIcon } from 'lucide-react';
-import { usePageTitle } from '../../hooks/use-page-title';
 
+import { usePageTitle } from '../../hooks/use-page-title';
 import type { ThreadListResponse } from '../chat/use-thread';
 import { ConversationActivity } from '../dashboard/conversation-activity';
 import { ConversationVolume } from '../dashboard/conversation-volume';
@@ -69,7 +69,7 @@ export function DashboardPage() {
               {getGreeting()}
               {firstName ? `, ${firstName}` : ''}
             </h1>
-            <p className="text-sm text-muted-foreground">Overview of your knowledge base and conversations</p>
+            <p className="text-muted-foreground text-sm">Overview of your knowledge base and conversations</p>
           </div>
           <QuickAccess />
         </div>

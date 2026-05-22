@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+
 import { formatAbsoluteTime, formatRelativeTime } from './format-time';
 
 describe('formatRelativeTime', () => {

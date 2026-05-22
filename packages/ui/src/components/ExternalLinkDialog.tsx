@@ -1,5 +1,6 @@
 import { ExternalLinkIcon } from 'lucide-react';
 import type React from 'react';
+
 import {
   AlertDialog,
   AlertDialogAction,
@@ -27,7 +28,7 @@ export function ExternalLinkDialog({ href, children }: { href: string; children:
           <AlertDialogDescription asChild>
             <div>
               <span>This will open in a new tab:</span>
-              <code className="mt-2 block break-all rounded bg-muted px-2 py-1.5 text-xs text-foreground">{href}</code>
+              <code className="bg-muted text-foreground mt-2 block rounded px-2 py-1.5 text-xs break-all">{href}</code>
             </div>
           </AlertDialogDescription>
         </AlertDialogHeader>

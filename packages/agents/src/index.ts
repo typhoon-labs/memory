@@ -1,4 +1,3 @@
-export { createExperimentAgent } from './experiment-agent';
 export type { KnowledgeAgentOptions } from './knowledge';
 export { createKnowledgeAgent } from './knowledge';
 export type { GuardrailsConfig, SupervisorOptions } from './supervisor';

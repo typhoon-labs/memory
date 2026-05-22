@@ -15,11 +15,7 @@ export {
   MessageContent,
   MessageResponse,
 } from './components/ai-elements/message';
-export {
-  PromptInput,
-  PromptInputSubmit,
-  PromptInputTextarea,
-} from './components/ai-elements/prompt-input';
+export { PromptInput, PromptInputSubmit, PromptInputTextarea } from './components/ai-elements/prompt-input';
 // Chat config
 export type { ChatConfig } from './components/chat/chat-config';
 export { ChatConfigProvider, useChatConfig } from './components/chat/chat-config';
@@ -27,6 +23,7 @@ export { ChatConfigProvider, useChatConfig } from './components/chat/chat-config
 export type { CitationContextValue } from './components/chat/citation-context';
 export { CitationProvider, useCitations } from './components/chat/citation-context';
 // Chat components
+export { transformCitationPatterns } from './components/chat/message-utils';
 export { SourceCitations } from './components/chat/source-citations';
 export { StreamdownText } from './components/chat/streamdown-text';
 export type { ToolPart } from './components/chat/task-progress';

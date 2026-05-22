@@ -3,6 +3,7 @@ import { Link, useNavigate } from '@tanstack/react-router';
 import type { ColumnDef } from '@typhoon/ui';
 import { apiFetch, Button, DataTable, EmptyState, LoadingSpinner, PageHeader } from '@typhoon/ui';
 import { LayersIcon, PlusIcon, TagsIcon } from 'lucide-react';
+
 import { usePageTitle } from '../../hooks/use-page-title';
 import { FieldBadgePopover } from '../shared/field-badge-popover';
 import { FieldGroupBadgePopover } from '../shared/field-group-badge-popover';
@@ -60,7 +61,7 @@ const groupColumns: ColumnDef<FieldGroup, unknown>[] = [
     cell: ({ row }) => (
       <div>
         <div className="font-medium">{row.original.name}</div>
-        {row.original.description && <div className="text-xs text-muted-foreground">{row.original.description}</div>}
+        {row.original.description && <div className="text-muted-foreground text-xs">{row.original.description}</div>}
       </div>
     ),
   },
@@ -73,7 +74,7 @@ const groupColumns: ColumnDef<FieldGroup, unknown>[] = [
     id: 'fieldCount',
     header: 'Count',
     cell: ({ row }) => (
-      <span className="tabular-nums text-sm text-muted-foreground">{Object.keys(row.original.fields).length}</span>
+      <span className="text-muted-foreground text-sm tabular-nums">{Object.keys(row.original.fields).length}</span>
     ),
   },
 ];
@@ -162,7 +163,7 @@ export function MetadataTemplatesPage() {
       cell: ({ row }) => (
         <div>
           <div className="font-medium">{row.original.name}</div>
-          {row.original.description && <div className="text-xs text-muted-foreground">{row.original.description}</div>}
+          {row.original.description && <div className="text-muted-foreground text-xs">{row.original.description}</div>}
         </div>
       ),
     },

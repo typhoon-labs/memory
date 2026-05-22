@@ -1,5 +1,6 @@
 import { LogLevel } from '@mastra/core/logger';
 import { describe, expect, it, vi } from 'vitest';
+
 import { TyphoonLogger } from './logger';
 
 /**

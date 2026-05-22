@@ -25,8 +25,9 @@ import {
   SelectValue,
   StatusBadge,
 } from '@typhoon/ui';
-import { DatabaseIcon, FileTextIcon, SearchIcon, Trash2Icon } from 'lucide-react';
+import { DatabaseIcon, FileTextIcon, RefreshCwIcon, SearchIcon, Trash2Icon } from 'lucide-react';
 import { useMemo, useState } from 'react';
+
 import { usePageTitle } from '../../hooks/use-page-title';
 import { DocumentDetailSheet } from './sync-source-detail/document-detail-sheet';
 import type { Document } from './sync-source-detail/shared';
@@ -104,7 +105,7 @@ export function AdminDocumentsPage() {
     const all = (docs ?? []).filter((d) => {
       if (d.status === 'deleted') return false;
       if (statusFilter === 'errors') {
-        if (d.status !== 'parse_error' && d.status !== 'embed_error') return false;
+        if (d.status !== 'error') return false;
       } else if (statusFilter !== 'all' && d.status !== statusFilter) {
         return false;
       }
@@ -134,7 +135,7 @@ export function AdminDocumentsPage() {
         cell: ({ row }) => (
           <div>
             <div className="font-medium">{row.original.title ?? row.original.sourceKey}</div>
-            {row.original.title && <div className="text-xs text-muted-foreground">{row.original.sourceKey}</div>}
+            {row.original.title && <div className="text-muted-foreground text-xs">{row.original.sourceKey}</div>}
           </div>
         ),
       },
@@ -145,7 +146,7 @@ export function AdminDocumentsPage() {
           const target = targetMap.get(row.original.syncTargetId);
           if (!target) return <span className="text-muted-foreground">&mdash;</span>;
           return (
-            <span className="flex items-center gap-1.5 text-muted-foreground">
+            <span className="text-muted-foreground flex items-center gap-1.5">
               <DatabaseIcon className="size-3 shrink-0" />
               {target.name}
             </span>
@@ -179,8 +180,15 @@ export function AdminDocumentsPage() {
         accessorKey: 'lastSyncedAt',
         header: 'Last Synced',
         cell: ({ row }) => (
-          <span className="text-muted-foreground">
-            {row.original.lastSyncedAt ? formatRelativeTime(row.original.lastSyncedAt) : '\u2014'}
+          <span>
+            <span className="text-muted-foreground">
+              {row.original.lastSyncedAt ? formatRelativeTime(row.original.lastSyncedAt) : '\u2014'}
+            </span>
+            {row.original.searchMetaDirty && (
+              <span className="ml-1.5 inline-flex align-middle" title="Needs sync">
+                <RefreshCwIcon className="size-3 text-amber-500" />
+              </span>
+            )}
           </span>
         ),
       },
@@ -265,7 +273,7 @@ export function AdminDocumentsPage() {
                     </AlertDialog>
                   )}
                   <div className="relative">
-                    <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                    <SearchIcon className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" />
                     <Input
                       type="text"
                       placeholder="Search..."

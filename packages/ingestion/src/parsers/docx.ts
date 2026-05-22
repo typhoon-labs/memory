@@ -6,6 +6,7 @@ export async function parseDocx(buffer: Buffer, _filename: string): Promise<Pars
 
   const result = await mammoth.convertToHtml({ buffer });
 
+  // @ts-ignore — turndown-plugin-gfm has no type declarations; .d.ts not in scope for consumers
   const { gfm } = await import('turndown-plugin-gfm');
   const turndown = new TurndownService({
     headingStyle: 'atx',

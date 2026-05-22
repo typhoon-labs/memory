@@ -6,6 +6,7 @@
  */
 import { type Browser, chromium, type Page } from 'playwright';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
 import { ADMIN_URL, oidcLogin } from '../helpers/e2e-utils';
 
 describe('Auth E2E', () => {

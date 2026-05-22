@@ -1,38 +1,21 @@
 import { Hono } from 'hono';
 import { createMiddleware } from 'hono/factory';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { chainable } from '../../../../tests/helpers/api-test-utils';
 
 // ---------- Hoisted mocks ----------
-const { mockSelect, mockInsert, mockUpdate, mockDelete, mockTransaction, mockSql, mockHydrateChunkSources } =
-  vi.hoisted(() => ({
-    mockSelect: vi.fn(),
-    mockInsert: vi.fn(),
-    mockUpdate: vi.fn(),
-    mockDelete: vi.fn(),
-    mockTransaction: vi.fn(),
-    mockSql: vi.fn(),
-    mockHydrateChunkSources: vi.fn().mockResolvedValue(undefined),
-  }));
-
-// ---------- 3. Module mocks ----------
-vi.mock('../db', () => ({
-  db: {
-    select: mockSelect,
-    insert: mockInsert,
-    update: mockUpdate,
-    delete: mockDelete,
-    transaction: mockTransaction,
+const { mockThreadService } = vi.hoisted(() => ({
+  mockThreadService: {
+    listThreads: vi.fn(),
+    getThread: vi.fn(),
+    createThread: vi.fn(),
+    updateThread: vi.fn(),
+    deleteThread: vi.fn(),
   },
-  sql: mockSql,
 }));
 
-vi.mock('./hydrate-chunks', () => ({
-  hydrateChunkSources: mockHydrateChunkSources,
-}));
-
-vi.mock('@typhoon/db/drivers/pg', () => ({
-  PgVector: class MockPgVector {},
+// ---------- Module mocks ----------
+vi.mock('../services', () => ({
+  getThreadService: () => mockThreadService,
 }));
 
 const mockUser = { id: 'user-1', email: 'test@example.com' };
@@ -44,28 +27,26 @@ vi.mock('../middleware/require-auth', () => ({
   }),
 }));
 
-// ---------- 4. Import module under test (after mocks) ----------
+// ---------- Import module under test (after mocks) ----------
 import { threadRoutes } from './threads';
 
-// ---------- 5. Helper to mount routes on a Hono app ----------
+// ---------- Helper to mount routes on a Hono app ----------
 function mountRoutes(routes: Record<string, unknown>[]) {
   const app = new Hono();
   for (const route of routes) {
     const mid = Array.isArray(route.middleware) ? route.middleware : route.middleware ? [route.middleware] : [];
     const method = (route.method as string).toLowerCase();
-    // biome-ignore lint/suspicious/noExplicitAny: dynamic route mounting for tests
     (app as any).on(method, route.path as string, ...mid, route.handler);
   }
   return app;
 }
 
-// ---------- 6. Factory helpers ----------
+// ---------- Factory helpers ----------
 const now = new Date('2026-01-15T10:00:00Z');
 
-function makeThreadRow(overrides: Record<string, unknown> = {}) {
+function makeThreadResponse(overrides: Record<string, unknown> = {}) {
   return {
-    id: 'internal-uuid-1',
-    externalId: 'ext-thread-1',
+    id: 'ext-thread-1',
     resourceId: 'user-1',
     title: 'My Chat',
     metadata: { key: 'value' },
@@ -75,14 +56,11 @@ function makeThreadRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function makeMessageRow(overrides: Record<string, unknown> = {}) {
+function makeUIMessage(overrides: Record<string, unknown> = {}) {
   return {
-    id: 'msg-internal-1',
-    externalId: 'msg-ext-1',
-    threadId: 'internal-uuid-1',
+    id: 'msg-ext-1',
     role: 'user',
-    type: 'text',
-    content: { content: 'Hello there' },
+    parts: [{ type: 'text', text: 'Hello there' }],
     createdAt: now,
     ...overrides,
   };
@@ -99,261 +77,21 @@ describe('threadRoutes', () => {
   });
 
   // ==========================================================================
-  // Pure function tests (via route responses)
-  // ==========================================================================
-
-  describe('normalizeToolPart (tested via GET /v1/threads/:threadId)', () => {
-    it('converts v4 tool-invocation with result to v6 output-available format', async () => {
-      const thread = makeThreadRow();
-      const msg = makeMessageRow({
-        content: {
-          parts: [
-            {
-              type: 'tool-invocation',
-              toolInvocation: {
-                state: 'result',
-                toolCallId: 'call-1',
-                toolName: 'searchKnowledge',
-                args: { query: 'pto' },
-                result: { text: 'PTO is 20 days' },
-              },
-            },
-          ],
-        },
-      });
-
-      // First select (thread lookup) resolves to thread
-      mockSelect.mockReturnValueOnce(chainable([thread]));
-      // Second select (messages) resolves to messages
-      mockSelect.mockReturnValueOnce(chainable([msg]));
-
-      const res = await app.request('/v1/threads/ext-thread-1');
-      expect(res.status).toBe(200);
-      const body = await res.json();
-
-      expect(body.messages[0].parts[0]).toEqual({
-        type: 'tool-searchKnowledge',
-        toolCallId: 'call-1',
-        state: 'output-available',
-        input: { query: 'pto' },
-        output: { text: 'PTO is 20 days' },
-      });
-    });
-
-    it('converts v4 tool-invocation with state "call" to v6 output-error (persisted error)', async () => {
-      const thread = makeThreadRow();
-      const msg = makeMessageRow({
-        content: {
-          parts: [
-            {
-              type: 'tool-invocation',
-              toolInvocation: {
-                state: 'call',
-                toolCallId: 'call-2',
-                toolName: 'lookup',
-                args: { id: 42 },
-              },
-            },
-          ],
-        },
-      });
-
-      mockSelect.mockReturnValueOnce(chainable([thread]));
-      mockSelect.mockReturnValueOnce(chainable([msg]));
-
-      const res = await app.request('/v1/threads/ext-thread-1');
-      const body = await res.json();
-
-      expect(body.messages[0].parts[0]).toEqual({
-        type: 'tool-lookup',
-        toolCallId: 'call-2',
-        state: 'output-error',
-        input: { id: 42 },
-      });
-    });
-
-    it('detects Bun serialization error in result and maps to output-error', async () => {
-      const thread = makeThreadRow();
-      const msg = makeMessageRow({
-        content: {
-          parts: [
-            {
-              type: 'tool-invocation',
-              toolInvocation: {
-                state: 'result',
-                toolCallId: 'call-4',
-                toolName: 'searchKnowledge',
-                args: { prompt: 'test' },
-                result: 'JSON.stringify cannot serialize cyclic structures.',
-              },
-            },
-          ],
-        },
-      });
-
-      mockSelect.mockReturnValueOnce(chainable([thread]));
-      mockSelect.mockReturnValueOnce(chainable([msg]));
-
-      const res = await app.request('/v1/threads/ext-thread-1');
-      const body = await res.json();
-
-      expect(body.messages[0].parts[0]).toEqual({
-        type: 'tool-searchKnowledge',
-        toolCallId: 'call-4',
-        state: 'output-error',
-        input: { prompt: 'test' },
-      });
-    });
-
-    it('detects Node serialization error in result and maps to output-error', async () => {
-      const thread = makeThreadRow();
-      const msg = makeMessageRow({
-        content: {
-          parts: [
-            {
-              type: 'tool-invocation',
-              toolInvocation: {
-                state: 'result',
-                toolCallId: 'call-5',
-                toolName: 'lookup',
-                args: {},
-                result: 'Converting circular structure to JSON -- TypeError',
-              },
-            },
-          ],
-        },
-      });
-
-      mockSelect.mockReturnValueOnce(chainable([thread]));
-      mockSelect.mockReturnValueOnce(chainable([msg]));
-
-      const res = await app.request('/v1/threads/ext-thread-1');
-      const body = await res.json();
-
-      expect(body.messages[0].parts[0].state).toBe('output-error');
-    });
-
-    it('uses "unknown" when toolName is missing', async () => {
-      const thread = makeThreadRow();
-      const msg = makeMessageRow({
-        content: {
-          parts: [
-            {
-              type: 'tool-invocation',
-              toolInvocation: {
-                state: 'call',
-                toolCallId: 'call-3',
-                args: {},
-              },
-            },
-          ],
-        },
-      });
-
-      mockSelect.mockReturnValueOnce(chainable([thread]));
-      mockSelect.mockReturnValueOnce(chainable([msg]));
-
-      const res = await app.request('/v1/threads/ext-thread-1');
-      const body = await res.json();
-
-      expect(body.messages[0].parts[0].type).toBe('tool-unknown');
-    });
-
-    it('passes through non-tool-invocation parts unchanged', async () => {
-      const thread = makeThreadRow();
-      const textPart = { type: 'text', text: 'hello' };
-      const msg = makeMessageRow({
-        content: { parts: [textPart] },
-      });
-
-      mockSelect.mockReturnValueOnce(chainable([thread]));
-      mockSelect.mockReturnValueOnce(chainable([msg]));
-
-      const res = await app.request('/v1/threads/ext-thread-1');
-      const body = await res.json();
-
-      expect(body.messages[0].parts[0]).toEqual(textPart);
-    });
-
-    it('passes through non-object parts unchanged', async () => {
-      const thread = makeThreadRow();
-      const msg = makeMessageRow({
-        content: { parts: ['just a string', null, 42] },
-      });
-
-      mockSelect.mockReturnValueOnce(chainable([thread]));
-      mockSelect.mockReturnValueOnce(chainable([msg]));
-
-      const res = await app.request('/v1/threads/ext-thread-1');
-      const body = await res.json();
-
-      expect(body.messages[0].parts).toEqual(['just a string', null, 42]);
-    });
-  });
-
-  describe('toUIMessage (tested via GET /v1/threads/:threadId)', () => {
-    it('falls back to content.content when parts are missing', async () => {
-      const thread = makeThreadRow();
-      const msg = makeMessageRow({
-        externalId: 'msg-1',
-        role: 'assistant',
-        content: { content: 'Hello from AI' },
-      });
-
-      mockSelect.mockReturnValueOnce(chainable([thread]));
-      mockSelect.mockReturnValueOnce(chainable([msg]));
-
-      const res = await app.request('/v1/threads/ext-thread-1');
-      const body = await res.json();
-
-      expect(body.messages[0]).toMatchObject({
-        id: 'msg-1',
-        role: 'assistant',
-        parts: [{ type: 'text', text: 'Hello from AI' }],
-      });
-    });
-
-    it('falls back to empty text when both parts and content.content are absent', async () => {
-      const thread = makeThreadRow();
-      const msg = makeMessageRow({
-        content: {},
-      });
-
-      mockSelect.mockReturnValueOnce(chainable([thread]));
-      mockSelect.mockReturnValueOnce(chainable([msg]));
-
-      const res = await app.request('/v1/threads/ext-thread-1');
-      const body = await res.json();
-
-      expect(body.messages[0].parts).toEqual([{ type: 'text', text: '' }]);
-    });
-  });
-
-  describe('toThreadResponse (tested via all routes)', () => {
-    it('exposes externalId as id and excludes internal id', async () => {
-      const thread = makeThreadRow({ externalId: 'ext-abc', id: 'internal-xyz' });
-      mockSelect.mockReturnValueOnce(chainable([thread]));
-      mockSelect.mockReturnValueOnce(chainable([{ total: 1 }]));
-
-      const res = await app.request('/v1/threads');
-      const body = await res.json();
-
-      expect(body.threads[0].id).toBe('ext-abc');
-      expect(body.threads[0]).not.toHaveProperty('internalId');
-      // The internal 'id' field should not leak
-      expect(body.threads[0].id).not.toBe('internal-xyz');
-    });
-  });
-
-  // ==========================================================================
   // GET /v1/threads — list
   // ==========================================================================
 
   describe('GET /v1/threads', () => {
     it('returns paginated thread list with defaults (page=0, perPage=20)', async () => {
-      const rows = [makeThreadRow(), makeThreadRow({ externalId: 'ext-thread-2' })];
-      mockSelect.mockReturnValueOnce(chainable(rows));
-      mockSelect.mockReturnValueOnce(chainable([{ total: 2 }]));
+      const threads = [makeThreadResponse(), makeThreadResponse({ id: 'ext-thread-2' })];
+      mockThreadService.listThreads.mockResolvedValueOnce({
+        data: {
+          threads,
+          total: 2,
+          page: 0,
+          perPage: 20,
+          hasMore: false,
+        },
+      });
 
       const res = await app.request('/v1/threads');
       expect(res.status).toBe(200);
@@ -366,21 +104,34 @@ describe('threadRoutes', () => {
       expect(body.hasMore).toBe(false);
     });
 
-    it('respects page and perPage query params', async () => {
-      mockSelect.mockReturnValueOnce(chainable([makeThreadRow()]));
-      mockSelect.mockReturnValueOnce(chainable([{ total: 50 }]));
+    it('passes page and perPage query params to service', async () => {
+      mockThreadService.listThreads.mockResolvedValueOnce({
+        data: {
+          threads: [makeThreadResponse()],
+          total: 50,
+          page: 1,
+          perPage: 10,
+          hasMore: true,
+        },
+      });
 
       const res = await app.request('/v1/threads?page=1&perPage=10');
       const body = await res.json();
 
       expect(body.page).toBe(1);
       expect(body.perPage).toBe(10);
-      expect(body.hasMore).toBe(true); // 10 + 10 = 20 < 50
+      expect(body.hasMore).toBe(true);
+      expect(mockThreadService.listThreads).toHaveBeenCalledWith({
+        userId: 'user-1',
+        page: 1,
+        perPage: 10,
+      });
     });
 
     it('returns empty array when user has no threads', async () => {
-      mockSelect.mockReturnValueOnce(chainable([]));
-      mockSelect.mockReturnValueOnce(chainable([{ total: 0 }]));
+      mockThreadService.listThreads.mockResolvedValueOnce({
+        data: { threads: [], total: 0, page: 0, perPage: 20, hasMore: false },
+      });
 
       const res = await app.request('/v1/threads');
       const body = await res.json();
@@ -390,16 +141,16 @@ describe('threadRoutes', () => {
       expect(body.hasMore).toBe(false);
     });
 
-    it('maps thread rows using toThreadResponse', async () => {
-      const row = makeThreadRow({
-        id: 'internal-1',
-        externalId: 'ext-1',
+    it('maps thread rows using toThreadResponse (externalId as id)', async () => {
+      const thread = makeThreadResponse({
+        id: 'ext-1',
         resourceId: 'user-1',
         title: 'Chat Title',
         metadata: { tag: 'support' },
       });
-      mockSelect.mockReturnValueOnce(chainable([row]));
-      mockSelect.mockReturnValueOnce(chainable([{ total: 1 }]));
+      mockThreadService.listThreads.mockResolvedValueOnce({
+        data: { threads: [thread], total: 1, page: 0, perPage: 20, hasMore: false },
+      });
 
       const res = await app.request('/v1/threads');
       const body = await res.json();
@@ -420,12 +171,13 @@ describe('threadRoutes', () => {
   // ==========================================================================
 
   describe('GET /v1/threads/:threadId', () => {
-    it('returns thread with messages and calls hydrateChunkSources', async () => {
-      const thread = makeThreadRow();
-      const msg = makeMessageRow({ externalId: 'msg-1', role: 'user', content: { content: 'Hi' } });
+    it('returns thread with messages', async () => {
+      const thread = makeThreadResponse();
+      const msg = makeUIMessage({ id: 'msg-1', role: 'user', parts: [{ type: 'text', text: 'Hi' }] });
 
-      mockSelect.mockReturnValueOnce(chainable([thread]));
-      mockSelect.mockReturnValueOnce(chainable([msg]));
+      mockThreadService.getThread.mockResolvedValueOnce({
+        data: { ...thread, messages: [msg] },
+      });
 
       const res = await app.request('/v1/threads/ext-thread-1');
       expect(res.status).toBe(200);
@@ -435,11 +187,10 @@ describe('threadRoutes', () => {
       expect(body.messages).toHaveLength(1);
       expect(body.messages[0].id).toBe('msg-1');
       expect(body.messages[0].role).toBe('user');
-      expect(mockHydrateChunkSources).toHaveBeenCalledTimes(1);
     });
 
     it('returns 404 when thread does not exist', async () => {
-      mockSelect.mockReturnValueOnce(chainable([]));
+      mockThreadService.getThread.mockResolvedValueOnce({ error: 'not-found' });
 
       const res = await app.request('/v1/threads/nonexistent');
       expect(res.status).toBe(404);
@@ -448,51 +199,35 @@ describe('threadRoutes', () => {
     });
 
     it('returns 404 when thread belongs to a different user', async () => {
-      // The where clause filters by both externalId and resourceId,
-      // so a thread owned by another user results in empty array
-      mockSelect.mockReturnValueOnce(chainable([]));
+      mockThreadService.getThread.mockResolvedValueOnce({ error: 'not-found' });
 
       const res = await app.request('/v1/threads/other-users-thread');
       expect(res.status).toBe(404);
     });
 
-    it('excludes PrefillErrorHandler system-reminder messages from the response', async () => {
-      const thread = makeThreadRow();
-      const userMsg = makeMessageRow({ externalId: 'msg-user', role: 'user', content: { content: 'Hello' } });
-      const reminderMsg = makeMessageRow({
-        externalId: 'msg-reminder',
-        role: 'user',
-        content: {
-          parts: [{ text: '<system-reminder>continue</system-reminder>', type: 'text' }],
-          format: 2,
-          metadata: { systemReminder: { type: 'anthropic-prefill-processor-retry' } },
-        },
-      });
-      const assistantMsg = makeMessageRow({
-        externalId: 'msg-asst',
-        role: 'assistant',
-        content: { content: 'Hi there!' },
-      });
-
-      mockSelect.mockReturnValueOnce(chainable([thread]));
-      mockSelect.mockReturnValueOnce(chainable([userMsg, reminderMsg, assistantMsg]));
-
-      const res = await app.request('/v1/threads/ext-thread-1');
-      const body = await res.json();
-
-      expect(body.messages).toHaveLength(2);
-      expect(body.messages.map((m: { role: string }) => m.role)).toEqual(['user', 'assistant']);
-    });
-
     it('returns thread with empty messages array when no messages exist', async () => {
-      const thread = makeThreadRow();
-      mockSelect.mockReturnValueOnce(chainable([thread]));
-      mockSelect.mockReturnValueOnce(chainable([]));
+      const thread = makeThreadResponse();
+      mockThreadService.getThread.mockResolvedValueOnce({
+        data: { ...thread, messages: [] },
+      });
 
       const res = await app.request('/v1/threads/ext-thread-1');
       const body = await res.json();
 
       expect(body.messages).toEqual([]);
+    });
+
+    it('calls service with threadId and userId', async () => {
+      mockThreadService.getThread.mockResolvedValueOnce({
+        data: { ...makeThreadResponse(), messages: [] },
+      });
+
+      await app.request('/v1/threads/ext-thread-1');
+
+      expect(mockThreadService.getThread).toHaveBeenCalledWith({
+        threadId: 'ext-thread-1',
+        userId: 'user-1',
+      });
     });
   });
 
@@ -502,9 +237,8 @@ describe('threadRoutes', () => {
 
   describe('POST /v1/threads', () => {
     it('creates a thread and returns 201', async () => {
-      const created = makeThreadRow({ title: 'New Chat' });
-      const insertChain = chainable([created]);
-      mockInsert.mockReturnValue(insertChain);
+      const created = makeThreadResponse({ title: 'New Chat' });
+      mockThreadService.createThread.mockResolvedValueOnce({ data: created });
 
       const res = await app.request('/v1/threads', {
         method: 'POST',
@@ -519,9 +253,8 @@ describe('threadRoutes', () => {
     });
 
     it('uses default title when not provided', async () => {
-      const created = makeThreadRow({ title: '' });
-      const insertChain = chainable([created]);
-      mockInsert.mockReturnValue(insertChain);
+      const created = makeThreadResponse({ title: '' });
+      mockThreadService.createThread.mockResolvedValueOnce({ data: created });
 
       const res = await app.request('/v1/threads', {
         method: 'POST',
@@ -536,9 +269,8 @@ describe('threadRoutes', () => {
 
     it('accepts optional metadata', async () => {
       const meta = { source: 'widget', lang: 'en' };
-      const created = makeThreadRow({ title: 'With Meta', metadata: meta });
-      const insertChain = chainable([created]);
-      mockInsert.mockReturnValue(insertChain);
+      const created = makeThreadResponse({ title: 'With Meta', metadata: meta });
+      mockThreadService.createThread.mockResolvedValueOnce({ data: created });
 
       const res = await app.request('/v1/threads', {
         method: 'POST',
@@ -551,10 +283,8 @@ describe('threadRoutes', () => {
       expect(body.metadata).toEqual(meta);
     });
 
-    it('calls db.insert with correct values shape', async () => {
-      const created = makeThreadRow();
-      const insertChain = chainable([created]);
-      mockInsert.mockReturnValue(insertChain);
+    it('passes correct values to service', async () => {
+      mockThreadService.createThread.mockResolvedValueOnce({ data: makeThreadResponse() });
 
       await app.request('/v1/threads', {
         method: 'POST',
@@ -562,17 +292,11 @@ describe('threadRoutes', () => {
         body: JSON.stringify({ title: 'Test' }),
       });
 
-      expect(mockInsert).toHaveBeenCalledTimes(1);
-      // Verify values was called on the chain
-      expect(insertChain.values).toHaveBeenCalledTimes(1);
-      const valuesArg = (insertChain.values as ReturnType<typeof vi.fn>).mock.calls[0][0];
-      expect(valuesArg).toMatchObject({
-        resourceId: 'user-1',
+      expect(mockThreadService.createThread).toHaveBeenCalledWith({
+        userId: 'user-1',
         title: 'Test',
+        metadata: {},
       });
-      expect(valuesArg.externalId).toBeDefined();
-      expect(valuesArg.createdAt).toBeInstanceOf(Date);
-      expect(valuesArg.updatedAt).toBeInstanceOf(Date);
     });
   });
 
@@ -582,9 +306,8 @@ describe('threadRoutes', () => {
 
   describe('PATCH /v1/threads/:threadId', () => {
     it('updates title and returns updated thread', async () => {
-      const updated = makeThreadRow({ title: 'Updated Title' });
-      const updateChain = chainable([updated]);
-      mockUpdate.mockReturnValue(updateChain);
+      const updated = makeThreadResponse({ title: 'Updated Title' });
+      mockThreadService.updateThread.mockResolvedValueOnce({ data: updated });
 
       const res = await app.request('/v1/threads/ext-thread-1', {
         method: 'PATCH',
@@ -599,9 +322,8 @@ describe('threadRoutes', () => {
 
     it('updates metadata', async () => {
       const newMeta = { resolved: true };
-      const updated = makeThreadRow({ metadata: newMeta });
-      const updateChain = chainable([updated]);
-      mockUpdate.mockReturnValue(updateChain);
+      const updated = makeThreadResponse({ metadata: newMeta });
+      mockThreadService.updateThread.mockResolvedValueOnce({ data: updated });
 
       const res = await app.request('/v1/threads/ext-thread-1', {
         method: 'PATCH',
@@ -615,8 +337,7 @@ describe('threadRoutes', () => {
     });
 
     it('returns 404 when thread not found', async () => {
-      const updateChain = chainable([]);
-      mockUpdate.mockReturnValue(updateChain);
+      mockThreadService.updateThread.mockResolvedValueOnce({ error: 'not-found' });
 
       const res = await app.request('/v1/threads/nonexistent', {
         method: 'PATCH',
@@ -629,27 +350,25 @@ describe('threadRoutes', () => {
       expect(body).toEqual({ error: 'Not found' });
     });
 
-    it('always sets updatedAt in the update payload', async () => {
-      const updated = makeThreadRow();
-      const updateChain = chainable([updated]);
-      mockUpdate.mockReturnValue(updateChain);
+    it('passes title and metadata to service', async () => {
+      mockThreadService.updateThread.mockResolvedValueOnce({ data: makeThreadResponse() });
 
       await app.request('/v1/threads/ext-thread-1', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: 'X' }),
+        body: JSON.stringify({ title: 'X', metadata: { a: 1 } }),
       });
 
-      expect(updateChain.set).toHaveBeenCalledTimes(1);
-      const setArg = (updateChain.set as ReturnType<typeof vi.fn>).mock.calls[0][0];
-      expect(setArg.updatedAt).toBeInstanceOf(Date);
-      expect(setArg.title).toBe('X');
+      expect(mockThreadService.updateThread).toHaveBeenCalledWith({
+        threadId: 'ext-thread-1',
+        userId: 'user-1',
+        title: 'X',
+        metadata: { a: 1 },
+      });
     });
 
-    it('does not include title in updates when not provided', async () => {
-      const updated = makeThreadRow();
-      const updateChain = chainable([updated]);
-      mockUpdate.mockReturnValue(updateChain);
+    it('does not include title in service call when not provided', async () => {
+      mockThreadService.updateThread.mockResolvedValueOnce({ data: makeThreadResponse() });
 
       await app.request('/v1/threads/ext-thread-1', {
         method: 'PATCH',
@@ -657,9 +376,12 @@ describe('threadRoutes', () => {
         body: JSON.stringify({ metadata: { a: 1 } }),
       });
 
-      const setArg = (updateChain.set as ReturnType<typeof vi.fn>).mock.calls[0][0];
-      expect(setArg).not.toHaveProperty('title');
-      expect(setArg.metadata).toEqual({ a: 1 });
+      expect(mockThreadService.updateThread).toHaveBeenCalledWith({
+        threadId: 'ext-thread-1',
+        userId: 'user-1',
+        title: undefined,
+        metadata: { a: 1 },
+      });
     });
   });
 
@@ -668,18 +390,8 @@ describe('threadRoutes', () => {
   // ==========================================================================
 
   describe('DELETE /v1/threads/:threadId', () => {
-    it('deletes thread and its messages in a transaction', async () => {
-      const thread = { id: 'internal-uuid-1' };
-      mockSelect.mockReturnValueOnce(chainable([thread]));
-
-      // Mock the transaction to execute the callback
-      mockTransaction.mockImplementation(async (cb: (tx: Record<string, unknown>) => Promise<void>) => {
-        const txDeleteChain = chainable(undefined);
-        const txDelete = vi.fn().mockReturnValue(txDeleteChain);
-        await cb({ delete: txDelete });
-        // Verify two deletes happened: messages first, then threads
-        expect(txDelete).toHaveBeenCalledTimes(2);
-      });
+    it('deletes thread and returns { ok: true }', async () => {
+      mockThreadService.deleteThread.mockResolvedValueOnce({ data: { ok: true } });
 
       const res = await app.request('/v1/threads/ext-thread-1', {
         method: 'DELETE',
@@ -688,11 +400,10 @@ describe('threadRoutes', () => {
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body).toEqual({ ok: true });
-      expect(mockTransaction).toHaveBeenCalledTimes(1);
     });
 
     it('returns 404 when thread does not exist', async () => {
-      mockSelect.mockReturnValueOnce(chainable([]));
+      mockThreadService.deleteThread.mockResolvedValueOnce({ error: 'not-found' });
 
       const res = await app.request('/v1/threads/nonexistent', {
         method: 'DELETE',
@@ -701,38 +412,29 @@ describe('threadRoutes', () => {
       expect(res.status).toBe(404);
       const body = await res.json();
       expect(body).toEqual({ error: 'Not found' });
-      expect(mockTransaction).not.toHaveBeenCalled();
     });
 
     it('returns 404 when thread belongs to different user', async () => {
-      // The where clause filters by both externalId and resourceId
-      mockSelect.mockReturnValueOnce(chainable([]));
+      mockThreadService.deleteThread.mockResolvedValueOnce({ error: 'not-found' });
 
       const res = await app.request('/v1/threads/other-users-thread', {
         method: 'DELETE',
       });
 
       expect(res.status).toBe(404);
-      expect(mockTransaction).not.toHaveBeenCalled();
     });
 
-    it('looks up thread by externalId before deleting', async () => {
-      const thread = { id: 'internal-uuid-99' };
-      mockSelect.mockReturnValueOnce(chainable([thread]));
+    it('passes threadId and userId to service', async () => {
+      mockThreadService.deleteThread.mockResolvedValueOnce({ data: { ok: true } });
 
-      mockTransaction.mockImplementation(async (cb: (tx: Record<string, unknown>) => Promise<void>) => {
-        const txDeleteChain = chainable(undefined);
-        const txDelete = vi.fn().mockReturnValue(txDeleteChain);
-        await cb({ delete: txDelete });
-      });
-
-      const res = await app.request('/v1/threads/ext-thread-1', {
+      await app.request('/v1/threads/ext-thread-1', {
         method: 'DELETE',
       });
 
-      expect(res.status).toBe(200);
-      // The select should have been called to find the thread's internal ID
-      expect(mockSelect).toHaveBeenCalledTimes(1);
+      expect(mockThreadService.deleteThread).toHaveBeenCalledWith({
+        threadId: 'ext-thread-1',
+        userId: 'user-1',
+      });
     });
   });
 

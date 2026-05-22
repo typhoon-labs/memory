@@ -5,12 +5,14 @@
  * Usage: bun run test:e2e
  */
 
-import { type Browser, chromium, type Page } from 'playwright';
+import { type Browser, type BrowserContext, chromium, type Page } from 'playwright';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { ADMIN_URL, oidcLogin } from '../helpers/e2e-utils';
+
+import { ADMIN_URL, injectTestSession } from '../helpers/e2e-utils';
 
 describe('Experiments E2E', () => {
   let browser: Browser;
+  let context: BrowserContext;
   let page: Page;
 
   beforeAll(async () => {
@@ -18,13 +20,11 @@ describe('Experiments E2E', () => {
       headless: true,
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
     });
-    page = await browser.newPage();
-    await page.goto(ADMIN_URL);
-    await page.waitForURL('**/login', { timeout: 5_000 });
-    await oidcLogin(page, 'admin@typhoon.local', 'password', ADMIN_URL);
+    ({ context, page } = await injectTestSession(browser, 'admin@typhoon.local'));
   }, 30_000);
 
   afterAll(async () => {
+    await context?.close();
     await browser?.close();
   });
 

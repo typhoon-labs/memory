@@ -2,6 +2,7 @@ import { ExternalLinkIcon } from 'lucide-react';
 import type React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+
 import { ExternalLinkDialog } from './ExternalLinkDialog';
 
 // ── Shared markdown component overrides ────────────────────────
@@ -16,17 +17,17 @@ import { ExternalLinkDialog } from './ExternalLinkDialog';
 
 export const markdownComponents = {
   h1: ({ children, ...props }: React.ComponentProps<'h1'>) => (
-    <h1 className="mt-6 mb-2 text-xl font-semibold leading-tight first:mt-0" {...props}>
+    <h1 className="mt-6 mb-2 text-xl leading-tight font-semibold first:mt-0" {...props}>
       {children}
     </h1>
   ),
   h2: ({ children, ...props }: React.ComponentProps<'h2'>) => (
-    <h2 className="mt-5 mb-1.5 text-lg font-semibold leading-tight first:mt-0" {...props}>
+    <h2 className="mt-5 mb-1.5 text-lg leading-tight font-semibold first:mt-0" {...props}>
       {children}
     </h2>
   ),
   h3: ({ children, ...props }: React.ComponentProps<'h3'>) => (
-    <h3 className="mt-4 mb-1 text-base font-semibold leading-snug first:mt-0" {...props}>
+    <h3 className="mt-4 mb-1 text-base leading-snug font-semibold first:mt-0" {...props}>
       {children}
     </h3>
   ),
@@ -41,7 +42,7 @@ export const markdownComponents = {
     </h5>
   ),
   h6: ({ children, ...props }: React.ComponentProps<'h6'>) => (
-    <h6 className="mt-3 text-sm font-medium text-muted-foreground first:mt-0" {...props}>
+    <h6 className="text-muted-foreground mt-3 text-sm font-medium first:mt-0" {...props}>
       {children}
     </h6>
   ),
@@ -67,7 +68,7 @@ export const markdownComponents = {
   ),
   blockquote: ({ children, ...props }: React.ComponentProps<'blockquote'>) => (
     <blockquote
-      className="my-3 rounded-r border-l-[3px] border-border bg-muted px-4 py-2 text-[13px] italic text-muted-foreground"
+      className="border-border bg-muted text-muted-foreground my-3 rounded-r border-l-[3px] px-4 py-2 text-[13px] italic"
       {...props}
     >
       {children}
@@ -85,10 +86,10 @@ export const markdownComponents = {
       <ExternalLinkDialog href={href ?? '#'}>
         <button
           type="button"
-          className="inline cursor-pointer text-primary underline underline-offset-2 hover:opacity-80"
+          className="text-primary inline cursor-pointer underline underline-offset-2 hover:opacity-80"
         >
           {children}
-          <ExternalLinkIcon className="ml-0.5 mb-0.5 inline size-3 opacity-60" />
+          <ExternalLinkIcon className="mb-0.5 ml-0.5 inline size-3 opacity-60" />
         </button>
       </ExternalLinkDialog>
     );
@@ -102,21 +103,21 @@ export const markdownComponents = {
       );
     }
     return (
-      <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[0.8em] text-foreground/80" {...props}>
+      <code className="bg-muted text-foreground/80 rounded px-1.5 py-0.5 font-mono text-[0.8em]" {...props}>
         {children}
       </code>
     );
   },
   pre: ({ children, ...props }: React.ComponentProps<'pre'>) => (
     <pre
-      className="my-3 overflow-x-auto rounded-xl border border-border bg-card p-4 font-mono text-[0.8125rem] leading-relaxed first:mt-0 [&>code]:bg-transparent [&>code]:p-0 [&>code]:rounded-none [&>code]:text-inherit"
+      className="border-border bg-card my-3 overflow-x-auto rounded-xl border p-4 font-mono text-[0.8125rem] leading-relaxed first:mt-0 [&>code]:rounded-none [&>code]:bg-transparent [&>code]:p-0 [&>code]:text-inherit"
       {...props}
     >
       {children}
     </pre>
   ),
   table: ({ children, ...props }: React.ComponentProps<'table'>) => (
-    <div className="my-4 overflow-x-auto rounded-lg border border-border">
+    <div className="border-border my-4 overflow-x-auto rounded-lg border">
       <table className="w-full border-collapse text-sm" {...props}>
         {children}
       </table>
@@ -129,18 +130,18 @@ export const markdownComponents = {
   ),
   th: ({ children, ...props }: React.ComponentProps<'th'>) => (
     <th
-      className="whitespace-nowrap border-r border-border px-4 py-2 text-left text-[0.8125rem] font-semibold last:border-r-0"
+      className="border-border border-r px-4 py-2 text-left text-[0.8125rem] font-semibold whitespace-nowrap last:border-r-0"
       {...props}
     >
       {children}
     </th>
   ),
   td: ({ children, ...props }: React.ComponentProps<'td'>) => (
-    <td className="border-t border-r border-border px-4 py-2 text-sm last:border-r-0" {...props}>
+    <td className="border-border border-t border-r px-4 py-2 text-sm last:border-r-0" {...props}>
       {children}
     </td>
   ),
-  hr: (props: React.ComponentProps<'hr'>) => <hr className="my-6 border-t border-border" {...props} />,
+  hr: (props: React.ComponentProps<'hr'>) => <hr className="border-border my-6 border-t" {...props} />,
   strong: ({ children, ...props }: React.ComponentProps<'strong'>) => (
     <strong className="font-semibold" {...props}>
       {children}

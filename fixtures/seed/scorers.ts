@@ -64,12 +64,14 @@ const now = new Date().toISOString();
 
 for (const scorer of SCORERS) {
   // Create definition
+  // oxlint-disable-next-line no-await-in-loop -- sequential DB seeding: definition before version
   await sql`
     INSERT INTO scorer_definitions (id, status, active_version_id, created_at, updated_at)
     VALUES (${scorer.defId}, 'active', ${scorer.verId}, ${now}, ${now})
   `;
 
   // Create version 1
+  // oxlint-disable-next-line no-await-in-loop -- sequential DB seeding: depends on definition above
   await sql`
     INSERT INTO scorer_definition_versions (id, scorer_definition_id, version_number, name, type, description, change_message, created_at)
     VALUES (${scorer.verId}, ${scorer.defId}, 1, ${scorer.name}, ${scorer.type}, ${scorer.description}, 'Initial version (seeded)', ${now})

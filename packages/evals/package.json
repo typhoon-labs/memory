@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@mastra/core": "^1.22.0",
+    "@mastra/core": "^1.27.0",
     "@mastra/evals": "^1.2.0",
     "@typhoon/ai": "workspace:*",
     "@typhoon/logger": "workspace:*",

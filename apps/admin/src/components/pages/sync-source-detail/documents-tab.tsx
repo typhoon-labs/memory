@@ -1,6 +1,7 @@
 import { DragDropProvider, DragOverlay } from '@dnd-kit/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
+import { queryKeys } from '@typhoon/api-client';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,13 +24,16 @@ import {
 import {
   ArrowRightIcon,
   Edit2Icon,
+  EraserIcon,
   FileTextIcon,
   FolderIcon,
   FolderPlusIcon,
+  RefreshCwIcon,
   Trash2Icon,
   UploadIcon,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+
 import { CreateFolderDialog } from './create-folder-dialog';
 import {
   DraggableFileRow,
@@ -114,7 +118,7 @@ function SortableTh({
   const indicator = active ? (dir === 'asc' ? '\u2191' : '\u2193') : '';
   return (
     <th
-      className={`cursor-pointer select-none px-4 py-2.5 text-2xs font-semibold uppercase tracking-widest text-muted-foreground ${
+      className={`text-2xs text-muted-foreground cursor-pointer px-4 py-2.5 font-semibold tracking-widest uppercase select-none ${
         align === 'right' ? 'text-right' : 'text-left'
       }`}
       onClick={onClick}
@@ -149,8 +153,7 @@ function RecentActivityPanel({ sourceId }: { sourceId: string }) {
     () =>
       (docs ?? [])
         .filter((d) => d.status !== 'deleted')
-        .slice()
-        .sort((a, b) => {
+        .toSorted((a, b) => {
           const at = a.lastSyncedAt ? new Date(a.lastSyncedAt).getTime() : 0;
           const bt = b.lastSyncedAt ? new Date(b.lastSyncedAt).getTime() : 0;
           return bt - at;
@@ -161,7 +164,7 @@ function RecentActivityPanel({ sourceId }: { sourceId: string }) {
 
   const recent = useMemo(() => {
     const dir = sortDir === 'asc' ? 1 : -1;
-    const sorted = [...recentSet].sort((a, b) => {
+    const sorted = [...recentSet].toSorted((a, b) => {
       switch (sortKey) {
         case 'name': {
           const an = (a.title ?? a.sourceKey).toLowerCase();
@@ -202,7 +205,7 @@ function RecentActivityPanel({ sourceId }: { sourceId: string }) {
       <div className="mb-3 flex items-center justify-between">
         <div>
           <h3 className="text-sm font-medium">Recent activity</h3>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-muted-foreground text-xs">
             Most recently synced documents in this source
             {totalActive > 0 ? ` \u2014 ${totalActive} total` : ''}
           </p>
@@ -210,7 +213,7 @@ function RecentActivityPanel({ sourceId }: { sourceId: string }) {
         <Link
           to="/documents"
           search={{ syncTargetId: sourceId, status: 'all' as const }}
-          className="text-xs text-primary hover:underline"
+          className="text-primary text-xs hover:underline"
         >
           View all in Documents
           <ArrowRightIcon className="ml-1 inline size-3" />
@@ -224,9 +227,9 @@ function RecentActivityPanel({ sourceId }: { sourceId: string }) {
       )}
 
       {!isLoading && recent.length > 0 && (
-        <div className="overflow-x-auto rounded-lg border border-border">
-          <table className="min-w-full divide-y divide-border text-sm">
-            <thead className="border-b border-border">
+        <div className="border-border overflow-x-auto rounded-lg border">
+          <table className="divide-border min-w-full divide-y text-sm">
+            <thead className="border-border border-b">
               <tr>
                 <SortableTh align="left" active={sortKey === 'name'} dir={sortDir} onClick={() => toggleSort('name')}>
                   Name
@@ -252,34 +255,41 @@ function RecentActivityPanel({ sourceId }: { sourceId: string }) {
                 </SortableTh>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border bg-card">
+            <tbody className="divide-border bg-card divide-y">
               {recent.map((doc) => (
                 <tr
                   key={doc.id}
-                  className="cursor-pointer transition-colors hover:bg-accent"
+                  className="hover:bg-accent cursor-pointer transition-colors"
                   onClick={() => setSelectedDoc(doc)}
                 >
                   <td className="px-4 py-2.5">
                     <div className="font-medium">{doc.title ?? doc.sourceKey}</div>
-                    {doc.title && <div className="text-xs text-muted-foreground">{doc.sourceKey}</div>}
+                    {doc.title && <div className="text-muted-foreground text-xs">{doc.sourceKey}</div>}
                   </td>
                   <td className="px-4 py-2.5">
                     <StatusBadge variant={DOC_STATUS_MAP[doc.status] ?? 'pending'}>
                       {doc.status.replace('_', ' ')}
                     </StatusBadge>
                   </td>
-                  <td className="px-4 py-2.5 text-right text-muted-foreground tabular-nums">
+                  <td className="text-muted-foreground px-4 py-2.5 text-right tabular-nums">
                     {doc.fileSize ? formatBytes(doc.fileSize) : '\u2014'}
                   </td>
-                  <td className="px-4 py-2.5 text-right text-muted-foreground">
-                    {doc.lastSyncedAt ? formatRelativeTime(doc.lastSyncedAt) : '\u2014'}
+                  <td className="px-4 py-2.5 text-right">
+                    <span className="text-muted-foreground">
+                      {doc.lastSyncedAt ? formatRelativeTime(doc.lastSyncedAt) : '\u2014'}
+                    </span>
+                    {doc.searchMetaDirty && (
+                      <span className="ml-1.5 inline-flex align-middle" title="Needs sync">
+                        <RefreshCwIcon className="size-3 text-amber-500" />
+                      </span>
+                    )}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
           {hasMore && (
-            <div className="border-t border-border bg-muted px-4 py-2 text-center text-xs text-muted-foreground">
+            <div className="border-border bg-muted text-muted-foreground border-t px-4 py-2 text-center text-xs">
               Showing {recent.length} of {totalActive} {'\u2014'}{' '}
               <Link
                 to="/documents"
@@ -316,6 +326,8 @@ function RecentActivityPanel({ sourceId }: { sourceId: string }) {
 
 // ── S3 File Browser ─────────────────────────────────────────────
 
+const S3_PAGE_SIZE = 25;
+
 function S3FileBrowser({
   sourceId,
   browsePath,
@@ -343,24 +355,26 @@ function S3FileBrowser({
   // renamed. `renameError` surfaces a per-rename error inline below the input.
   const [renamingKey, setRenamingKey] = useState<string | null>(null);
   const [renameError, setRenameError] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
+  const [filter, setFilter] = useState('');
   // Folders always render before files. Sorting reorders within each
   // group by the chosen column. Folders only have a "name" they can sort
   // by — for status/size columns the folder block keeps its current order.
-  const [s3SortKey, setS3SortKey] = useState<'name' | 'status' | 'size'>('name');
+  const [s3SortKey, setS3SortKey] = useState<'name' | 'status' | 'size' | 'lastSynced'>('name');
   const [s3SortDir, setS3SortDir] = useState<SortDir>('asc');
-  const toggleS3Sort = (key: 'name' | 'status' | 'size') => {
+  const toggleS3Sort = (key: 'name' | 'status' | 'size' | 'lastSynced') => {
     if (s3SortKey === key) {
       setS3SortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
       return;
     }
     setS3SortKey(key);
-    setS3SortDir(key === 'size' ? 'desc' : 'asc');
+    setS3SortDir(key === 'size' || key === 'lastSynced' ? 'desc' : 'asc');
   };
 
   const { moveItems, isPending: isMovePending, error: moveError, clearError: clearMoveError } = useFileMove(sourceId);
 
   const { data, isLoading } = useQuery<BrowseResponse>({
-    queryKey: ['browse', sourceId, currentPath],
+    queryKey: queryKeys.syncTargets.browse(sourceId, currentPath),
     queryFn: () => apiFetch(`/api/v1/sync-targets/${sourceId}/browse?path=${encodeURIComponent(currentPath)}`),
   });
 
@@ -391,7 +405,7 @@ function S3FileBrowser({
     // a column that doesn't apply to them.
     if (s3SortKey !== 'name') return [...data.folders];
     const dir = s3SortDir === 'asc' ? 1 : -1;
-    return [...data.folders].sort((a, b) => {
+    return [...data.folders].toSorted((a, b) => {
       const an = (a.replace(currentPath, '').replace(/\/$/, '') || a).toLowerCase();
       const bn = (b.replace(currentPath, '').replace(/\/$/, '') || b).toLowerCase();
       return an < bn ? -1 * dir : an > bn ? 1 * dir : 0;
@@ -401,7 +415,7 @@ function S3FileBrowser({
   const sortedFiles = useMemo(() => {
     if (!data?.files) return [];
     const dir = s3SortDir === 'asc' ? 1 : -1;
-    return [...data.files].sort((a, b) => {
+    return [...data.files].toSorted((a, b) => {
       switch (s3SortKey) {
         case 'name': {
           const an = (a.document?.title ?? a.sourceKey.split('/').pop() ?? a.sourceKey).toLowerCase();
@@ -416,6 +430,11 @@ function S3FileBrowser({
         }
         case 'size':
           return ((a.size ?? 0) - (b.size ?? 0)) * dir;
+        case 'lastSynced': {
+          const at = a.document?.lastSyncedAt ? new Date(a.document.lastSyncedAt).getTime() : 0;
+          const bt = b.document?.lastSyncedAt ? new Date(b.document.lastSyncedAt).getTime() : 0;
+          return (at - bt) * dir;
+        }
         default:
           return 0;
       }
@@ -430,8 +449,37 @@ function S3FileBrowser({
         body: JSON.stringify({ ids }),
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['browse', sourceId] });
+      queryClient.invalidateQueries({ queryKey: ['sync-targets', 'browse', sourceId] });
       queryClient.invalidateQueries({ queryKey: ['documents'] });
+      setSelectedItems(new Set());
+    },
+  });
+
+  const bulkPurgeMutation = useMutation({
+    mutationFn: (ids: string[]) =>
+      apiFetch('/api/v1/documents/bulk-purge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sync-targets', 'browse', sourceId] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.documents.all });
+      setSelectedItems(new Set());
+    },
+  });
+
+  const resyncSelectedMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const results = await Promise.allSettled(
+        ids.map((id) => apiFetch(`/api/v1/documents/${id}/resync`, { method: 'POST' })),
+      );
+      const failed = results.filter((r) => r.status === 'rejected').length;
+      if (failed > 0 && failed === ids.length) throw new Error(`All ${failed} resync requests failed`);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['sync-targets', 'browse', sourceId] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.documents.all });
       setSelectedItems(new Set());
     },
   });
@@ -444,7 +492,7 @@ function S3FileBrowser({
         body: JSON.stringify({ path }),
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['browse', sourceId] });
+      queryClient.invalidateQueries({ queryKey: ['sync-targets', 'browse', sourceId] });
       queryClient.invalidateQueries({ queryKey: ['documents'] });
       setSelectedItems(new Set());
     },
@@ -463,7 +511,7 @@ function S3FileBrowser({
         body: JSON.stringify({ newSourceKey }),
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['browse', sourceId] });
+      queryClient.invalidateQueries({ queryKey: ['sync-targets', 'browse', sourceId] });
       queryClient.invalidateQueries({ queryKey: ['documents'] });
       setRenamingKey(null);
       setRenameError(null);
@@ -481,7 +529,7 @@ function S3FileBrowser({
         body: JSON.stringify({ oldPath, newPath }),
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['browse', sourceId] });
+      queryClient.invalidateQueries({ queryKey: ['sync-targets', 'browse', sourceId] });
       queryClient.invalidateQueries({ queryKey: ['documents'] });
       setRenamingKey(null);
       setRenameError(null);
@@ -546,6 +594,34 @@ function S3FileBrowser({
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [selectedItems]);
+
+  // Reset page when navigating, sorting, filtering, or changing path
+  useEffect(() => setPage(0), [currentPath, s3SortKey, s3SortDir, filter]);
+
+  // Filter + paginate files (folders always show in full)
+  const filteredFiles = useMemo(() => {
+    if (!filter) return sortedFiles;
+    const lc = filter.toLowerCase();
+    return sortedFiles.filter((f) => {
+      const name = f.document?.title ?? f.sourceKey.split('/').pop() ?? f.sourceKey;
+      return name.toLowerCase().includes(lc);
+    });
+  }, [sortedFiles, filter]);
+
+  const totalFiles = filteredFiles.length;
+  const totalPages = Math.max(1, Math.ceil(totalFiles / S3_PAGE_SIZE));
+  const pagedFiles = filteredFiles.slice(page * S3_PAGE_SIZE, (page + 1) * S3_PAGE_SIZE);
+
+  // Selected document IDs (files with an associated document record)
+  const selectedDocIds = useMemo(() => {
+    const ids: string[] = [];
+    for (const key of selectedItems) {
+      if (key.endsWith('/')) continue;
+      const file = data?.files.find((f) => f.sourceKey === key);
+      if (file?.document?.id) ids.push(file.document.id);
+    }
+    return ids;
+  }, [selectedItems, data]);
 
   // Breadcrumb segments
   const pathSegments = currentPath ? currentPath.replace(/\/$/, '').split('/') : [];
@@ -705,7 +781,7 @@ function S3FileBrowser({
           const isLast = i === pathSegments.length - 1;
           return (
             <span key={segmentPath} className="flex items-center gap-1">
-              <span className="select-none text-muted-foreground">/</span>
+              <span className="text-muted-foreground select-none">/</span>
               <DroppableBreadcrumb
                 id={`breadcrumb-${segmentPath}`}
                 path={segmentPath}
@@ -733,30 +809,82 @@ function S3FileBrowser({
           Upload
         </Button>
 
+        {/* Selection actions — verb only, count in confirmation dialog */}
         {selectedCount > 0 && (
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="outline" size="sm">
-                <Trash2Icon className="mr-1.5 size-3.5" />
-                Delete {selectedCount}
+          <>
+            {selectedDocIds.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => resyncSelectedMutation.mutate(selectedDocIds)}
+                disabled={resyncSelectedMutation.isPending}
+                title={`Resync ${selectedDocIds.length} selected document(s)`}
+              >
+                <RefreshCwIcon className="mr-1.5 size-3.5" />
+                {resyncSelectedMutation.isPending ? 'Resyncing...' : 'Resync'}
               </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Delete {selectedCount} items?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  This will permanently delete the selected files and folders.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={handleDelete}>Delete</AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+            )}
+            {selectedDocIds.length > 0 && (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={bulkPurgeMutation.isPending}
+                    title={`Purge ${selectedDocIds.length} selected document(s)`}
+                  >
+                    <EraserIcon className="mr-1.5 size-3.5" />
+                    {bulkPurgeMutation.isPending ? 'Purging...' : 'Purge'}
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Purge {selectedDocIds.length} documents?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Vectors and DB records will be removed. Source files in S3 will be kept.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => bulkPurgeMutation.mutate(selectedDocIds)}>
+                      Purge
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="outline" size="sm" title={`Delete ${selectedCount} selected item(s) from source`}>
+                  <Trash2Icon className="mr-1.5 size-3.5" />
+                  Delete
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete {selectedCount} items?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will permanently delete the selected files and folders from the source.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleDelete}>Delete</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </>
         )}
 
-        {isMovePending && <span className="text-xs text-muted-foreground">Moving...</span>}
+        {isMovePending && <span className="text-muted-foreground text-xs">Moving...</span>}
+
+        {/* Filter — right-aligned */}
+        <Input
+          className="ml-auto w-48"
+          placeholder="Filter files..."
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+        />
       </div>
 
       {/* File list */}
@@ -767,9 +895,9 @@ function S3FileBrowser({
       )}
 
       {!isLoading && data && (
-        <div className="overflow-x-auto rounded-lg border border-border">
-          <table className="min-w-full divide-y divide-border text-sm">
-            <thead className="border-b border-border">
+        <div className="border-border overflow-x-auto rounded-lg border">
+          <table className="divide-border min-w-full divide-y text-sm">
+            <thead className="border-border border-b">
               <tr>
                 <th className="w-10 px-3 py-2.5">
                   <Checkbox
@@ -803,9 +931,17 @@ function S3FileBrowser({
                 >
                   Size
                 </SortableTh>
+                <SortableTh
+                  align="right"
+                  active={s3SortKey === 'lastSynced'}
+                  dir={s3SortDir}
+                  onClick={() => toggleS3Sort('lastSynced')}
+                >
+                  Last Synced
+                </SortableTh>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border bg-card">
+            <tbody className="divide-border bg-card divide-y">
               {sortedFolders.map((folder) => {
                 const folderName = folder.replace(currentPath, '').replace(/\/$/, '') || folder;
                 const relativePath = folder.replace(/^.*?(?=\w)/, '');
@@ -837,12 +973,13 @@ function S3FileBrowser({
                     <td className="group/name px-4 py-2.5">
                       {renamingKey === folder ? (
                         <div className="flex items-center gap-2">
-                          <FolderIcon className="size-4 shrink-0 text-muted-foreground" />
+                          <FolderIcon className="text-muted-foreground size-4 shrink-0" />
                           <Input
+                            // oxlint-disable-next-line jsx-a11y/no-autofocus -- intentional focus for inline rename
                             autoFocus
                             defaultValue={folderName}
                             disabled={renameFolderMutation.isPending}
-                            aria-invalid={renameError != null || undefined}
+                            aria-invalid={(renameError !== null && renameError !== undefined) || undefined}
                             onFocus={(e) => e.currentTarget.select()}
                             onClick={(e) => e.stopPropagation()}
                             onKeyDown={(e) => {
@@ -869,7 +1006,7 @@ function S3FileBrowser({
                             }}
                             className="flex min-w-0 items-center gap-2 text-left"
                           >
-                            <FolderIcon className="size-4 shrink-0 text-muted-foreground" />
+                            <FolderIcon className="text-muted-foreground size-4 shrink-0" />
                             <span className="truncate font-medium">{folderName}</span>
                           </button>
                           <button
@@ -879,11 +1016,11 @@ function S3FileBrowser({
                               setRenamingKey(folder);
                               setRenameError(null);
                             }}
-                            className="ml-auto rounded-md p-1 opacity-0 transition-opacity hover:bg-muted group-hover/name:opacity-100"
+                            className="hover:bg-muted ml-auto rounded-md p-1 opacity-0 transition-opacity group-hover/name:opacity-100"
                             aria-label={`Rename ${folderName}`}
                             title="Rename (F2)"
                           >
-                            <Edit2Icon className="size-3.5 text-muted-foreground" />
+                            <Edit2Icon className="text-muted-foreground size-3.5" />
                           </button>
                         </div>
                       )}
@@ -891,13 +1028,14 @@ function S3FileBrowser({
                         <div className="mt-1 text-xs text-red-400">{renameError}</div>
                       )}
                     </td>
-                    <td className="px-4 py-2.5 text-muted-foreground">&mdash;</td>
-                    <td className="px-4 py-2.5 text-right text-muted-foreground">&mdash;</td>
+                    <td className="text-muted-foreground px-4 py-2.5">&mdash;</td>
+                    <td className="text-muted-foreground px-4 py-2.5 text-right">&mdash;</td>
+                    <td className="text-muted-foreground px-4 py-2.5 text-right">&mdash;</td>
                   </DroppableFolderRow>
                 );
               })}
 
-              {sortedFiles.map((file) => {
+              {pagedFiles.map((file) => {
                 const fileName = file.sourceKey.split('/').pop() ?? file.sourceKey;
                 const doc = file.document;
                 const isDragged = draggedIds.has(file.sourceKey);
@@ -930,12 +1068,12 @@ function S3FileBrowser({
                     >
                       {renamingKey === file.sourceKey ? (
                         <div className="flex items-center gap-2">
-                          <FileTextIcon className="size-4 shrink-0 text-muted-foreground" />
                           <Input
+                            // oxlint-disable-next-line jsx-a11y/no-autofocus -- intentional focus for inline rename
                             autoFocus
                             defaultValue={fileName}
                             disabled={renameFileMutation.isPending}
-                            aria-invalid={renameError != null || undefined}
+                            aria-invalid={(renameError !== null && renameError !== undefined) || undefined}
                             onFocus={(e) => e.currentTarget.select()}
                             onClick={(e) => e.stopPropagation()}
                             onKeyDown={(e) => {
@@ -954,10 +1092,9 @@ function S3FileBrowser({
                         </div>
                       ) : (
                         <div className="flex items-center gap-2">
-                          <FileTextIcon className="size-4 shrink-0 text-muted-foreground" />
                           <div className="min-w-0 flex-1">
                             <div className="truncate font-medium">{doc?.title ?? fileName}</div>
-                            {doc?.title && <div className="truncate text-xs text-muted-foreground">{fileName}</div>}
+                            {doc?.title && <div className="text-muted-foreground truncate text-xs">{fileName}</div>}
                           </div>
                           {doc && (
                             <button
@@ -967,11 +1104,11 @@ function S3FileBrowser({
                                 setRenamingKey(file.sourceKey);
                                 setRenameError(null);
                               }}
-                              className="ml-auto rounded-md p-1 opacity-0 transition-opacity hover:bg-muted group-hover/name:opacity-100"
+                              className="hover:bg-muted ml-auto rounded-md p-1 opacity-0 transition-opacity group-hover/name:opacity-100"
                               aria-label={`Rename ${fileName}`}
                               title="Rename (F2)"
                             >
-                              <Edit2Icon className="size-3.5 text-muted-foreground" />
+                              <Edit2Icon className="text-muted-foreground size-3.5" />
                             </button>
                           )}
                         </div>
@@ -986,11 +1123,17 @@ function S3FileBrowser({
                           {doc.status.replace('_', ' ')}
                         </StatusBadge>
                       ) : (
-                        <span className="text-xs text-muted-foreground">untracked</span>
+                        <span className="text-muted-foreground text-xs">untracked</span>
                       )}
                     </td>
-                    <td className="px-4 py-2.5 text-right text-muted-foreground tabular-nums">
+                    <td className="text-muted-foreground px-4 py-2.5 text-right tabular-nums">
                       {file.size ? formatBytes(file.size) : '\u2014'}
+                    </td>
+                    <td className="px-4 py-2.5 text-right">
+                      <span className="text-muted-foreground">
+                        {doc?.lastSyncedAt ? formatRelativeTime(doc.lastSyncedAt) : '\u2014'}
+                      </span>
+                      {doc?.searchMetaDirty && <span className="ml-1.5 text-xs text-amber-500">(needs sync)</span>}
                     </td>
                   </DraggableFileRow>
                 );
@@ -998,7 +1141,7 @@ function S3FileBrowser({
 
               {data.folders.length === 0 && data.files.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                  <td colSpan={5} className="text-muted-foreground px-4 py-8 text-center text-sm">
                     This folder is empty.
                   </td>
                 </tr>
@@ -1007,6 +1150,38 @@ function S3FileBrowser({
           </table>
         </div>
       )}
+
+      {/* Pagination — matches DataTable pattern */}
+      <div className="mt-4 flex items-center justify-between">
+        <div className="flex flex-col gap-0.5">
+          <span className="text-muted-foreground text-xs">
+            Page {page + 1} of {totalPages}
+          </span>
+          <span className="text-muted-foreground text-xs">
+            Showing {pagedFiles.length} of {totalFiles}
+          </span>
+        </div>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setPage((p) => p - 1)}
+            disabled={page === 0}
+            aria-label="Previous page"
+          >
+            Previous
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setPage((p) => p + 1)}
+            disabled={page >= totalPages - 1}
+            aria-label="Next page"
+          >
+            Next
+          </Button>
+        </div>
+      </div>
 
       {/* Drag overlay */}
       <DragOverlay>{activeDrag ? <DragOverlayContent items={activeDrag.items} /> : null}</DragOverlay>

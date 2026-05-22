@@ -37,7 +37,7 @@ export function CreateFolderDialog({
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['browse', sourceId] });
+      queryClient.invalidateQueries({ queryKey: ['sync-targets', 'browse', sourceId] });
       setFolderName('');
       onOpenChange(false);
     },
@@ -70,7 +70,7 @@ export function CreateFolderDialog({
                 if (e.key === 'Enter' && folderName.trim()) createMutation.mutate(folderName.trim());
               }}
             />
-            {currentPath && <p className="text-xs text-muted-foreground">Will be created in: {currentPath}</p>}
+            {currentPath && <p className="text-muted-foreground text-xs">Will be created in: {currentPath}</p>}
           </div>
 
           {createMutation.error && <p className="text-sm text-red-400">{createMutation.error.message}</p>}

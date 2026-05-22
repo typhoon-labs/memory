@@ -8,12 +8,32 @@ export const metadataFieldTypeEnum = z.enum(['string', 'number', 'boolean', 'str
 
 export type MetadataFieldType = z.infer<typeof metadataFieldTypeEnum>;
 
+export const searchPriorityEnum = z.enum(['critical', 'high', 'moderate', 'standard']);
+
+export type SearchPriority = z.infer<typeof searchPriorityEnum>;
+
+/**
+ * Maps search priority labels to PostgreSQL tsvector weight tiers.
+ * Chunk body text lives at D (standard) — the baseline.
+ * Custom metadata fields default to 'standard' and can be promoted above chunk text.
+ */
+export const SEARCH_PRIORITY_TO_WEIGHT: Record<SearchPriority, 'A' | 'B' | 'C' | 'D'> = {
+  critical: 'A',
+  high: 'B',
+  moderate: 'C',
+  standard: 'D',
+};
+
 export const metadataFieldDefinitionSchema = z.object({
   type: metadataFieldTypeEnum,
   required: z.boolean().optional(),
   default: z.unknown().optional(),
   allowedValues: z.array(z.unknown()).optional(),
   description: z.string().optional(),
+  /** Whether this field is included in tsvector search indexing. Defaults to `true` at runtime. */
+  searchable: z.boolean().optional(),
+  /** tsvector weight tier: critical=A, high=B, moderate=C, standard=D. Defaults to `'moderate'` at runtime. */
+  searchPriority: searchPriorityEnum.optional(),
 });
 
 export type MetadataFieldDefinition = z.infer<typeof metadataFieldDefinitionSchema>;
@@ -60,6 +80,10 @@ const RESERVED_METADATA_KEYS = new Set([
   'section',
   'keywords',
   'startIndex',
+  '_searchMeta_A',
+  '_searchMeta_B',
+  '_searchMeta_C',
+  '_searchMeta_D',
 ]);
 
 // =============================================================================
@@ -94,18 +118,20 @@ export function resolveTemplateSchema(
 // =============================================================================
 
 /**
- * Builds a Zod object schema from a MetadataSchema for use with `generateObject`.
- * All fields are optional since extraction may not find every value.
+ * Builds a Zod object schema from a MetadataSchema for use with structured output.
+ * All fields are nullable (not optional) for OpenAI json_schema compatibility.
+ * Array fields (`string[]`) with `allowedValues` produce `z.array(z.enum(...))`.
  */
 export function buildZodFromMetadataSchema(
   schema: MetadataSchema,
-): z.ZodObject<Record<string, z.ZodOptional<z.ZodTypeAny>>> {
-  const shape: Record<string, z.ZodOptional<z.ZodTypeAny>> = {};
+): z.ZodObject<Record<string, z.ZodNullable<z.ZodTypeAny>>> {
+  const shape: Record<string, z.ZodNullable<z.ZodTypeAny>> = {};
   for (const [key, field] of Object.entries(schema)) {
     let fieldSchema: z.ZodTypeAny;
     if (field.allowedValues && field.allowedValues.length > 0) {
       const vals = field.allowedValues.map(String) as [string, ...string[]];
-      fieldSchema = z.enum(vals);
+      const enumSchema = z.enum(vals);
+      fieldSchema = field.type === 'string[]' ? z.array(enumSchema) : enumSchema;
     } else {
       switch (field.type) {
         case 'number':
@@ -125,9 +151,28 @@ export function buildZodFromMetadataSchema(
     if (field.description) {
       fieldSchema = fieldSchema.describe(field.description);
     }
-    shape[key] = fieldSchema.optional();
+    shape[key] = fieldSchema.nullable();
   }
   return z.object(shape);
+}
+
+/**
+ * Builds a combined Zod schema for document metadata extraction.
+ * Always includes `title` and `description`. When a metadata schema is provided,
+ * custom fields are appended (nullable, for structured output compatibility).
+ */
+export function buildDocumentMetadataSchema(
+  metadataSchema?: MetadataSchema,
+): z.ZodObject<Record<string, z.ZodTypeAny>> {
+  const base: Record<string, z.ZodTypeAny> = {
+    title: z.string().describe('Short descriptive title for the document'),
+    description: z.string().describe('Single sentence describing what the document is about'),
+  };
+  if (!metadataSchema || Object.keys(metadataSchema).length === 0) {
+    return z.object(base);
+  }
+  const custom = buildZodFromMetadataSchema(metadataSchema);
+  return z.object({ ...base, ...custom.shape });
 }
 
 /**

@@ -1,4 +1,5 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@typhoon/ui';
+
 import { AnnotationPanel } from './annotation-panel';
 import { ScorePanel } from './score-panel';
 import type { ChatMessage, ReviewScore } from './shared';

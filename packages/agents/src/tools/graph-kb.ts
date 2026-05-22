@@ -1,5 +1,6 @@
 import { createGraphRAGTool } from '@mastra/rag';
 import { createEmbeddingModel, EMBEDDING_DIMENSION, RAG_GRAPH_THRESHOLD } from '@typhoon/ai';
+
 import { withProgress } from './with-progress';
 
 const inner = createGraphRAGTool({
@@ -15,7 +16,7 @@ const inner = createGraphRAGTool({
   },
 });
 
-// biome-ignore lint/suspicious/noExplicitAny: RagTool type uses internal path not portable across packages
+// oxlint-disable-next-line @typescript-eslint/no-explicit-any -- RagTool type uses internal path not portable across packages
 export const searchKnowledgeBaseGraph: any = withProgress(inner, {
   start: 'Walking the document graph for related context…',
   done: (output) => {

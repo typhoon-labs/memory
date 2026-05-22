@@ -1,11 +1,11 @@
 {
   "name": "typhoon",
   "private": true,
-  "type": "module",
   "workspaces": [
     "apps/*",
     "packages/*"
   ],
+  "type": "module",
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
@@ -20,8 +20,10 @@
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "test:watch": "vitest",
-    "lint": "bunx biome check .",
-    "format": "bunx biome check --write .",
+    "lint": "bunx oxlint .",
+    "format": "bunx oxfmt .",
+    "format:check": "bunx oxfmt --check .",
+    "check": "bunx oxfmt --check . && bunx oxlint . && turbo run typecheck",
     "typecheck": "turbo run typecheck",
     "db:generate": "bun dotenv -- turbo run db:generate --env-mode=loose --filter=@typhoon/db",
     "db:migrate": "bun dotenv -- turbo run db:migrate --env-mode=loose --filter=@typhoon/db",
@@ -39,31 +41,44 @@
     "postinstall": "./scripts/postinstall.sh",
     "clean": "./scripts/clean.sh"
   },
+  "dependencies": {
+    "rehype-slug": "^6.0.0"
+  },
   "devDependencies": {
     "@appsignal/opentelemetry-instrumentation-bullmq": "^0.8.0",
-    "@biomejs/biome": "^2.4.4",
     "@hono/otel": "^1.1.1",
+    "@socketsecurity/bun-security-scanner": "^1.1.2",
+    "@tanstack/eslint-plugin-query": "^5.100.10",
+    "@tanstack/eslint-plugin-router": "^1.162.0",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.3.2",
-    "@types/bun": "^1.3.11",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/bun": "^1.3.14",
+    "@typhoon/config": "workspace:*",
+    "@typhoon/db": "workspace:*",
     "@vitest/coverage-v8": "^4.1.1",
+    "better-auth": "^1.5.6",
     "docx": "^9.6.1",
+    "dotenv": "^17.4.2",
     "dotenv-cli": "^11.0.0",
+    "drizzle-orm": "^0.45.1",
+    "eslint-plugin-drizzle": "^0.2.3",
+    "eslint-plugin-react-refresh": "^0.5.2",
     "happy-dom": "^20.9.0",
     "lefthook": "^1.11.13",
     "mastra": "^1.3.15",
+    "oxfmt": "^0.50.0",
+    "oxlint": "^1.65.0",
     "pdf-lib": "^1.17.1",
     "playwright": "^1.58.2",
+    "postgres": "^3.4.7",
     "turbo": "^2.8.0",
-    "typescript": "^5.9.3",
+    "typescript": "^6.0.0",
     "vitest": "^4.1.1",
     "xlsx": "^0.18.5"
   },
-  "packageManager": "bun@1.3.11",
   "overrides": {
     "hono": "4.12.8"
   },
-  "dependencies": {
-    "rehype-slug": "^6.0.0"
-  }
+  "packageManager": "bun@1.3.14"
 }

@@ -29,19 +29,19 @@ export function FeedbackPage() {
         )}
 
         {!isLoading && entries && entries.length > 0 && (
-          <div className="mt-6 overflow-x-auto rounded-lg border border-border">
-            <table className="min-w-[600px] w-full text-sm">
+          <div className="border-border mt-6 overflow-x-auto rounded-lg border">
+            <table className="w-full min-w-[600px] text-sm">
               <thead>
-                <tr className="border-b border-border bg-muted">
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">Rating</th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">Comment</th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">Thread</th>
-                  <th className="px-4 py-3 text-right font-medium text-muted-foreground">Date</th>
+                <tr className="border-border bg-muted border-b">
+                  <th className="text-muted-foreground px-4 py-3 text-left font-medium">Rating</th>
+                  <th className="text-muted-foreground px-4 py-3 text-left font-medium">Comment</th>
+                  <th className="text-muted-foreground px-4 py-3 text-left font-medium">Thread</th>
+                  <th className="text-muted-foreground px-4 py-3 text-right font-medium">Date</th>
                 </tr>
               </thead>
               <tbody>
                 {entries.map((fb) => (
-                  <tr key={fb.id} className="border-b border-border last:border-0">
+                  <tr key={fb.id} className="border-border border-b last:border-0">
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         {fb.rating === 'positive' ? (
@@ -52,13 +52,13 @@ export function FeedbackPage() {
                         <StatusBadge variant={fb.rating === 'positive' ? 'success' : 'error'}>{fb.rating}</StatusBadge>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-muted-foreground">
+                    <td className="text-muted-foreground px-4 py-3">
                       {fb.comment ?? <span className="italic">No comment</span>}
                     </td>
                     <td className="px-4 py-3">
-                      <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{fb.threadId.slice(0, 8)}</code>
+                      <code className="bg-muted rounded px-1.5 py-0.5 text-xs">{fb.threadId.slice(0, 8)}</code>
                     </td>
-                    <td className="px-4 py-3 text-right text-muted-foreground tabular-nums">
+                    <td className="text-muted-foreground px-4 py-3 text-right tabular-nums">
                       {new Date(fb.createdAt).toLocaleDateString()}
                     </td>
                   </tr>

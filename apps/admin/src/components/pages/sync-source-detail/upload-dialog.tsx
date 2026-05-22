@@ -58,7 +58,7 @@ export function UploadDialog({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['documents', { syncTargetId: sourceId }] });
-      queryClient.invalidateQueries({ queryKey: ['browse', sourceId] });
+      queryClient.invalidateQueries({ queryKey: ['sync-targets', 'browse', sourceId] });
       setSelectedFiles([]);
       setSubPath(defaultPath);
       onOpenChange(false);
@@ -137,10 +137,10 @@ export function UploadDialog({
             onDrop={handleDrop}
           >
             <UploadIcon className={`size-8 ${isDragging ? 'text-primary' : 'text-muted-foreground'}`} />
-            <p className="text-sm text-muted-foreground">
+            <p className="text-muted-foreground text-sm">
               {isDragging ? 'Drop files here' : 'Drag & drop files here, or click to browse'}
             </p>
-            <p className="text-xs text-muted-foreground">PDF, DOCX, XLSX, Markdown, HTML, TXT, CSV, JSON</p>
+            <p className="text-muted-foreground text-xs">PDF, DOCX, XLSX, Markdown, HTML, TXT, CSV, JSON</p>
           </button>
 
           <input
@@ -150,6 +150,7 @@ export function UploadDialog({
             accept=".pdf,.docx,.xlsx,.md,.txt,.html,.htm,.csv,.json"
             onChange={handleFileChange}
             className="hidden"
+            aria-label="Select files to upload"
           />
 
           {/* Directory path */}
@@ -164,29 +165,29 @@ export function UploadDialog({
               value={subPath}
               onChange={(e) => setSubPath(e.target.value)}
             />
-            <p className="text-xs text-muted-foreground">
+            <p className="text-muted-foreground text-xs">
               Subdirectory within the sync source prefix. Leave empty for root.
             </p>
           </div>
 
           {selectedFiles.length > 0 && (
             <div className="space-y-1.5">
-              <p className="text-xs font-medium text-muted-foreground">
+              <p className="text-muted-foreground text-xs font-medium">
                 {selectedFiles.length} file{selectedFiles.length !== 1 ? 's' : ''} selected
               </p>
               {selectedFiles.map((file, i) => (
                 <div
                   key={`${file.name}-${file.size}`}
-                  className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm"
+                  className="border-border flex items-center gap-2 rounded-md border px-3 py-2 text-sm"
                 >
                   <span className="min-w-0 flex-1 truncate">{file.name}</span>
-                  <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{formatBytes(file.size)}</span>
+                  <span className="text-muted-foreground shrink-0 text-xs tabular-nums">{formatBytes(file.size)}</span>
                   <button
                     type="button"
                     onClick={() => removeFile(i)}
-                    className="shrink-0 rounded p-0.5 transition-colors hover:bg-muted"
+                    className="hover:bg-muted shrink-0 rounded p-0.5 transition-colors"
                   >
-                    <XIcon className="size-3.5 text-muted-foreground" />
+                    <XIcon className="text-muted-foreground size-3.5" />
                   </button>
                 </div>
               ))}

@@ -1,4 +1,5 @@
 import { FileTextIcon } from 'lucide-react';
+
 import { cn } from '../../../lib/utils';
 import type { CitationData } from './schema';
 
@@ -41,12 +42,12 @@ export function InlineCitationChip({ citation, onDocumentOpen }: InlineCitationC
       type="button"
       className={cn(
         'inline-flex items-center gap-0.5',
-        'rounded bg-muted px-1 py-px',
-        'text-[0.65em] font-medium text-primary/80',
+        'bg-muted rounded px-1 py-px',
+        'text-primary/80 text-[0.65em] font-medium',
         'relative -top-[0.35em] align-baseline',
         'cursor-pointer outline-none motion-safe:transition-colors',
         'hover:bg-muted hover:text-primary',
-        'focus-visible:ring-1 focus-visible:ring-ring',
+        'focus-visible:ring-ring focus-visible:ring-1',
       )}
       aria-label={`Citation ${displayNum}: ${citation.title}`}
       onClick={handleClick}

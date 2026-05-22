@@ -17,7 +17,6 @@ export function registerAllSyncTargets(): void {
     source: 's3-default',
     sourceType: 's3',
     config: {
-      bucket: process.env.TYPHOON_DOCS_BUCKET ?? 'typhoon-documents',
       prefix: process.env.TYPHOON_DOCS_PREFIX ?? '',
     },
     cronSchedule: process.env.TYPHOON_DOCS_CRON ?? '0 */6 * * *',

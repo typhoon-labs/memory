@@ -4,37 +4,23 @@ import { createMiddleware } from 'hono/factory';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // ---------- Hoisted mocks ----------
-const { mockDatasetsStorage } = vi.hoisted(() => ({
-  mockDatasetsStorage: {
-    listDatasets: vi.fn().mockResolvedValue({ datasets: [], total: 0, page: 0, perPage: 100, hasMore: false }),
-    createDataset: vi.fn().mockResolvedValue({ id: 'ds-1', name: 'Test', version: 0 }),
-    getDatasetById: vi.fn().mockResolvedValue(null),
-    _doUpdateDataset: vi.fn().mockResolvedValue({ id: 'ds-1', name: 'Updated' }),
-    deleteDataset: vi.fn().mockResolvedValue(undefined),
-    listItems: vi.fn().mockResolvedValue({ items: [], total: 0, page: 0, perPage: 100, hasMore: false }),
-    _doAddItem: vi.fn().mockResolvedValue({ id: 'item-1' }),
-    _doBatchInsertItems: vi.fn().mockResolvedValue([{ id: 'item-1' }, { id: 'item-2' }]),
-    _doUpdateItem: vi.fn().mockResolvedValue({ id: 'item-1', input: { question: 'updated' } }),
-    _doDeleteItem: vi.fn().mockResolvedValue(undefined),
+const { mockDatasetService } = vi.hoisted(() => ({
+  mockDatasetService: {
+    list: vi.fn().mockResolvedValue({ data: { datasets: [], total: 0, page: 0, perPage: 100, hasMore: false } }),
+    create: vi.fn().mockResolvedValue({ data: { id: 'ds-1', name: 'Test', version: 0 } }),
+    getById: vi.fn().mockResolvedValue({ error: 'not-found' }),
+    update: vi.fn().mockResolvedValue({ data: { id: 'ds-1', name: 'Updated' } }),
+    delete: vi.fn().mockResolvedValue({ data: { ok: true } }),
+    listItems: vi.fn().mockResolvedValue({ data: { items: [], total: 0, page: 0, perPage: 100, hasMore: false } }),
+    addItems: vi.fn().mockResolvedValue({ data: { id: 'item-1' } }),
+    updateItem: vi.fn().mockResolvedValue({ data: { id: 'item-1', input: { question: 'updated' } } }),
+    deleteItem: vi.fn().mockResolvedValue({ data: { ok: true } }),
   },
 }));
 
 // ---------- Module mocks ----------
-vi.mock('../db', () => ({ db: {}, sql: {} }));
-
-vi.mock('@typhoon/db/drivers/pg', () => ({
-  DrizzleDatasetsStorage: class {
-    listDatasets = mockDatasetsStorage.listDatasets;
-    createDataset = mockDatasetsStorage.createDataset;
-    getDatasetById = mockDatasetsStorage.getDatasetById;
-    _doUpdateDataset = mockDatasetsStorage._doUpdateDataset;
-    deleteDataset = mockDatasetsStorage.deleteDataset;
-    listItems = mockDatasetsStorage.listItems;
-    _doAddItem = mockDatasetsStorage._doAddItem;
-    _doBatchInsertItems = mockDatasetsStorage._doBatchInsertItems;
-    _doUpdateItem = mockDatasetsStorage._doUpdateItem;
-    _doDeleteItem = mockDatasetsStorage._doDeleteItem;
-  },
+vi.mock('../services', () => ({
+  getDatasetService: () => mockDatasetService,
 }));
 
 vi.mock('../middleware/require-auth', () => ({
@@ -59,7 +45,6 @@ function mountRoutes(routes: Record<string, unknown>[]) {
   for (const route of routes) {
     const mid = Array.isArray(route.middleware) ? route.middleware : route.middleware ? [route.middleware] : [];
     const method = (route.method as string).toLowerCase();
-    // biome-ignore lint/suspicious/noExplicitAny: dynamic route mounting for tests
     (app as any).on(method, route.path as string, ...mid, route.handler);
   }
   return app;
@@ -90,12 +75,14 @@ describe('Dataset Routes', () => {
 
   describe('GET /v1/admin/datasets', () => {
     it('returns dataset list', async () => {
-      mockDatasetsStorage.listDatasets.mockResolvedValueOnce({
-        datasets: [{ id: 'ds-1', name: 'Test' }],
-        total: 1,
-        page: 0,
-        perPage: 100,
-        hasMore: false,
+      mockDatasetService.list.mockResolvedValueOnce({
+        data: {
+          datasets: [{ id: 'ds-1', name: 'Test' }],
+          total: 1,
+          page: 0,
+          perPage: 100,
+          hasMore: false,
+        },
       });
 
       const res = await app.request('/v1/admin/datasets');
@@ -116,6 +103,10 @@ describe('Dataset Routes', () => {
 
   describe('POST /v1/admin/datasets', () => {
     it('creates a dataset', async () => {
+      mockDatasetService.create.mockResolvedValueOnce({
+        data: { id: 'ds-1', name: 'My Dataset', description: 'Test', _status: 201 },
+      });
+
       const res = await app.request('/v1/admin/datasets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -123,12 +114,17 @@ describe('Dataset Routes', () => {
       });
 
       expect(res.status).toBe(201);
-      expect(mockDatasetsStorage.createDataset).toHaveBeenCalledWith(
+      expect(mockDatasetService.create).toHaveBeenCalledWith(
         expect.objectContaining({ name: 'My Dataset', description: 'Test' }),
       );
     });
 
     it('rejects missing name', async () => {
+      mockDatasetService.create.mockResolvedValueOnce({
+        error: 'validation-failed',
+        details: 'name is required',
+      });
+
       const res = await app.request('/v1/admin/datasets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -141,7 +137,9 @@ describe('Dataset Routes', () => {
 
   describe('GET /v1/admin/datasets/:id', () => {
     it('returns dataset by ID', async () => {
-      mockDatasetsStorage.getDatasetById.mockResolvedValueOnce({ id: 'ds-1', name: 'Test' });
+      mockDatasetService.getById.mockResolvedValueOnce({
+        data: { id: 'ds-1', name: 'Test' },
+      });
 
       const res = await app.request('/v1/admin/datasets/ds-1');
       expect(res.status).toBe(200);
@@ -157,7 +155,9 @@ describe('Dataset Routes', () => {
 
   describe('PATCH /v1/admin/datasets/:id', () => {
     it('updates a dataset', async () => {
-      mockDatasetsStorage.getDatasetById.mockResolvedValueOnce({ id: 'ds-1', name: 'Old' });
+      mockDatasetService.update.mockResolvedValueOnce({
+        data: { id: 'ds-1', name: 'Updated' },
+      });
 
       const res = await app.request('/v1/admin/datasets/ds-1', {
         method: 'PATCH',
@@ -166,12 +166,12 @@ describe('Dataset Routes', () => {
       });
 
       expect(res.status).toBe(200);
-      expect(mockDatasetsStorage._doUpdateDataset).toHaveBeenCalledWith(
-        expect.objectContaining({ id: 'ds-1', name: 'Updated' }),
-      );
+      expect(mockDatasetService.update).toHaveBeenCalledWith('ds-1', expect.objectContaining({ name: 'Updated' }));
     });
 
     it('returns 404 for unknown ID', async () => {
+      mockDatasetService.update.mockResolvedValueOnce({ error: 'not-found' });
+
       const res = await app.request('/v1/admin/datasets/unknown', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -183,22 +183,22 @@ describe('Dataset Routes', () => {
 
   describe('DELETE /v1/admin/datasets/:id', () => {
     it('deletes a dataset', async () => {
-      mockDatasetsStorage.getDatasetById.mockResolvedValueOnce({ id: 'ds-1' });
-
       const res = await app.request('/v1/admin/datasets/ds-1', { method: 'DELETE' });
       expect(res.status).toBe(200);
-      expect(mockDatasetsStorage.deleteDataset).toHaveBeenCalledWith({ id: 'ds-1' });
+      expect(mockDatasetService.delete).toHaveBeenCalledWith('ds-1');
     });
   });
 
   describe('GET /v1/admin/datasets/:id/items', () => {
     it('returns dataset items', async () => {
-      mockDatasetsStorage.listItems.mockResolvedValueOnce({
-        items: [{ id: 'item-1', input: { question: 'test' } }],
-        total: 1,
-        page: 0,
-        perPage: 100,
-        hasMore: false,
+      mockDatasetService.listItems.mockResolvedValueOnce({
+        data: {
+          items: [{ id: 'item-1', input: { question: 'test' } }],
+          total: 1,
+          page: 0,
+          perPage: 100,
+          hasMore: false,
+        },
       });
 
       const res = await app.request('/v1/admin/datasets/ds-1/items');
@@ -210,7 +210,9 @@ describe('Dataset Routes', () => {
 
   describe('POST /v1/admin/datasets/:id/items', () => {
     it('adds a single item', async () => {
-      mockDatasetsStorage.getDatasetById.mockResolvedValueOnce({ id: 'ds-1', version: 0 });
+      mockDatasetService.addItems.mockResolvedValueOnce({
+        data: { id: 'item-1', input: { question: 'What is X?' }, _status: 201 },
+      });
 
       const res = await app.request('/v1/admin/datasets/ds-1/items', {
         method: 'POST',
@@ -219,11 +221,13 @@ describe('Dataset Routes', () => {
       });
 
       expect(res.status).toBe(201);
-      expect(mockDatasetsStorage._doAddItem).toHaveBeenCalled();
+      expect(mockDatasetService.addItems).toHaveBeenCalled();
     });
 
     it('adds items in batch', async () => {
-      mockDatasetsStorage.getDatasetById.mockResolvedValueOnce({ id: 'ds-1', version: 0 });
+      mockDatasetService.addItems.mockResolvedValueOnce({
+        data: { items: [{ id: 'item-1' }, { id: 'item-2' }], _status: 201 },
+      });
 
       const res = await app.request('/v1/admin/datasets/ds-1/items', {
         method: 'POST',
@@ -234,10 +238,12 @@ describe('Dataset Routes', () => {
       });
 
       expect(res.status).toBe(201);
-      expect(mockDatasetsStorage._doBatchInsertItems).toHaveBeenCalled();
+      expect(mockDatasetService.addItems).toHaveBeenCalled();
     });
 
     it('returns 404 when dataset not found', async () => {
+      mockDatasetService.addItems.mockResolvedValueOnce({ error: 'not-found' });
+
       const res = await app.request('/v1/admin/datasets/unknown/items', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -247,7 +253,10 @@ describe('Dataset Routes', () => {
     });
 
     it('rejects missing input for single item', async () => {
-      mockDatasetsStorage.getDatasetById.mockResolvedValueOnce({ id: 'ds-1', version: 0 });
+      mockDatasetService.addItems.mockResolvedValueOnce({
+        error: 'validation-failed',
+        details: 'input is required',
+      });
 
       const res = await app.request('/v1/admin/datasets/ds-1/items', {
         method: 'POST',
@@ -260,8 +269,9 @@ describe('Dataset Routes', () => {
 
   describe('PATCH /v1/admin/datasets/:id/items/:itemId', () => {
     it('updates an item', async () => {
-      mockDatasetsStorage.getDatasetById.mockResolvedValueOnce({ id: 'ds-1', version: 0 });
-      mockDatasetsStorage._doUpdateItem.mockResolvedValueOnce({ id: 'item-1', input: { question: 'updated' } });
+      mockDatasetService.updateItem.mockResolvedValueOnce({
+        data: { id: 'item-1', input: { question: 'updated' } },
+      });
 
       const res = await app.request('/v1/admin/datasets/ds-1/items/item-1', {
         method: 'PATCH',
@@ -270,10 +280,16 @@ describe('Dataset Routes', () => {
       });
 
       expect(res.status).toBe(200);
-      expect(mockDatasetsStorage._doUpdateItem).toHaveBeenCalledWith(expect.objectContaining({ id: 'item-1' }));
+      expect(mockDatasetService.updateItem).toHaveBeenCalledWith(
+        'ds-1',
+        'item-1',
+        expect.objectContaining({ input: { question: 'updated' } }),
+      );
     });
 
     it('returns 404 when dataset not found', async () => {
+      mockDatasetService.updateItem.mockResolvedValueOnce({ error: 'not-found' });
+
       const res = await app.request('/v1/admin/datasets/unknown/items/item-1', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -287,7 +303,7 @@ describe('Dataset Routes', () => {
     it('deletes an item', async () => {
       const res = await app.request('/v1/admin/datasets/ds-1/items/item-1', { method: 'DELETE' });
       expect(res.status).toBe(200);
-      expect(mockDatasetsStorage._doDeleteItem).toHaveBeenCalledWith({ id: 'item-1', datasetId: 'ds-1' });
+      expect(mockDatasetService.deleteItem).toHaveBeenCalledWith('ds-1', 'item-1');
     });
   });
 });

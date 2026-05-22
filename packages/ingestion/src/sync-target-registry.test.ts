@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+
 import { clearSourceRegistry, registerSource } from './source-registry';
 import { clearSyncTargetRegistry, listRegisteredSyncTargets, registerSyncTarget } from './sync-target-registry';
 
@@ -17,7 +18,7 @@ describe('registerSyncTarget', () => {
       name: 'my-target',
       source: 'test-s3',
       sourceType: 's3',
-      config: { bucket: 'my-bucket' },
+      config: {},
     });
     const targets = listRegisteredSyncTargets();
     expect(targets).toHaveLength(1);
@@ -29,7 +30,7 @@ describe('registerSyncTarget', () => {
       name: 'my-target',
       source: 'test-s3',
       sourceType: 's3',
-      config: { bucket: 'my-bucket' },
+      config: {},
     });
     const targets = listRegisteredSyncTargets();
     expect((targets[0].config as Record<string, unknown>).prefix).toBe('');
@@ -40,7 +41,7 @@ describe('registerSyncTarget', () => {
       name: 'my-target',
       source: 'test-s3',
       sourceType: 's3',
-      config: { bucket: 'my-bucket' },
+      config: {},
     });
     const targets = listRegisteredSyncTargets();
     expect(targets[0].cronSchedule).toBe('0 */6 * * *');
@@ -52,22 +53,22 @@ describe('registerSyncTarget', () => {
         name: '',
         source: 'test-s3',
         sourceType: 's3',
-        config: { bucket: 'b' },
+        config: {},
       }),
     ).toThrow('invalid config');
   });
 
   it('throws on duplicate name', () => {
-    registerSyncTarget({ name: 'dup', source: 'test-s3', sourceType: 's3', config: { bucket: 'b' } });
-    expect(() =>
-      registerSyncTarget({ name: 'dup', source: 'test-s3', sourceType: 's3', config: { bucket: 'b' } }),
-    ).toThrow('already registered');
+    registerSyncTarget({ name: 'dup', source: 'test-s3', sourceType: 's3', config: {} });
+    expect(() => registerSyncTarget({ name: 'dup', source: 'test-s3', sourceType: 's3', config: {} })).toThrow(
+      'already registered',
+    );
   });
 
   it('throws on unknown source reference', () => {
-    expect(() =>
-      registerSyncTarget({ name: 'bad-ref', source: 'nonexistent', sourceType: 's3', config: { bucket: 'b' } }),
-    ).toThrow('references unknown source');
+    expect(() => registerSyncTarget({ name: 'bad-ref', source: 'nonexistent', sourceType: 's3', config: {} })).toThrow(
+      'references unknown source',
+    );
   });
 
   it('throws on unknown sourceType', () => {
@@ -76,10 +77,10 @@ describe('registerSyncTarget', () => {
     );
   });
 
-  it('throws on invalid per-source config (s3 missing bucket)', () => {
-    expect(() => registerSyncTarget({ name: 'no-bucket', source: 'test-s3', sourceType: 's3', config: {} })).toThrow(
-      'invalid s3 config',
-    );
+  it('rejects unknown keys in s3 config (strict schema)', () => {
+    expect(() =>
+      registerSyncTarget({ name: 'bad-key', source: 'test-s3', sourceType: 's3', config: { unknown: 'x' } }),
+    ).toThrow('invalid s3 config');
   });
 });
 
@@ -91,7 +92,7 @@ describe('listRegisteredSyncTargets', () => {
 
 describe('clearSyncTargetRegistry', () => {
   it('clears all registered targets', () => {
-    registerSyncTarget({ name: 't1', source: 'test-s3', sourceType: 's3', config: { bucket: 'b' } });
+    registerSyncTarget({ name: 't1', source: 'test-s3', sourceType: 's3', config: {} });
     expect(listRegisteredSyncTargets()).toHaveLength(1);
     clearSyncTargetRegistry();
     expect(listRegisteredSyncTargets()).toHaveLength(0);

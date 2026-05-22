@@ -64,7 +64,7 @@ export function useFileMove(sourceId: string) {
         );
       }
 
-      queryClient.invalidateQueries({ queryKey: ['browse', sourceId] });
+      queryClient.invalidateQueries({ queryKey: ['sync-targets', 'browse', sourceId] });
       queryClient.invalidateQueries({ queryKey: ['documents'] });
       setIsPending(false);
     },

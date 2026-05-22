@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from 'react';
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+
 import { ChartLegend } from './chart-legend';
 import { createChartTooltip } from './chart-tooltip';
 import { type DateRange, formatDateForRange, getTimeTicks } from './chart-utils';
@@ -16,7 +17,8 @@ interface TokenBarChartProps {
   range: DateRange;
 }
 
-function formatTokens(n: number) {
+/** Format token counts: raw for sub-1000, "Xk" for thousands, "XM" for millions. */
+export function formatTokens(n: number) {
   return n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1_000 ? `${(n / 1_000).toFixed(0)}k` : String(n);
 }
 
@@ -45,7 +47,7 @@ export function TokenBarChart({ data, range }: TokenBarChartProps) {
 
   if (data.length === 0) {
     return (
-      <div className="flex h-[250px] items-center justify-center text-sm text-muted-foreground">
+      <div className="text-muted-foreground flex h-[250px] items-center justify-center text-sm">
         No token usage data yet
       </div>
     );

@@ -1,16 +1,15 @@
-import type { Db } from '@typhoon/db';
-import { documents, syncTargets } from '@typhoon/db';
 import type { PgVector } from '@typhoon/db/drivers/pg';
 import { createAppLogger } from '@typhoon/logger';
+import type { DeleteFileJobData } from '@typhoon/queue';
 import type { Job } from 'bullmq';
-import { eq } from 'drizzle-orm';
+
 import { deleteDocumentVectors } from '../pipeline';
 import { getProvider } from '../providers/index';
+import type { IngestionRepos } from '../repos';
 import { asUnrecoverable, isUnrecoverable } from '../util/classify-error';
 import { withTimeout } from '../util/with-timeout';
 import { isSyncJobCancelled } from './check-cancelled';
 import { incrementSyncJobCompletion } from './complete-sync-job';
-import type { DeleteFileJobData } from './queues';
 
 const log = createAppLogger('delete-file');
 
@@ -20,7 +19,11 @@ const STAGE_TIMEOUTS = {
   sourceDelete: 30_000,
 } as const;
 
-export async function handleDeleteFileJob(job: Job<DeleteFileJobData>, db: Db, vectorStore: PgVector): Promise<void> {
+export async function handleDeleteFileJob(
+  job: Job<DeleteFileJobData>,
+  repos: IngestionRepos,
+  vectorStore: PgVector,
+): Promise<void> {
   const { documentId, sourceKey, sourceType, syncTargetId } = job.data;
   const tStart = Date.now();
 
@@ -31,7 +34,7 @@ export async function handleDeleteFileJob(job: Job<DeleteFileJobData>, db: Db, v
   const setStage = (stage: string) => job.updateProgress({ stage, startedAt: Date.now() });
 
   try {
-    if (await isSyncJobCancelled(db, job.data.syncJobId)) {
+    if (await isSyncJobCancelled(repos.syncJobRepo, job.data.syncJobId)) {
       log.info('Delete job cancelled', { documentId });
       return;
     }
@@ -40,18 +43,14 @@ export async function handleDeleteFileJob(job: Job<DeleteFileJobData>, db: Db, v
     await withTimeout(deleteDocumentVectors(vectorStore, documentId), STAGE_TIMEOUTS.vectorDelete, 'vectorDelete');
 
     await setStage('dbUpdate');
-    await withTimeout(
-      db.update(documents).set({ status: 'deleted', updatedAt: new Date() }).where(eq(documents.id, documentId)),
-      STAGE_TIMEOUTS.dbUpdate,
-      'dbUpdate',
-    );
+    await withTimeout(repos.documentRepo.markDeleted(documentId), STAGE_TIMEOUTS.dbUpdate, 'dbUpdate');
 
     // If source info is provided, also delete the object from the source.
     // This is best-effort: failure here is logged but doesn't fail the job,
     // since the document is already marked deleted in the DB.
     if (sourceKey && sourceType && syncTargetId) {
       try {
-        const [target] = await db.select().from(syncTargets).where(eq(syncTargets.id, syncTargetId));
+        const target = await repos.syncTargetRepo.findById(syncTargetId);
         if (target) {
           const provider = getProvider(sourceType);
           if (provider.deleteObject) {
@@ -73,7 +72,7 @@ export async function handleDeleteFileJob(job: Job<DeleteFileJobData>, db: Db, v
       }
     }
 
-    await incrementSyncJobCompletion(db, job.data.syncJobId, false);
+    await incrementSyncJobCompletion(repos.syncJobRepo, job.data.syncJobId, false);
 
     log.info('Document marked deleted', { documentId, totalMs: Date.now() - tStart });
   } catch (error) {

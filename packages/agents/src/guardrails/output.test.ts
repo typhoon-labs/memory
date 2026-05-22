@@ -23,7 +23,7 @@ vi.mock('@mastra/core/processors', () => {
 
 const { mockCreateWorkflow } = vi.hoisted(() => {
   const mockCreateWorkflow = vi.fn(() => {
-    // biome-ignore lint/suspicious/noThenProperty: mocking Mastra workflow API
+    // oxlint-disable-next-line unicorn/no-thenable -- mocking Mastra workflow API
     const wf = { then: vi.fn(() => wf), parallel: vi.fn(() => wf), map: vi.fn(() => wf), commit: vi.fn(() => wf) };
     return wf;
   });
@@ -77,20 +77,16 @@ describe('createOutputGuardrails', () => {
 // ---------------------------------------------------------------------------
 
 describe('createFixedBatchPartsProcessor', () => {
-  // biome-ignore lint/suspicious/noExplicitAny: test fixtures bypass strict ChunkType union
   function textDelta(text: string, id = 'text-1'): any {
     return { type: 'text-delta', payload: { text, id }, runId: '1', from: 'AGENT' };
   }
-  // biome-ignore lint/suspicious/noExplicitAny: test fixtures bypass strict ChunkType union
   function textStart(id: string): any {
     return { type: 'text-start', payload: { id }, runId: '1', from: 'AGENT' };
   }
-  // biome-ignore lint/suspicious/noExplicitAny: test fixtures bypass strict ChunkType union
   function toolPart(type: string): any {
     return { type, payload: {}, runId: '1', from: 'AGENT' };
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: test helper simplifies processOutputStream call
   function call(proc: any, part: any, state: Record<string, any>) {
     return proc.processOutputStream({
       part,
@@ -104,7 +100,6 @@ describe('createFixedBatchPartsProcessor', () => {
 
   it('buffers text-deltas until batchSize then flushes combined', async () => {
     const proc = createFixedBatchPartsProcessor({ batchSize: 3 });
-    // biome-ignore lint/suspicious/noExplicitAny: processor state is untyped
     const state: Record<string, any> = {};
 
     expect(await call(proc, textDelta('a'), state)).toBeNull();
@@ -117,7 +112,6 @@ describe('createFixedBatchPartsProcessor', () => {
 
   it('flushes single text-delta with activeTextId from text-start', async () => {
     const proc = createFixedBatchPartsProcessor({ batchSize: 1 });
-    // biome-ignore lint/suspicious/noExplicitAny: processor state is untyped
     const state: Record<string, any> = {};
 
     await call(proc, textStart('ts-42'), state);
@@ -128,7 +122,6 @@ describe('createFixedBatchPartsProcessor', () => {
 
   it('passes non-text parts through when no pending text', async () => {
     const proc = createFixedBatchPartsProcessor({ batchSize: 3 });
-    // biome-ignore lint/suspicious/noExplicitAny: processor state is untyped
     const state: Record<string, any> = {};
 
     const tool = toolPart('tool-input-start');
@@ -138,7 +131,6 @@ describe('createFixedBatchPartsProcessor', () => {
 
   it('flushes text and defers non-text part on collision', async () => {
     const proc = createFixedBatchPartsProcessor({ batchSize: 10 });
-    // biome-ignore lint/suspicious/noExplicitAny: processor state is untyped
     const state: Record<string, any> = {};
 
     await call(proc, textDelta('hello '), state);
@@ -156,7 +148,6 @@ describe('createFixedBatchPartsProcessor', () => {
 
   it('re-defers when another non-text arrives while pending', async () => {
     const proc = createFixedBatchPartsProcessor({ batchSize: 10 });
-    // biome-ignore lint/suspicious/noExplicitAny: processor state is untyped
     const state: Record<string, any> = {};
 
     await call(proc, textDelta('x'), state);
@@ -171,7 +162,6 @@ describe('createFixedBatchPartsProcessor', () => {
 
   it('uses activeTextId in combined flush', async () => {
     const proc = createFixedBatchPartsProcessor({ batchSize: 3 });
-    // biome-ignore lint/suspicious/noExplicitAny: processor state is untyped
     const state: Record<string, any> = {};
 
     await call(proc, textStart('ts-99'), state);
@@ -183,7 +173,6 @@ describe('createFixedBatchPartsProcessor', () => {
 
   it('falls back to text-1 when no activeTextId', async () => {
     const proc = createFixedBatchPartsProcessor({ batchSize: 2 });
-    // biome-ignore lint/suspicious/noExplicitAny: processor state is untyped
     const state: Record<string, any> = {};
 
     await call(proc, textDelta('a'), state);
@@ -193,7 +182,6 @@ describe('createFixedBatchPartsProcessor', () => {
 
   it('emits deferred part then batches incoming text-delta', async () => {
     const proc = createFixedBatchPartsProcessor({ batchSize: 10 });
-    // biome-ignore lint/suspicious/noExplicitAny: processor state is untyped
     const state: Record<string, any> = {};
 
     await call(proc, textDelta('x'), state);

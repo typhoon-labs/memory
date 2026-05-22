@@ -5,7 +5,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // ---------------------------------------------------------------------------
 
 const { mockGenerateText } = vi.hoisted(() => {
-  const mockGenerateText = vi.fn(async () => ({ text: 'Generated Title' }));
+  // oxlint-disable-next-line @typescript-eslint/no-explicit-any -- mock needs flexible args
+  const mockGenerateText = vi.fn(async (..._args: any[]) => ({ output: { title: 'Generated Title' } }) as any);
   return { mockGenerateText };
 });
 
@@ -15,18 +16,21 @@ const { mockTitleModel, mockCreateTitleModel } = vi.hoisted(() => {
   return { mockTitleModel, mockCreateTitleModel };
 });
 
-const { mockEmitToolProgress } = vi.hoisted(() => {
-  const mockEmitToolProgress = vi.fn(async () => undefined);
-  return { mockEmitToolProgress };
+const { mockEmitToolProgress, mockEmitThreadTitle } = vi.hoisted(() => {
+  // oxlint-disable-next-line @typescript-eslint/no-explicit-any -- mock needs flexible args
+  const mockEmitToolProgress = vi.fn(async (..._args: any[]) => undefined);
+  // oxlint-disable-next-line @typescript-eslint/no-explicit-any -- mock needs flexible args
+  const mockEmitThreadTitle = vi.fn(async (..._args: any[]) => undefined);
+  return { mockEmitToolProgress, mockEmitThreadTitle };
 });
 
 // ---------------------------------------------------------------------------
 // Module mocks
 // ---------------------------------------------------------------------------
 
-vi.mock('ai', () => ({ generateText: mockGenerateText }));
+vi.mock('ai', () => ({ generateText: mockGenerateText, Output: { object: vi.fn(() => ({})) } }));
 vi.mock('@typhoon/ai', () => ({ createTitleModel: mockCreateTitleModel }));
-vi.mock('./with-progress', () => ({ emitToolProgress: mockEmitToolProgress }));
+vi.mock('./with-progress', () => ({ emitToolProgress: mockEmitToolProgress, emitThreadTitle: mockEmitThreadTitle }));
 
 // Import after mocks
 import { setThreadTitle } from './set-thread-title';
@@ -62,7 +66,6 @@ function makeContext(threadId?: string, mastra?: ReturnType<typeof makeMastra> |
 }
 
 // The tool's execute function signature from createTool: (input, context) => Promise<output>
-// biome-ignore lint/suspicious/noExplicitAny: test helper loosely typed
 async function callExecute(userMessage: string, context: any) {
   // setThreadTitle is a Mastra tool created with createTool; access execute directly
   return setThreadTitle.execute?.({ userMessage }, context);
@@ -75,9 +78,10 @@ async function callExecute(userMessage: string, context: any) {
 describe('setThreadTitle tool', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockGenerateText.mockResolvedValue({ text: 'Generated Title' });
+    mockGenerateText.mockResolvedValue({ output: { title: 'Generated Title' } });
     mockCreateTitleModel.mockReturnValue(mockTitleModel);
     mockEmitToolProgress.mockResolvedValue(undefined);
+    mockEmitThreadTitle.mockResolvedValue(undefined);
   });
 
   it('returns empty title when context has no threadId', async () => {
@@ -138,27 +142,27 @@ describe('setThreadTitle tool', () => {
     const mastra = makeMastra(storage);
     const context = makeContext('thread-42', mastra);
 
-    mockGenerateText.mockResolvedValue({ text: '  Trimmed Title  ' });
+    mockGenerateText.mockResolvedValue({ output: { title: 'Refund Policy Inquiry' } });
 
     await callExecute('What is the refund policy?', context);
 
     expect(memoryStore.updateThread).toHaveBeenCalledWith({
       id: 'thread-42',
-      title: 'Trimmed Title',
+      title: 'Refund Policy Inquiry',
       metadata: { key: 'value' },
     });
   });
 
-  it('trims whitespace from the generated title', async () => {
+  it('truncates title to 80 chars', async () => {
     const memoryStore = makeMemoryStore(null);
     const storage = makeStorage(memoryStore);
     const mastra = makeMastra(storage);
     const context = makeContext('thread-1', mastra);
 
-    mockGenerateText.mockResolvedValue({ text: '   My Title   ' });
+    mockGenerateText.mockResolvedValue({ output: { title: 'A'.repeat(100) } });
 
-    const result = await callExecute('Hello', context);
-    expect(result).toEqual({ title: 'My Title' });
+    const result = (await callExecute('Hello', context)) as { title: string };
+    expect(result?.title.length).toBe(80);
   });
 
   it('truncates userMessage to 200 chars when building the LLM prompt', async () => {
@@ -190,13 +194,13 @@ describe('setThreadTitle tool', () => {
     expect(mockEmitToolProgress.mock.calls[1]?.[2]).toBe('done');
   });
 
-  it('returns empty title when LLM returns an empty string', async () => {
+  it('returns empty title when LLM returns null output', async () => {
     const memoryStore = makeMemoryStore(null);
     const storage = makeStorage(memoryStore);
     const mastra = makeMastra(storage);
     const context = makeContext('thread-1', mastra);
 
-    mockGenerateText.mockResolvedValue({ text: '' });
+    mockGenerateText.mockResolvedValue({ output: null });
 
     const result = await callExecute('Hello', context);
     expect(result).toEqual({ title: '' });
@@ -225,6 +229,32 @@ describe('setThreadTitle tool', () => {
 
     const callArgs = mockGenerateText.mock.calls[0]?.[0] as { temperature?: number } | undefined;
     expect(callArgs?.temperature).toBe(0);
+  });
+
+  it('emits a data-thread-title stream part after updating the thread', async () => {
+    const memoryStore = makeMemoryStore(null);
+    const storage = makeStorage(memoryStore);
+    const mastra = makeMastra(storage);
+    const context = makeContext('thread-1', mastra);
+
+    mockGenerateText.mockResolvedValue({ output: { title: 'Streamed Title' } });
+
+    await callExecute('Hello', context);
+
+    expect(mockEmitThreadTitle).toHaveBeenCalledWith(expect.anything(), 'Streamed Title');
+  });
+
+  it('does not emit data-thread-title when title is empty', async () => {
+    const memoryStore = makeMemoryStore(null);
+    const storage = makeStorage(memoryStore);
+    const mastra = makeMastra(storage);
+    const context = makeContext('thread-1', mastra);
+
+    mockGenerateText.mockResolvedValue({ output: null });
+
+    await callExecute('Hello', context);
+
+    expect(mockEmitThreadTitle).not.toHaveBeenCalled();
   });
 
   it('passes thread metadata from the fetched thread to updateThread', async () => {

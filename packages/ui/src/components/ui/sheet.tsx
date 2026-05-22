@@ -60,7 +60,7 @@ function SheetContent({
   const computeMaxWidth = React.useCallback(() => {
     if (typeof window === 'undefined') return Number.POSITIVE_INFINITY;
     const viewportCap = Math.min(window.innerWidth - 80, 1600);
-    return maxWidth != null ? Math.min(maxWidth, viewportCap) : viewportCap;
+    return maxWidth !== null && maxWidth !== undefined ? Math.min(maxWidth, viewportCap) : viewportCap;
   }, [maxWidth]);
 
   const handlePointerDown = React.useCallback(
@@ -89,7 +89,7 @@ function SheetContent({
   );
 
   const endDrag = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    if (dragStateRef.current == null) return;
+    if (dragStateRef.current === null) return;
     dragStateRef.current = null;
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);

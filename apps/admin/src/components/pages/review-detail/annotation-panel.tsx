@@ -22,6 +22,7 @@ import {
 } from '@typhoon/ui';
 import { CheckIcon, PencilIcon, Trash2Icon, XIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
+
 import { type AnnotationTag, ISSUE_TAGS, type ReviewScore, SEVERITY_LEVELS, type Severity, TAG_LABELS } from './shared';
 
 interface AnnotationPanelProps {
@@ -64,7 +65,7 @@ function AnnotationDisplay({
   return (
     <div>
       {/* Bubble */}
-      <div className="rounded-lg border border-border px-3 py-2.5 text-xs">
+      <div className="border-border rounded-lg border px-3 py-2.5 text-xs">
         {/* Header: verdict + actions */}
         <div className="flex items-center justify-between">
           <span className={`font-semibold ${headerColor}`}>{headerText}</span>
@@ -74,7 +75,7 @@ function AnnotationDisplay({
                 <button
                   type="button"
                   onClick={onEdit}
-                  className="text-muted-foreground/30 transition-colors hover:text-muted-foreground"
+                  className="text-muted-foreground/30 hover:text-muted-foreground transition-colors"
                 >
                   <PencilIcon className="size-3" />
                 </button>
@@ -84,7 +85,7 @@ function AnnotationDisplay({
                   <AlertDialogTrigger asChild>
                     <button
                       type="button"
-                      className="text-muted-foreground/30 transition-colors hover:text-muted-foreground"
+                      className="text-muted-foreground/30 hover:text-muted-foreground transition-colors"
                     >
                       <Trash2Icon className="size-3" />
                     </button>
@@ -110,24 +111,24 @@ function AnnotationDisplay({
             {tags
               .filter((t) => t !== 'correct')
               .map((tag) => (
-                <li key={tag} className="flex items-center gap-1.5 text-foreground">
-                  <span className="size-1 shrink-0 rounded-full bg-muted-foreground/40" />
+                <li key={tag} className="text-foreground flex items-center gap-1.5">
+                  <span className="bg-muted-foreground/40 size-1 shrink-0 rounded-full" />
                   {TAG_LABELS[tag] ?? tag}
                 </li>
               ))}
           </ul>
         )}
         {/* Comment */}
-        {annotation.reason && <p className="mt-2 text-foreground">{annotation.reason}</p>}
+        {annotation.reason && <p className="text-foreground mt-2">{annotation.reason}</p>}
       </div>
       {/* Arrow — rotated square overlapping bubble border, bg matches page */}
-      <div className="-mt-[5px] ml-[13px] size-2.5 rotate-45 border-b border-r border-border bg-background" />
+      <div className="border-border bg-background -mt-[5px] ml-[13px] size-2.5 rotate-45 border-r border-b" />
       {/* Avatar + name */}
       <div className="mt-2.5 flex items-center gap-1.5 pl-2">
-        <div className="flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-[8px] font-medium text-muted-foreground ring-1 ring-border">
+        <div className="bg-muted text-muted-foreground ring-border flex size-5 shrink-0 items-center justify-center rounded-full text-[8px] font-medium ring-1">
           {initial}
         </div>
-        <span className="text-2xs font-medium text-muted-foreground/70">{annotatorName}</span>
+        <span className="text-2xs text-muted-foreground/70 font-medium">{annotatorName}</span>
       </div>
     </div>
   );
@@ -149,14 +150,13 @@ export function AnnotationPanel({ threadId, messageId, annotations }: Annotation
   const [severity, setSeverity] = useState<Severity | ''>('');
   const [comment, setComment] = useState('');
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally reset all form state when message changes
   useEffect(() => {
     setStep('initial');
     setIsEditing(false);
     setSelectedTags(((myAnnotation?.metadata as Record<string, unknown> | null)?.tags as AnnotationTag[]) ?? []);
     setSeverity(((myAnnotation?.metadata as Record<string, unknown> | null)?.severity as Severity) ?? '');
     setComment(myAnnotation?.reason ?? '');
-  }, [messageId]);
+  }, [messageId]); // eslint-disable-line react-hooks/exhaustive-deps -- intentionally reset form only on messageId change
 
   function startEdit() {
     const meta = myAnnotation?.metadata as Record<string, unknown> | null;

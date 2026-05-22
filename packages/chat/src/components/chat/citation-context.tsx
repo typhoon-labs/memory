@@ -1,6 +1,6 @@
 import type { CitationData } from '@typhoon/ui';
 import type { ReactNode } from 'react';
-import { createContext, useContext } from 'react';
+import { createContext, useContext, useMemo } from 'react';
 
 export interface CitationContextValue {
   /** Map of 1-based citation index to its metadata. */
@@ -24,7 +24,8 @@ export function CitationProvider({
   onDocumentOpen,
   children,
 }: CitationContextValue & { children: ReactNode }) {
-  return <CitationCtx.Provider value={{ citations, onDocumentOpen }}>{children}</CitationCtx.Provider>;
+  const value = useMemo(() => ({ citations, onDocumentOpen }), [citations, onDocumentOpen]);
+  return <CitationCtx.Provider value={value}>{children}</CitationCtx.Provider>;
 }
 
 export function useCitations(): CitationContextValue {

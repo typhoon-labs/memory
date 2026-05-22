@@ -9,6 +9,7 @@ import {
 } from '@tanstack/react-table';
 import { SearchIcon } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+
 import { cn } from '../lib/utils';
 import { Button } from './ui/button';
 import { Checkbox } from './ui/checkbox';
@@ -131,7 +132,6 @@ export function DataTable<TData>({
   });
 
   // Notify parent of selection changes — rowSelection is an intentional trigger dependency
-  // biome-ignore lint/correctness/useExhaustiveDependencies: rowSelection triggers re-computation of selected rows
   useEffect(() => {
     if (!enableRowSelection || !onSelectionChange) return;
     const selected = table.getSelectedRowModel().rows.map((r) => r.original);
@@ -145,7 +145,7 @@ export function DataTable<TData>({
           {toolbar && <div className="flex-1">{toolbar}</div>}
           {enableFiltering && (
             <div className="relative ml-auto">
-              <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+              <SearchIcon className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" />
               <Input
                 type="text"
                 placeholder="Search..."
@@ -158,16 +158,16 @@ export function DataTable<TData>({
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-lg border border-border">
-        <table className="min-w-full divide-y divide-border">
-          <thead className="border-b border-border">
+      <div className="border-border overflow-x-auto rounded-lg border">
+        <table className="divide-border min-w-full divide-y">
+          <thead className="border-border border-b">
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id}>
                 {headerGroup.headers.map((header) => (
                   <th
                     key={header.id}
                     className={cn(
-                      'px-4 py-2.5 text-left text-2xs font-semibold uppercase tracking-widest text-muted-foreground',
+                      'text-2xs text-muted-foreground px-4 py-2.5 text-left font-semibold tracking-widest uppercase',
                       enableSorting && header.column.getCanSort() && 'cursor-pointer select-none',
                       header.id === '_select' && 'w-10',
                     )}
@@ -200,7 +200,7 @@ export function DataTable<TData>({
               </tr>
             ))}
           </thead>
-          <tbody className="divide-y divide-border bg-card">
+          <tbody className="divide-border bg-card divide-y">
             {table.getRowModel().rows.length > 0 ? (
               table.getRowModel().rows.map((row) => (
                 <tr
@@ -214,7 +214,7 @@ export function DataTable<TData>({
                   onMouseEnter={onRowHover ? () => onRowHover(row.original) : undefined}
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <td key={cell.id} className="whitespace-nowrap px-4 py-2.5 align-middle text-sm text-foreground">
+                    <td key={cell.id} className="text-foreground px-4 py-2.5 align-middle text-sm whitespace-nowrap">
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </td>
                   ))}
@@ -222,7 +222,7 @@ export function DataTable<TData>({
               ))
             ) : (
               <tr>
-                <td colSpan={allColumns.length} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                <td colSpan={allColumns.length} className="text-muted-foreground px-4 py-8 text-center text-sm">
                   No results found.
                 </td>
               </tr>
@@ -233,11 +233,11 @@ export function DataTable<TData>({
 
       <div className="mt-4 flex items-center justify-between">
         <div className="flex flex-col gap-0.5">
-          <span className="text-xs text-muted-foreground">
+          <span className="text-muted-foreground text-xs">
             Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount()}
           </span>
           {showRowCount && (
-            <span className="text-xs text-muted-foreground" data-testid="row-count">
+            <span className="text-muted-foreground text-xs" data-testid="row-count">
               Showing {table.getRowModel().rows.length} of {data.length}
             </span>
           )}

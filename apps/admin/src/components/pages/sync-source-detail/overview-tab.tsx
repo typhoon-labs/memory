@@ -17,10 +17,19 @@ import {
 } from '@typhoon/ui';
 import { AlertTriangleIcon, CheckCircleIcon, FileTextIcon, LoaderIcon } from 'lucide-react';
 import { useMemo, useState } from 'react';
+
 import type { Document, SyncJob, SyncTarget } from './shared';
 import { formatConfig, formatDuration, JOB_STATUS_MAP } from './shared';
 
-export function OverviewTab({ sourceId, target }: { sourceId: string; target: SyncTarget }) {
+export function OverviewTab({
+  sourceId,
+  target,
+  sourceBucket,
+}: {
+  sourceId: string;
+  target: SyncTarget;
+  sourceBucket?: string;
+}) {
   const { data: docs } = useQuery<Document[]>({
     queryKey: ['documents', { syncTargetId: sourceId }],
     queryFn: () => apiFetch(`/api/v1/documents?syncTargetId=${sourceId}`),
@@ -32,22 +41,36 @@ export function OverviewTab({ sourceId, target }: { sourceId: string; target: Sy
   });
 
   const stats = useMemo(() => {
-    if (!docs) return { total: 0, ready: 0, errors: 0, processing: 0 };
+    if (!docs) return { total: 0, ready: 0, errors: 0, processing: 0, searchMetaDirty: 0 };
     return {
       total: docs.filter((d) => d.status !== 'deleted').length,
       ready: docs.filter((d) => d.status === 'ready').length,
-      errors: docs.filter((d) => d.status === 'parse_error' || d.status === 'embed_error').length,
+      errors: docs.filter((d) => d.status === 'error').length,
       processing: docs.filter((d) => d.status === 'processing' || d.status === 'pending').length,
+      searchMetaDirty: docs.filter((d) => d.searchMetaDirty).length,
     };
   }, [docs]);
 
   const lastJob = useMemo(() => {
     if (!jobs || jobs.length === 0) return null;
-    return [...jobs].sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime())[0];
+    return [...jobs].toSorted((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime())[0];
   }, [jobs]);
 
   return (
     <div className="space-y-6">
+      {/* Search index stale warning */}
+      {stats.searchMetaDirty > 0 && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+          <div className="flex items-center gap-2">
+            <AlertTriangleIcon className="size-4 shrink-0" />
+            <p>
+              <span className="font-medium">{stats.searchMetaDirty} document(s)</span> have outdated search indexes.
+              Sync to apply metadata template changes.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Stats */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatCard label="Total Documents" value={stats.total} icon={<FileTextIcon className="size-4" />} />
@@ -59,7 +82,7 @@ export function OverviewTab({ sourceId, target }: { sourceId: string; target: Sy
       {/* Source Configuration */}
       <div>
         <SectionLabel>Source Configuration</SectionLabel>
-        <div className="mt-2 rounded-lg border border-border bg-card p-4">
+        <div className="border-border bg-card mt-2 rounded-lg border p-4">
           <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
             <div>
               <dt className="text-muted-foreground">Source Type</dt>
@@ -67,7 +90,7 @@ export function OverviewTab({ sourceId, target }: { sourceId: string; target: Sy
             </div>
             <div>
               <dt className="text-muted-foreground">Path</dt>
-              <dd className="mt-0.5 font-medium">{formatConfig(target.sourceType, target.config)}</dd>
+              <dd className="mt-0.5 font-medium">{formatConfig(target.sourceType, target.config, sourceBucket)}</dd>
             </div>
             <div>
               <dt className="text-muted-foreground">Schedule</dt>
@@ -98,11 +121,11 @@ export function OverviewTab({ sourceId, target }: { sourceId: string; target: Sy
       <div>
         <SectionLabel>Last Sync</SectionLabel>
         {lastJob ? (
-          <div className="mt-2 rounded-lg border border-border bg-card p-4">
+          <div className="border-border bg-card mt-2 rounded-lg border p-4">
             <div className="flex items-center gap-3">
               <StatusBadge variant={JOB_STATUS_MAP[lastJob.status]}>{lastJob.status}</StatusBadge>
-              <span className="text-sm text-muted-foreground">{formatRelativeTime(lastJob.startedAt)}</span>
-              <span className="text-sm text-muted-foreground">
+              <span className="text-muted-foreground text-sm">{formatRelativeTime(lastJob.startedAt)}</span>
+              <span className="text-muted-foreground text-sm">
                 {formatDuration(lastJob.startedAt, lastJob.completedAt)}
               </span>
             </div>
@@ -139,7 +162,7 @@ export function OverviewTab({ sourceId, target }: { sourceId: string; target: Sy
             )}
           </div>
         ) : (
-          <p className="mt-2 text-sm text-muted-foreground">No sync jobs yet.</p>
+          <p className="text-muted-foreground mt-2 text-sm">No sync jobs yet.</p>
         )}
       </div>
     </div>
@@ -183,9 +206,9 @@ function MetadataSettings({ sourceId, target }: { sourceId: string; target: Sync
   return (
     <div>
       <SectionLabel>Metadata Settings</SectionLabel>
-      <div className="mt-2 rounded-lg border border-border bg-card p-4 space-y-4">
+      <div className="border-border bg-card mt-2 space-y-4 rounded-lg border p-4">
         <div>
-          <Label className="text-sm text-muted-foreground">Metadata Template</Label>
+          <Label className="text-muted-foreground text-sm">Metadata Template</Label>
           <Select value={templateId ?? '__none__'} onValueChange={(v) => setTemplateId(v === '__none__' ? null : v)}>
             <SelectTrigger className="mt-1">
               <SelectValue placeholder="None" />

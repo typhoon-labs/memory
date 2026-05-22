@@ -1,4 +1,5 @@
-import { createContext, type ReactNode, useCallback, useContext, useEffect, useRef } from 'react';
+import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef } from 'react';
+
 import { authClient } from './auth-client';
 
 type Session = typeof authClient.$Infer.Session.session;
@@ -28,13 +29,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => clearTimeout(retryTimer.current);
   }, [error, isPending, refetch]);
 
-  const value: AuthContextValue = {
-    session: data?.session ?? null,
-    user: data?.user ?? null,
-    isPending,
-    error: error ?? null,
-    refetchSession: refetch,
-  };
+  const session = data?.session ?? null;
+  const user = data?.user ?? null;
+  const errorValue = error ?? null;
+
+  const value: AuthContextValue = useMemo(
+    () => ({ session, user, isPending, error: errorValue, refetchSession: refetch }),
+    [session, user, isPending, errorValue, refetch],
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

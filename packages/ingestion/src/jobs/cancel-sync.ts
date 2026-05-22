@@ -1,8 +1,6 @@
-import type { Db } from '@typhoon/db';
-import { syncJobs } from '@typhoon/db';
+import type { SyncJobRepo } from '@typhoon/db/repos';
 import { createAppLogger } from '@typhoon/logger';
 import type { Queue } from 'bullmq';
-import { eq } from 'drizzle-orm';
 
 const log = createAppLogger('cancel-sync');
 
@@ -16,13 +14,13 @@ const log = createAppLogger('cancel-sync');
  *
  * @returns Number of waiting/delayed jobs that were removed from the queue.
  */
-export async function cancelSyncJob(db: Db, syncQueue: Queue, syncJobId: string): Promise<{ removed: number }> {
+export async function cancelSyncJob(
+  syncJobRepo: SyncJobRepo,
+  syncQueue: Queue,
+  syncJobId: string,
+): Promise<{ removed: number }> {
   // Mark cancelled in DB — active handlers check this at stage boundaries
-  const [updated] = await db
-    .update(syncJobs)
-    .set({ status: 'cancelled', completedAt: new Date() })
-    .where(eq(syncJobs.id, syncJobId))
-    .returning({ id: syncJobs.id });
+  const updated = await syncJobRepo.markCancelled(syncJobId);
 
   if (!updated) {
     log.warn('Sync job not found for cancellation', { syncJobId });
@@ -32,11 +30,13 @@ export async function cancelSyncJob(db: Db, syncQueue: Queue, syncJobId: string)
   // Remove waiting/delayed child jobs from the queue
   let removed = 0;
   for (const state of ['waiting', 'delayed'] as const) {
+    // oxlint-disable-next-line no-await-in-loop -- sequential: only 2 states, getJobs is state-dependent
     const jobs = await syncQueue.getJobs([state]);
     for (const job of jobs) {
       const jobSyncId = (job.data as { syncJobId?: string })?.syncJobId;
       if (jobSyncId === syncJobId) {
         try {
+          // oxlint-disable-next-line no-await-in-loop -- sequential: job removal may race with state changes
           await job.remove();
           removed++;
         } catch {

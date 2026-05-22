@@ -1,5 +1,6 @@
 import type { Sql } from 'postgres';
 import postgres from 'postgres';
+
 import { createDb, type Db } from '../../client';
 import type { PgVectorConfig, PostgresStoreConfig } from './config';
 import { hasConnectionString } from './config';

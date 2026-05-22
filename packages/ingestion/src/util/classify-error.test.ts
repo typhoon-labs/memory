@@ -1,5 +1,6 @@
 import { UnrecoverableError } from 'bullmq';
 import { describe, expect, it } from 'vitest';
+
 import { asUnrecoverable, isUnrecoverable } from './classify-error';
 
 describe('isUnrecoverable', () => {

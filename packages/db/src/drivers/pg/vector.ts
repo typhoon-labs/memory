@@ -12,6 +12,7 @@ import type {
 } from '@mastra/core/vector';
 import { MastraVector } from '@mastra/core/vector';
 import type { Sql } from 'postgres';
+
 import type { PgVectorConfig } from './config';
 import { resolveSqlConnection } from './connection';
 import { buildFilterQuery, type PGVectorFilter, type SqlParam } from './filter';
@@ -93,7 +94,15 @@ export class PgVector extends MastraVector<PGVectorFilter> {
       CREATE OR REPLACE FUNCTION "${table}_update_tsvector"()
       RETURNS TRIGGER AS $$
       BEGIN
-        NEW.content_tsvector := to_tsvector('${ftsLang}', COALESCE(NEW.metadata->>'text', ''));
+        NEW.content_tsvector :=
+          setweight(to_tsvector('${ftsLang}', COALESCE(NEW.metadata->>'title', '')), 'A') ||
+          setweight(to_tsvector('${ftsLang}', COALESCE(NEW.metadata->>'_searchMeta_A', '')), 'A') ||
+          setweight(to_tsvector('${ftsLang}', COALESCE(NEW.metadata->>'section', '')), 'B') ||
+          setweight(to_tsvector('${ftsLang}', COALESCE(NEW.metadata->>'keywords', '')), 'B') ||
+          setweight(to_tsvector('${ftsLang}', COALESCE(NEW.metadata->>'_searchMeta_B', '')), 'B') ||
+          setweight(to_tsvector('${ftsLang}', COALESCE(NEW.metadata->>'_searchMeta_C', '')), 'C') ||
+          setweight(to_tsvector('${ftsLang}', COALESCE(NEW.metadata->>'text', '')), 'D') ||
+          setweight(to_tsvector('${ftsLang}', COALESCE(NEW.metadata->>'_searchMeta_D', '')), 'D');
         RETURN NEW;
       END;
       $$ LANGUAGE plpgsql;
@@ -352,6 +361,12 @@ export class PgVector extends MastraVector<PGVectorFilter> {
     const candidateK = topK * candidateMultiplier;
     const vecStr = `[${params.queryVector.join(',')}]`;
     const rrfK = Number(process.env.RAG_HYBRID_RRF_K ?? 60);
+    // tsvector tier weights in PostgreSQL order: {D, C, B, A}
+    const wA = Number(process.env.RAG_FTS_WEIGHT_A ?? 1.0);
+    const wB = Number(process.env.RAG_FTS_WEIGHT_B ?? 0.6);
+    const wC = Number(process.env.RAG_FTS_WEIGHT_C ?? 0.4);
+    const wD = Number(process.env.RAG_FTS_WEIGHT_D ?? 0.2);
+    const ftsWeightsArray = `'{${wD}, ${wC}, ${wB}, ${wA}}'`;
 
     let filterClause = '';
     let filterValues: SqlParam[] = [];
@@ -372,7 +387,7 @@ export class PgVector extends MastraVector<PGVectorFilter> {
     const rows = await this.sql.unsafe(
       `WITH fts AS (
         SELECT id, ROW_NUMBER() OVER (
-          ORDER BY ts_rank_cd(content_tsvector, plainto_tsquery('${lang}', $1)) DESC
+          ORDER BY ts_rank_cd(${ftsWeightsArray}, content_tsvector, plainto_tsquery('${lang}', $1)) DESC
         ) AS rank
         FROM "${table}"
         WHERE content_tsvector @@ plainto_tsquery('${lang}', $1) ${filterClause}
@@ -481,7 +496,7 @@ export class PgVector extends MastraVector<PGVectorFilter> {
     if (Array.isArray(raw)) return raw as number[];
     if (typeof raw === 'string') {
       return raw
-        .replace(/^\[|\]$/g, '')
+        .replaceAll(/^\[|\]$/g, '')
         .split(',')
         .map(Number);
     }

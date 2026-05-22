@@ -1,5 +1,6 @@
 import { ExperimentsStorage } from '@mastra/core/storage';
 import { desc, eq, sql } from 'drizzle-orm';
+
 import type { Db } from '../../client';
 import { experimentResults, experiments } from '../../schema/experiments';
 
@@ -16,7 +17,7 @@ export class DrizzleExperimentsStorage extends ExperimentsStorage {
     });
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: Mastra types
+  // oxlint-disable-next-line @typescript-eslint/no-explicit-any -- Mastra types
   async createExperiment(input: any) {
     const id = input.id ?? crypto.randomUUID();
     const [row] = await this.db
@@ -40,7 +41,7 @@ export class DrizzleExperimentsStorage extends ExperimentsStorage {
     return row as never;
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: Mastra types
+  // oxlint-disable-next-line @typescript-eslint/no-explicit-any -- Mastra types
   async updateExperiment(input: any) {
     const { id, ...rest } = input;
     const sets: Partial<typeof experiments.$inferInsert> = {};
@@ -68,7 +69,7 @@ export class DrizzleExperimentsStorage extends ExperimentsStorage {
     return (row as never) ?? null;
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: Mastra types
+  // oxlint-disable-next-line @typescript-eslint/no-explicit-any -- Mastra types
   async listExperiments(args: any) {
     const page = args?.page ?? 0;
     const perPage = args?.perPage ?? 100;
@@ -76,7 +77,10 @@ export class DrizzleExperimentsStorage extends ExperimentsStorage {
     const validStatuses = ['pending', 'running', 'completed', 'failed'];
     const where = status && validStatuses.includes(status) ? eq(experiments.status, status as never) : undefined;
 
-    const [countRow] = await this.db.select({ count: sql<number>`count(*)::int` }).from(experiments).where(where);
+    const [countRow] = await this.db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(experiments)
+      .where(where);
     const total = countRow?.count ?? 0;
 
     const rows = await this.db
@@ -97,7 +101,7 @@ export class DrizzleExperimentsStorage extends ExperimentsStorage {
     });
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: Mastra types
+  // oxlint-disable-next-line @typescript-eslint/no-explicit-any -- Mastra types
   async addExperimentResult(input: any) {
     const id = input.id ?? crypto.randomUUID();
     const [row] = await this.db
@@ -120,7 +124,7 @@ export class DrizzleExperimentsStorage extends ExperimentsStorage {
     return row as never;
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: Mastra types
+  // oxlint-disable-next-line @typescript-eslint/no-explicit-any -- Mastra types
   async updateExperimentResult(input: any) {
     const { id, ...rest } = input;
     const sets: Partial<typeof experimentResults.$inferInsert> = {};
@@ -145,7 +149,7 @@ export class DrizzleExperimentsStorage extends ExperimentsStorage {
     return (row as never) ?? null;
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: Mastra types
+  // oxlint-disable-next-line @typescript-eslint/no-explicit-any -- Mastra types
   async listExperimentResults(args: any) {
     const page = args?.page ?? 0;
     const perPage = args?.perPage ?? 100;

@@ -1,4 +1,5 @@
 import { WorkspacesStorage } from '@mastra/core/storage';
+
 import type { Db } from '../../client';
 import { workspaces, workspaceVersions } from '../../schema/versioned/workspaces';
 import { createVersionedDriver } from './versioned';

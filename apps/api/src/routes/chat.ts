@@ -1,19 +1,18 @@
 import { handleChatStream } from '@mastra/ai-sdk';
 import { registerApiRoute } from '@mastra/core/server';
-import { isScoringEnabled } from '@typhoon/config';
 import { createAppLogger } from '@typhoon/logger';
-import type { ScoringJobData } from '@typhoon/queue';
 import { conversationStarted, getActiveTraceId } from '@typhoon/telemetry';
 import { createUIMessageStreamResponse } from 'ai';
 import type { Queue } from 'bullmq';
+
 import { requireAuth } from '../middleware/require-auth';
+import { getChatService } from '../services';
 
 const log = createAppLogger('chat');
 
-// Module-level queue reference, wired by API bootstrap (see index.ts)
-let _reviewsQueue: Queue | null = null;
+// Module-level queue wiring — sets the queue on the ChatService
 export function setReviewsQueue(queue: Queue) {
-  _reviewsQueue = queue;
+  getChatService().setReviewsQueue(queue);
 }
 
 const streamLoggingHooks = {
@@ -69,15 +68,13 @@ export const chatRoutes = [
       const traceId = getActiveTraceId();
       const threadId: string | undefined = params.memory?.thread;
 
-      const scoringEnabled = isScoringEnabled() && _reviewsQueue !== null;
-      const sampleRate = Number(process.env.SCORING_SAMPLE_RATE ?? '1.0');
-      const shouldScore = scoringEnabled && !!threadId && Math.random() < sampleRate;
+      const chatService = getChatService();
 
       const hooks = {
         ...streamLoggingHooks,
         onFinish: (event: { text?: string; finishReason?: unknown; usage?: unknown; steps?: unknown[] }) => {
           streamLoggingHooks.onFinish(event);
-          enqueueScoringJob({ shouldScore, threadId, agentId, traceId });
+          chatService.enqueueScoringJob({ threadId, agentId, traceId });
         },
       };
 
@@ -99,38 +96,3 @@ export const chatRoutes = [
     },
   }),
 ];
-
-/**
- * Enqueue a scoring job for the latest assistant message in the thread.
- * Fire-and-forget — never blocks the response.
- */
-function enqueueScoringJob(opts: {
-  shouldScore: boolean;
-  threadId: string | undefined;
-  agentId: string;
-  traceId: string | null;
-}) {
-  if (!opts.shouldScore || !opts.threadId || !_reviewsQueue) return;
-
-  // Use threadId + timestamp as a dedup key since we don't have the messageId yet.
-  // The scoring worker resolves the actual latest assistant message in the thread.
-  const jobId = `score-${opts.threadId}-${Date.now()}`;
-
-  _reviewsQueue
-    .add(
-      'score-message',
-      {
-        messageId: '', // resolved by the worker from the thread
-        threadId: opts.threadId,
-        agentId: opts.agentId,
-        traceId: opts.traceId,
-      } satisfies ScoringJobData,
-      {
-        jobId,
-        delay: 3000, // 3s delay for Mastra to finish persisting the message
-      },
-    )
-    .catch((err) => {
-      log.error('Failed to enqueue scoring job', { error: err });
-    });
-}

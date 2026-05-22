@@ -20,6 +20,7 @@ import {
 } from '@typhoon/ui';
 import { ChevronRightIcon, Trash2Icon } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+
 import { usePageTitle } from '../../hooks/use-page-title';
 
 interface Dataset {
@@ -122,7 +123,7 @@ export function DatasetItemFormPage() {
   if (!isCreateMode && !itemsLoading && !item) {
     return (
       <div className="overflow-y-auto p-4 sm:p-6 md:p-8">
-        <div className="mx-auto max-w-5xl text-center text-muted-foreground">Item not found.</div>
+        <div className="text-muted-foreground mx-auto max-w-5xl text-center">Item not found.</div>
       </div>
     );
   }
@@ -133,18 +134,18 @@ export function DatasetItemFormPage() {
         <PageHeader
           title={
             <span className="flex items-center gap-1.5">
-              <Link to="/datasets" className="text-muted-foreground transition-colors hover:text-foreground">
+              <Link to="/datasets" className="text-muted-foreground hover:text-foreground transition-colors">
                 Datasets
               </Link>
-              <ChevronRightIcon className="size-3.5 text-muted-foreground/50" />
+              <ChevronRightIcon className="text-muted-foreground/50 size-3.5" />
               <Link
                 to="/datasets/$datasetId"
                 params={{ datasetId }}
-                className="text-muted-foreground transition-colors hover:text-foreground"
+                className="text-muted-foreground hover:text-foreground transition-colors"
               >
                 {dataset?.name ?? '...'}
               </Link>
-              <ChevronRightIcon className="size-3.5 text-muted-foreground/50" />
+              <ChevronRightIcon className="text-muted-foreground/50 size-3.5" />
               {isCreateMode ? 'Add Item' : 'Edit Item'}
             </span>
           }
@@ -175,7 +176,7 @@ export function DatasetItemFormPage() {
         <div className="mt-6 space-y-5">
           <div>
             <h2 className="text-sm font-semibold">Test Case</h2>
-            <p className="mt-0.5 text-sm text-muted-foreground">
+            <p className="text-muted-foreground mt-0.5 text-sm">
               Define the input question and expected output for evaluation.
             </p>
           </div>

@@ -1,8 +1,10 @@
 import type { Agent } from '@mastra/core/agent';
-import type { MastraModelConfig } from '@mastra/core/llm';
 import { createAppLogger } from '@typhoon/logger';
+
+import { type ChunkSource, formatResponseForScoring } from './extract-scoring-data';
+import type { ChunkMeta } from './handle-scoring-job';
 import { RETRIEVAL_SCORERS } from './scorer-categories';
-import { constructScorer, type ScorerDefinitionVersion } from './scorer-loader';
+import { constructScorer, type ModelFactory, type ScorerDefinitionVersion } from './scorer-loader';
 
 const log = createAppLogger('experiment');
 
@@ -13,6 +15,8 @@ export interface ExperimentDeps {
   updateExperiment: (input: Record<string, unknown>) => Promise<void>;
   getDatasetItems: (datasetId: string, version: number) => Promise<DatasetItem[]>;
   addExperimentResult: (input: Record<string, unknown>) => Promise<void>;
+  /** Hydrate chunk metadata from vector store — used to get full chunk text for scorers. */
+  hydrateChunks?: (chunkIds: string[]) => Promise<Map<string, ChunkMeta>>;
   /** Optional — called after each item to extend BullMQ lock. */
   extendLock?: () => Promise<void>;
 }
@@ -73,6 +77,38 @@ export function extractContextFromSteps(steps: Array<Record<string, unknown>> | 
   return context;
 }
 
+/**
+ * Extract full chunk source metadata from agent response steps.
+ * Unlike `extractContextFromSteps` (which returns only text), this returns
+ * full `ChunkSource` objects for hydration and citation formatting.
+ */
+export function extractChunkSourcesFromSteps(steps: Array<Record<string, unknown>> | undefined): ChunkSource[] {
+  if (!steps) return [];
+  const sources: ChunkSource[] = [];
+  for (const step of steps) {
+    for (const tr of (step.toolResults as Array<Record<string, unknown>>) ?? []) {
+      const payload = tr.payload as Record<string, unknown> | undefined;
+      const result = (payload?.result ?? tr.result) as Record<string, unknown> | undefined;
+      if (!result || !Array.isArray(result._chunkSources)) continue;
+      for (const cs of result._chunkSources as Record<string, unknown>[]) {
+        if (typeof cs.chunkId !== 'string') continue;
+        sources.push({
+          chunkId: cs.chunkId,
+          displayIndex: String(cs.displayIndex ?? '0'),
+          score: typeof cs.score === 'number' ? cs.score : undefined,
+          text: typeof cs.text === 'string' ? cs.text : undefined,
+          documentId: typeof cs.documentId === 'string' ? cs.documentId : undefined,
+          title: typeof cs.title === 'string' ? cs.title : undefined,
+          section: typeof cs.section === 'string' ? cs.section : undefined,
+          source: typeof cs.source === 'string' ? cs.source : undefined,
+          syncTargetName: typeof cs.syncTargetName === 'string' ? cs.syncTargetName : undefined,
+        });
+      }
+    }
+  }
+  return sources;
+}
+
 // ── setupExperiment ─────────────────────────────────────────────────
 
 /**
@@ -125,14 +161,18 @@ export async function processExperimentItemStep1(
   item: DatasetItem,
   experimentId: string,
   agent: Agent,
-  model: MastraModelConfig,
+  createScoringModel: ModelFactory,
   scorerDefinitions: ScorerDefinitionVersion[],
-  deps: Pick<ExperimentDeps, 'getExperiment'>,
+  deps: Pick<ExperimentDeps, 'getExperiment' | 'hydrateChunks'>,
 ): Promise<{
   cancelled: boolean;
   question: string;
+  /** Original agent response with [Source: N.M] citations — for storage and display. */
   responseText: string;
+  /** Formatted response with [N] citations — for scorer jobs only. */
+  scorerResponseText: string;
   context: string[];
+  chunkSources: ChunkSource[];
   applicableScorers: ScorerDefinitionVersion[];
   contextSkippedScorers: ScorerDefinitionVersion[];
 } | null> {
@@ -156,15 +196,34 @@ export async function processExperimentItemStep1(
   log.debug('Agent responded', { experimentId, itemId: item.id, responseLength: responseText.length });
 
   // Extract RAG context from agent tool results
-  // biome-ignore lint/suspicious/noExplicitAny: Mastra agent response steps are loosely typed
-  const context = extractContextFromSteps((response as any).steps);
+  // oxlint-disable-next-line @typescript-eslint/no-explicit-any -- Mastra agent response steps are loosely typed
+  const steps = (response as any).steps as Array<Record<string, unknown>> | undefined;
+  const chunkSources = extractChunkSourcesFromSteps(steps);
+
+  // Hydrate full chunk text from vector store (tool output truncates to 200 chars)
+  if (chunkSources.length > 0 && deps.hydrateChunks) {
+    const metaMap = await deps.hydrateChunks(chunkSources.map((cs) => cs.chunkId));
+    for (const cs of chunkSources) {
+      const meta = metaMap.get(cs.chunkId);
+      if (!meta) continue;
+      if (meta.text) cs.text = meta.text;
+      if (!cs.title && meta.title) cs.title = meta.title;
+      if (!cs.source && meta.source) cs.source = meta.source;
+      if (!cs.syncTargetName && meta.syncTargetName) cs.syncTargetName = meta.syncTargetName;
+    }
+  }
+
+  const context = chunkSources.filter((cs) => !!cs.text).map((cs) => cs.text!);
+
+  // Format response text for scorer readability (collapse [Source: N.M] → [N])
+  const formattedResponseText = formatResponseForScoring(responseText, chunkSources);
 
   // Determine applicable scorers (retrieval scorers skipped when no RAG context)
   const applicableScorers: ScorerDefinitionVersion[] = [];
   const contextSkippedScorers: ScorerDefinitionVersion[] = [];
 
   for (const def of scorerDefinitions) {
-    const entry = constructScorer(def, model, context);
+    const entry = constructScorer(def, createScoringModel, context);
     if (entry) {
       applicableScorers.push(def);
     } else if (RETRIEVAL_SCORERS.has(def.type) && context.length === 0) {
@@ -172,7 +231,16 @@ export async function processExperimentItemStep1(
     }
   }
 
-  return { cancelled: false, question, responseText, context, applicableScorers, contextSkippedScorers };
+  return {
+    cancelled: false,
+    question,
+    responseText,
+    scorerResponseText: formattedResponseText,
+    context,
+    chunkSources,
+    applicableScorers,
+    contextSkippedScorers,
+  };
 }
 
 /**
@@ -192,6 +260,7 @@ export async function processExperimentItemStep2(
   contextSkippedScorerNames: string[],
   deps: Pick<ExperimentDeps, 'addExperimentResult' | 'updateExperiment'>,
   startedAt: Date,
+  chunkSources?: ChunkSource[],
 ): Promise<{ succeeded: boolean; scorersFailed: number }> {
   const executedScores = Object.values(childrenValues);
   const skippedEntries: ScorerResult[] = contextSkippedScorerNames.map((name) => ({
@@ -211,7 +280,7 @@ export async function processExperimentItemStep2(
     experimentId,
     itemId,
     input,
-    output: { responseText, scores },
+    output: { responseText, scores, ...(chunkSources && chunkSources.length > 0 ? { sources: chunkSources } : {}) },
     groundTruth: groundTruth ?? null,
     startedAt,
     completedAt: isoNow(),

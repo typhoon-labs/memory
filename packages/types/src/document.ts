@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const documentStatusEnum = z.enum(['pending', 'processing', 'ready', 'parse_error', 'embed_error', 'deleted']);
+export const documentStatusEnum = z.enum(['pending', 'processing', 'ready', 'error', 'deleted']);
 
 export type DocumentStatus = z.infer<typeof documentStatusEnum>;
 

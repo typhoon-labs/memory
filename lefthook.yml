@@ -1,8 +1,14 @@
 pre-commit:
   parallel: true
   commands:
+    format-check:
+      glob: '*.{ts,tsx,js,jsx,json,css}'
+      run: bunx oxfmt --check --no-error-on-unmatched-pattern {staged_files}
     lint:
-      glob: "*.{ts,tsx,js,jsx,json,css}"
-      run: bunx biome check --no-errors-on-unmatched {staged_files}
+      glob: '*.{ts,tsx,js,jsx}'
+      run: bunx oxlint {staged_files}
+
+pre-push:
+  commands:
     typecheck:
-      run: bunx tsc --noEmit
+      run: bun run typecheck

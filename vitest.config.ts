@@ -15,7 +15,7 @@ export default defineConfig({
         'packages/db/src/drivers/**',
         // Declarative Drizzle schemas and thin query wrappers — no complex runtime logic
         'packages/db/src/schema/**',
-        'packages/db/src/queries/**',
+        'packages/db/src/repos/**',
         'packages/db/src/client.ts',
         'packages/db/src/connection.ts',
         // Test infrastructure — not application code
@@ -34,7 +34,7 @@ export default defineConfig({
       'packages/config/vitest.config.ts',
       'packages/types/vitest.config.ts',
       'packages/db/vitest.config.ts',
-      'packages/storage/vitest.config.ts',
+      'packages/blob-store/vitest.config.ts',
       'packages/agents/vitest.config.ts',
       'packages/evals/vitest.config.ts',
       'packages/queue/vitest.config.ts',
@@ -43,7 +43,9 @@ export default defineConfig({
       'packages/ai/vitest.config.ts',
       'packages/logger/vitest.config.ts',
       'packages/telemetry/vitest.config.ts',
+      'packages/services/vitest.config.ts',
       'packages/ui/vitest.config.ts',
+      'packages/api-client/vitest.config.ts',
       'apps/api/vitest.config.ts',
       'apps/desk/vitest.config.ts',
       'apps/admin/vitest.config.ts',

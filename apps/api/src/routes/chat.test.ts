@@ -6,6 +6,13 @@ const { mockHandleChatStream, mockCreateUIMessageStreamResponse } = vi.hoisted((
   mockCreateUIMessageStreamResponse: vi.fn(),
 }));
 
+const { mockChatService } = vi.hoisted(() => ({
+  mockChatService: {
+    setReviewsQueue: vi.fn(),
+    enqueueScoringJob: vi.fn().mockReturnValue({ data: { enqueued: false } }),
+  },
+}));
+
 vi.mock('@mastra/ai-sdk', () => ({
   handleChatStream: mockHandleChatStream,
 }));
@@ -14,13 +21,13 @@ vi.mock('ai', () => ({
   createUIMessageStreamResponse: mockCreateUIMessageStreamResponse,
 }));
 
-vi.mock('@typhoon/config', () => ({
-  isScoringEnabled: () => true,
-}));
-
 vi.mock('@typhoon/telemetry', () => ({
   conversationStarted: { add: vi.fn() },
   getActiveTraceId: () => 'test-trace-id',
+}));
+
+vi.mock('../services', () => ({
+  getChatService: () => mockChatService,
 }));
 
 vi.mock('../middleware/require-auth', async () => {
@@ -51,7 +58,6 @@ function createApp(ctx: { mastra?: unknown; requestContext?: unknown } = {}) {
   for (const route of chatRoutes as Record<string, unknown>[]) {
     const mid = Array.isArray(route.middleware) ? route.middleware : route.middleware ? [route.middleware] : [];
     const method = (route.method as string).toLowerCase();
-    // biome-ignore lint/suspicious/noExplicitAny: dynamic route mounting for tests
     (app as any).on(method, route.path as string, ...mid, route.handler);
   }
   return app;
@@ -160,10 +166,7 @@ describe('chatRoutes', () => {
   });
 
   describe('scoring integration', () => {
-    it('enqueues scoring job when enabled and threadId present', async () => {
-      const mockAdd = vi.fn().mockResolvedValue({});
-      setReviewsQueue({ add: mockAdd } as never);
-
+    it('calls enqueueScoringJob on onFinish when threadId present', async () => {
       mockHandleChatStream.mockResolvedValue(Symbol('stream'));
       mockCreateUIMessageStreamResponse.mockReturnValue(new Response('ok'));
 
@@ -182,23 +185,14 @@ describe('chatRoutes', () => {
       const { defaultOptions: hooks } = mockHandleChatStream.mock.calls[0][0];
       hooks.onFinish({ text: 'response', finishReason: 'stop', usage: {}, steps: [] });
 
-      // Wait for the fire-and-forget promise
-      await new Promise((r) => setTimeout(r, 10));
-
-      expect(mockAdd).toHaveBeenCalledTimes(1);
-      const [jobName, jobData, jobOpts] = mockAdd.mock.calls[0];
-      expect(jobName).toBe('score-message');
-      expect(jobData.threadId).toBe('thread-123');
-      expect(jobData.agentId).toBe('my-agent');
-      expect(jobData.traceId).toBe('test-trace-id');
-      expect(jobOpts.delay).toBe(3000);
-      expect(jobOpts.jobId).toMatch(/^score-thread-123-/);
+      expect(mockChatService.enqueueScoringJob).toHaveBeenCalledWith({
+        threadId: 'thread-123',
+        agentId: 'my-agent',
+        traceId: 'test-trace-id',
+      });
     });
 
-    it('does not enqueue when no threadId', async () => {
-      const mockAdd = vi.fn().mockResolvedValue({});
-      setReviewsQueue({ add: mockAdd } as never);
-
+    it('calls enqueueScoringJob with undefined threadId when not provided', async () => {
       mockHandleChatStream.mockResolvedValue(Symbol('stream'));
       mockCreateUIMessageStreamResponse.mockReturnValue(new Response('ok'));
 
@@ -213,31 +207,17 @@ describe('chatRoutes', () => {
       const { defaultOptions: hooks } = mockHandleChatStream.mock.calls[0][0];
       hooks.onFinish({ text: 'response', finishReason: 'stop', usage: {}, steps: [] });
 
-      await new Promise((r) => setTimeout(r, 10));
-      expect(mockAdd).not.toHaveBeenCalled();
+      expect(mockChatService.enqueueScoringJob).toHaveBeenCalledWith({
+        threadId: undefined,
+        agentId: 'my-agent',
+        traceId: 'test-trace-id',
+      });
     });
 
-    it('handles scoring queue add failure gracefully', async () => {
-      const mockAdd = vi.fn().mockRejectedValue(new Error('Redis down'));
-      setReviewsQueue({ add: mockAdd } as never);
-
-      mockHandleChatStream.mockResolvedValue(Symbol('stream'));
-      mockCreateUIMessageStreamResponse.mockReturnValue(new Response('ok'));
-
-      const app = createApp();
-
-      await app.request('/v1/chat/my-agent', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: [],
-          memory: { thread: 'thread-1' },
-        }),
-      });
-
-      const { defaultOptions: hooks } = mockHandleChatStream.mock.calls[0][0];
-      // Should not throw even when queue.add fails
-      expect(() => hooks.onFinish({ text: 'response' })).not.toThrow();
+    it('setReviewsQueue wires the queue to the service', () => {
+      const mockQueue = { add: vi.fn() } as never;
+      setReviewsQueue(mockQueue);
+      expect(mockChatService.setReviewsQueue).toHaveBeenCalledWith(mockQueue);
     });
   });
 });
