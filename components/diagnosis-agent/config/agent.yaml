@@ -1,0 +1,66 @@
+# diagnosis-agent, as its owners define it: what it is for, which model it
+# needs and which tools it uses. No code: kagent 1.x runs it from this file,
+# prompts/system.md and the runbooks under skills/.
+#
+# These are values for the chart agent-platform/profiles/kagent/agent. Where
+# things are in a cluster (the model route, the tool servers' addresses, the
+# credential) is not decided here but in
+# agent-deployments/clusters/<cluster>/workloads/diagnosis-agent/.
+
+# Shown to callers in the agent card.
+description: >-
+  Read-only diagnosis of a Sample App service after an alert. Call it with a
+  text naming the service and the alert. It reads cluster state in namespace
+  sample-app and answers with a suspected cause, the evidence and a recommended
+  version, as text ending in one JSON block.
+
+model:
+  # MODEL_ID of the conventions: diagnosis is the one place where the stronger
+  # model earns its cost. The gateway decides whether it is approved.
+  id: claude-sonnet-5-5
+
+tools:
+  # kagent's own tool server (kagent-tools 0.3.0), started with --read-only and
+  # only its Kubernetes provider. The four tools below are the whole of what the
+  # model is offered: read a list, read one object, read its description with
+  # its events, read a log.
+  #
+  # Not offered, on purpose:
+  #   k8s_get_events         returns every event of the namespace as JSON, with
+  #                          no limit: 169 KB on this cluster, about 40,000
+  #                          tokens, sent again with every later model call of
+  #                          the turn. k8s_describe_resource shows the events of
+  #                          one object in a few lines.
+  #   k8s_rollout            the only tool with `rollout history`, but the same
+  #                          tool restarts and undoes rollouts, so the server
+  #                          drops it in read-only mode. The runbook reads the
+  #                          ReplicaSets instead, which carry the same history.
+  #   k8s_generate_resource  calls a model provider directly, with its own key
+  #   k8s_wait               blocks a turn for up to its timeout
+  #   k8s_get_cluster_configuration, k8s_get_available_api_resources
+  #                          cluster-wide; the agent's rights end at one namespace
+  kubernetes:
+    description: Read-only Kubernetes tools for namespace sample-app (pods, logs, deployments, replicasets, and their events).
+    tools:
+      - k8s_get_resources
+      - k8s_describe_resource
+      - k8s_get_resource_yaml
+      - k8s_get_pod_logs
+
+  # observability-mcp (Grafana's MCP server, behind the gateway): one query
+  # tool per signal. Step 4 of the runbook says exactly which query to send.
+  #
+  # Three of the server's 20 tools, on purpose: every offered tool's
+  # description is sent to the model with each of its calls (the 20 are 31 KB;
+  # these three are 6 KB), and the `list_*` and dashboard tools invite a search
+  # for what the runbook already states. Names as the server reports them:
+  #   kubectl get remotemcpserver diagnosis-agent-observability -n kagent \
+  #     -o jsonpath='{range .status.discoveredTools[*]}{.name}{"\n"}{end}'
+  # kagent does not check a name against the server; a misspelt one is
+  # silently never offered.
+  observability:
+    description: Read-only queries of the Sample App's metrics (Prometheus) and traces (Tempo), and of the gateway's access log (Loki).
+    tools:
+      - query_prometheus
+      - search_tempo_traces
+      - query_loki_logs

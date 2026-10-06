@@ -1,0 +1,52 @@
+# From Alertmanager to the diagnosis automation: every firing alert with the
+# label diagnose="true" is posted to chat-assistant's alert hook through the
+# gateway, as the machine client `alert-automation`.
+#
+# Alertmanager gets a token from Keycloak with the client credentials grant
+# and sends it as `Authorization: Bearer`; the gateway validates it like any
+# other caller's.
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: AlertmanagerConfig
+metadata:
+  name: alert-automation
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- toYaml .Values.alertmanagerConfigLabels | nindent 4 }}
+spec:
+  route:
+    receiver: alert-hook
+    matchers:
+      - name: diagnose
+        matchType: "="
+        value: "true"
+    groupBy: [alertname, service]
+    # Alertmanager's default is to wait 30s for more alerts of the same group
+    # before the first notification. The demo cannot spare them.
+    groupWait: 0s
+    # How often Alertmanager looks at the group again once it has notified.
+    # Short on purpose. Only when one of these looks finds the alert resolved
+    # does Alertmanager forget that it notified, and treat the next firing as
+    # news. At 30s, an alert that resolved and fired again between two looks
+    # (a rollback, then the next bad release within the half minute: `task
+    # demo:reset` followed at once by `task demo:break`) counted as one alert
+    # that never stopped, and the hook was not called until repeatInterval had
+    # passed: seen as 51 seconds instead of 22, and it can be 5 minutes. The
+    # alert cannot fire again in under 15 seconds, so 5s always sees it resolved.
+    groupInterval: 5s
+    repeatInterval: {{ .Values.alert.repeatInterval }}
+  receivers:
+    - name: alert-hook
+      webhookConfigs:
+        - url: {{ required "alert.webhookUrl: the gateway URL of chat-assistant's /hooks/alert" .Values.alert.webhookUrl | quote }}
+          # The hook acts on firing alerts only.
+          sendResolved: false
+          httpConfig:
+            oauth2:
+              tokenUrl: {{ required "alert.tokenUrl: Keycloak's token endpoint" .Values.alert.tokenUrl | quote }}
+              clientId:
+                secret:
+                  name: {{ .Values.alert.oauthSecret }}
+                  key: client-id
+              clientSecret:
+                name: {{ .Values.alert.oauthSecret }}
+                key: client-secret

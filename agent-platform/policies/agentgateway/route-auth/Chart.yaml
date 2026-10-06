@@ -1,0 +1,5 @@
+apiVersion: v2
+name: route-auth
+description: Requires a verified bearer token on one gateway route, with optional rules on its claims
+type: application
+version: 0.1.0

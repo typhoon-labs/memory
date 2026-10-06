@@ -1,0 +1,5 @@
+apiVersion: v2
+name: mcp-route
+description: One MCP server behind the gateway - its backend, its route and which role may use which tool
+type: application
+version: 0.1.0

@@ -1,0 +1,36 @@
+# delivery-mcp: incident and change state, and the rules on them.
+# Picked up by ../../helmfile.yaml (workloads/*/helmfile.yaml).
+#
+#   delivery-mcp          the service, in namespace `tools`      values.yaml
+#   delivery-mcp-access   what it may do in `sample-app`         access/
+#
+# The image and the Sample App chart must be in the registry first:
+# `task demo:publish`.
+# The gateway route to it (/mcp/delivery) is not part of this file: it is the
+# release `delivery-mcp-route` in ../../platform/80-routes/helmfile.yaml, and
+# who may call which tool is in ../../domains/operations/delivery-mcp.yaml.
+commonLabels:
+  layer: workload
+
+# Not inherited from the root helmfile. With any other kubeconfig this context
+# does not exist, and helm fails before it changes anything.
+helmDefaults:
+  kubeContext: kind-agentgateway-demo
+
+releases:
+  # A Role and RoleBinding in `sample-app` for the ServiceAccount below. Both
+  # namespaces are created if missing, so this does not depend on the Sample
+  # App having been applied first.
+  - name: delivery-mcp-access
+    namespace: sample-app
+    createNamespace: true
+    chart: ./access
+
+  - name: delivery-mcp
+    namespace: tools
+    createNamespace: true
+    chart: ../../../../../agent-platform/charts/agent
+    values:
+      - values.yaml
+    wait: true
+    timeout: 120

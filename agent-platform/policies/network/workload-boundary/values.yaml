@@ -1,0 +1,84 @@
+# The network boundary of one namespace of agents or tool servers. Install it
+# once per namespace, in that namespace.
+#
+# WHY. A route in the gateway is not proof that nothing can go around it. With
+# no NetworkPolicy, any pod in the cluster can call a tool server or an agent
+# on its Service, and any pod can call the model provider's address. Then the
+# gateway's rules (who may call which tool, which models are approved) hold
+# only for callers polite enough to use it.
+#
+# WHAT. Four kinds of NetworkPolicy:
+#
+#   default-deny             every pod of the namespace: no connection in, none
+#                            out, unless a policy below allows it
+#   only-from-the-gateway    in: the gateway's proxy pods, on the ports the
+#                            workloads serve (`servingPorts`)
+#   only-to-the-platform     out: cluster DNS, the gateway, the identity
+#                            provider's keys, and the telemetry collector
+#   <exception name>         one per entry under `exceptions`: what a single
+#                            workload needs beyond that, written down with its
+#                            reason in the cluster's selection
+#
+# Everything else is refused, in both directions: another pod calling a tool
+# server or an agent directly, and a workload calling the model provider, the
+# internet or another namespace.
+#
+# WHAT IT CANNOT DO. NetworkPolicy works on addresses and ports. It does not
+# see paths, so "the identity provider's keys" is the identity provider's
+# port, and an exception for one path of a workload opens its whole port. It
+# also never stops the kubelet's probes or `kubectl port-forward`, which reach
+# a pod from its own node.
+#
+# It needs a network plugin that enforces NetworkPolicy. Checked on kind
+# 0.33 (kindnet), where a refused connection is dropped, so the caller sees a
+# timeout, not a refusal; a connection that enters through a NodePort is
+# judged by the address it came from outside the cluster; and a pod's own
+# node (the Kubernetes API, the kubelet, NodePorts) is refused like any other
+# destination unless a rule names it.
+#
+# Not for kagent's agents: they run in Agent Substrate's sandboxes and leave
+# through its egress gateway, which agent-platform/profiles/kagent/ bounds.
+
+# The gateway's proxy pods, and the port they listen on.
+gateway:
+  namespace: agentgateway-system
+  podLabels:
+    gateway.networking.k8s.io/gateway-name: agentgateway-proxy
+  port: 80
+
+# The container ports on which this namespace's workloads serve their callers.
+# Required: with none, the gateway could not reach anything here.
+servingPorts: []
+
+# Cluster DNS.
+dns:
+  namespace: kube-system
+  podLabels:
+    k8s-app: kube-dns
+
+# Where a workload fetches the keys to verify a caller's token (OIDC_JWKS_URL).
+identity:
+  namespace: keycloak
+  podLabels:
+    app.kubernetes.io/name: keycloak
+  port: 8080
+
+# Where a workload sends traces (OTEL_EXPORTER_OTLP_ENDPOINT): OTLP over gRPC
+# and over HTTP.
+collector:
+  namespace: telemetry
+  podLabels:
+    app.kubernetes.io/name: opentelemetry-collector
+  ports: [4317, 4318]
+
+# What single workloads need beyond the above. Each entry becomes one
+# NetworkPolicy named after its key:
+#
+#   <name>:
+#     podLabels: {...}     the workload's pods
+#     ingress: [...]       NetworkPolicy ingress rules, as in the Kubernetes API
+#     egress: [...]        NetworkPolicy egress rules
+#
+# Keep the list short and say why next to each entry: every line here is a
+# path that does not go through the gateway.
+exceptions: {}

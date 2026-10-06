@@ -1,0 +1,20 @@
+# kind has no load balancer. The proxy's Service becomes a NodePort on the
+# port that the kind cluster maps to the host.
+#
+# This is a Service overlay (strategic merge patch). Upstream does not
+# validate overlays and says they may change between releases, so re-check it
+# when the Agentgateway version changes.
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayParameters
+metadata:
+  name: agentgateway-proxy
+  namespace: {{ .Release.Namespace }}
+spec:
+  service:
+    spec:
+      type: NodePort
+      ports:
+        - name: http
+          port: 80
+          protocol: TCP
+          nodePort: {{ .Values.nodePort }}

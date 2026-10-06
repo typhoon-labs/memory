@@ -1,0 +1,30 @@
+# The model route: the only path from the cluster to a model provider.
+#
+#   AgentgatewayBackend `model-provider`   which provider, and the approved models
+#   HTTPRoute `model`                      /v1/messages, /v1/chat/completions, /v1/models
+#
+# Authentication is a separate release of
+# agent-platform/policies/agentgateway/route-auth that targets HTTPRoute `model`.
+#
+# Schema: Agentgateway 1.6, AgentgatewayBackend `spec.ai`
+# (https://agentgateway.dev/docs/kubernetes/latest/integrations/llm/providers/).
+
+# The Gateway this route attaches to.
+gateway:
+  name: agentgateway-proxy
+  namespace: agentgateway-system
+  listener: http
+
+route:
+  name: model
+backend:
+  name: model-provider
+
+# Provider selection and settings. The dev cluster's values are in
+# agent-deployments/clusters/dev/platform/model-provider.yaml, which documents
+# every field.
+modelProvider:
+  active: local
+  models: {}
+  local: {}
+  bedrock: {}

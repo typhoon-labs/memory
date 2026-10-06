@@ -1,0 +1,5 @@
+# Values for the release `observability-content` (chart local/observability),
+# from settings.yaml.
+alert:
+  webhookUrl: {{ .Values.alert.webhookUrl | quote }}
+  tokenUrl: {{ .Values.alert.tokenUrl | quote }}

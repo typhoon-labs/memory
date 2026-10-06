@@ -1,0 +1,54 @@
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: telemetry
+  namespace: {{ .Release.Namespace }}
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: {{ .Values.gateway.name }}
+  frontend:
+    # One span per request, with the HTTP attributes and, by traffic type, the
+    # gen_ai.* (model) and mcp.* (tool) attributes.
+    tracing:
+      backendRef:
+        name: {{ .Values.collector.service }}
+        namespace: {{ .Values.collector.namespace }}
+        port: {{ .Values.collector.port }}
+      protocol: GRPC
+      randomSampling: {{ .Values.tracing.randomSampling | quote }}
+      resources:
+        # Values are CEL expressions, so a constant is a quoted string.
+        - name: deployment.environment
+          expression: {{ .Values.tracing.environment | quote | squote }}
+      {{- if or .Values.tracing.caller .Values.tracing.llmContent }}
+      attributes:
+        add:
+          {{- if .Values.tracing.caller }}
+          # Who called, from the token the gateway has just verified. On a
+          # request without one (a preflight, a refusal with 401, a workload
+          # that presents a gateway key) the expressions do not resolve and the
+          # span simply has no such attribute.
+          - name: user.id
+            expression: jwt.preferred_username
+          - name: user.roles
+            expression: jwt.roles
+          - name: user.team
+            expression: jwt.team
+          {{- end }}
+          {{- if .Values.tracing.llmContent }}
+          - name: gen_ai.prompt
+            expression: llm.prompt
+          - name: gen_ai.completion
+            expression: llm.completion
+          {{- end }}
+      {{- end }}
+    # One log record per request, in addition to the line on the proxy's stdout.
+    accessLog:
+      otlp:
+        backendRef:
+          name: {{ .Values.collector.service }}
+          namespace: {{ .Values.collector.namespace }}
+          port: {{ .Values.collector.port }}
+        protocol: GRPC

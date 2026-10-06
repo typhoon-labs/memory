@@ -1,0 +1,19 @@
+image:
+  repository: quay.io/keycloak/keycloak
+  # Empty uses the chart's appVersion.
+  tag: ""
+
+# The address browsers use, and therefore the issuer in every token:
+# <publicUrl>/realms/demo. Host port 18081 maps to NodePort 30081.
+publicUrl: http://localhost:18081
+nodePort: 30081
+
+# Small on purpose: one pod, development mode, in-memory H2 database. The realm
+# is imported again on every pod start, so nothing persists and nothing drifts.
+resources:
+  requests:
+    cpu: 100m
+    memory: 384Mi
+  limits:
+    memory: 768Mi
+javaHeap: "-Xms128m -Xmx384m"

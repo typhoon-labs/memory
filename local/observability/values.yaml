@@ -1,0 +1,44 @@
+# What Grafana, Prometheus and Alertmanager are loaded with:
+#
+#   dashboards/*.json     each becomes a ConfigMap that Grafana's sidecar loads
+#   alerts/*.rules.yaml   each becomes a PrometheusRule
+#   the route from Alertmanager to the alert hook (below)
+#   the scrape of the Sample App (below)
+#
+# Released as `observability-content` in namespace `telemetry` by
+# agent-deployments/clusters/dev/platform/50-observability/helmfile.yaml. The
+# values that depend on the cluster are set there, in settings.yaml.
+
+alert:
+  # Required. The URL Alertmanager posts firing alerts to: chat-assistant's
+  # `POST /hooks/alert`, through the gateway.
+  webhookUrl: ""
+  # Required. Keycloak's token endpoint, as seen from a pod.
+  tokenUrl: ""
+  # The Secret, in this namespace, with the machine client's credentials under
+  # the keys `client-id` and `client-secret`. scripts/alert-secret.sh creates
+  # it from the Keycloak realm file, which is the only place the demo-only
+  # secret is written down.
+  oauthSecret: alert-automation-oauth
+  # While an alert keeps firing, Alertmanager sends it again this often. The
+  # hook opens one incident per service, so a repeat only fills in a diagnosis
+  # that is still missing.
+  repeatInterval: 5m
+
+sampleApp:
+  scrape:
+    enabled: true
+    # The namespace of the Sample App's release, and the labels its three
+    # Services share.
+    namespace: sample-app
+    serviceLabels:
+      app.kubernetes.io/part-of: sample-app
+      app.kubernetes.io/instance: sample-app
+    # Not the cluster's 30s: the search alert needs two scrapes of a new
+    # search-service pod before it can fire (alerts/sample-app.rules.yaml).
+    interval: 5s
+
+# Must equal `alertmanager.alertmanagerSpec.alertmanagerConfigSelector` in
+# stack/kube-prometheus-stack.yaml.
+alertmanagerConfigLabels:
+  alertmanager: demo

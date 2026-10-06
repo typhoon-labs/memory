@@ -1,0 +1,6 @@
+apiVersion: v2
+name: sample-app
+description: "The demo's Sample App: web, search-service and registration-service"
+type: application
+# Chart version. The service versions are image tags, set in values.yaml.
+version: 0.1.0

@@ -1,0 +1,47 @@
+# The three services on this machine, without Kubernetes. Used by
+# `task run-local` and `task stop-local`; images come from `task build`.
+#
+# Local dev ports are the ones in agent-platform/docs/conventions.md.
+# SEARCH_VERSION picks the search-service image, as searchService.image.tag
+# does in the cluster.
+name: sample-app-local
+
+x-service: &service
+  restart: "no"
+  read_only: true
+  user: "1000:1000"
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  # Lets `docker compose up --wait` return once the services answer.
+  healthcheck:
+    test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+    interval: 2s
+    timeout: 2s
+    retries: 5
+
+x-telemetry: &telemetry
+  DEPLOYMENT_ENVIRONMENT: dev
+  # Empty means "do not export traces".
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+
+services:
+  web:
+    <<: *service
+    image: ${REGISTRY:-localhost:5002}/web:${WEB_VERSION:-1.0.0}
+    ports: ["127.0.0.1:18182:8080"]
+    environment:
+      <<: *telemetry
+      SEARCH_SERVICE_URL: http://search-service:8080
+      REGISTRATION_SERVICE_URL: http://registration-service:8080
+
+  search-service:
+    <<: *service
+    image: ${REGISTRY:-localhost:5002}/search-service:${SEARCH_VERSION:-2.0.0}
+    ports: ["127.0.0.1:18183:8080"]
+    environment: *telemetry
+
+  registration-service:
+    <<: *service
+    image: ${REGISTRY:-localhost:5002}/registration-service:${REGISTRATION_VERSION:-1.0.0}
+    ports: ["127.0.0.1:18184:8080"]
+    environment: *telemetry

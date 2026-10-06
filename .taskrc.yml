@@ -1,0 +1,8 @@
+# Task settings for this repository.
+#
+# ENV_PRECEDENCE makes the `env` block of Taskfile.yml win over variables
+# already exported in the calling shell. Without it, a KUBECONFIG exported in
+# your shell would silently replace the repo-local one in every task, and a
+# task could act on another cluster. Checked with Task 3.54.0 (mise.toml).
+experiments:
+  ENV_PRECEDENCE: 1

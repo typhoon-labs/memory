@@ -1,0 +1,5 @@
+apiVersion: v2
+name: workload-model-access
+description: A second door to the gateway's model route, for workloads that cannot present a user's token - they present a key the gateway issued to them
+type: application
+version: 0.1.0

@@ -1,0 +1,5 @@
+apiVersion: v2
+name: gateway-rules
+description: Admission rules that keep a team from weakening the platform's gateway rules - no policy on the platform's routes, no second route to its backends, no backend that names what it protects
+type: application
+version: 0.1.0

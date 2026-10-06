@@ -1,0 +1,5 @@
+apiVersion: v2
+name: delivery-mcp-access
+description: What delivery-mcp may do in the Sample App's namespace, and nothing more.
+type: application
+version: 0.1.0

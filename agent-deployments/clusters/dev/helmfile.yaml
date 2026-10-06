@@ -1,0 +1,36 @@
+# Everything that runs in the dev cluster.
+#
+# This file is not edited to add a release. Create a directory with its own
+# helmfile.yaml and it is picked up by the globs below:
+#
+#   platform/<nn>-<name>/helmfile.yaml    shared platform services
+#   workloads/<name>/helmfile.yaml        one directory per workload
+#
+# Order: the two globs are processed in the order listed, and the matches of a
+# glob in lexical order, one sub-helmfile after another. `needs:` only orders
+# releases inside one sub-helmfile. Platform directories therefore carry a
+# two-digit prefix; the trunk uses 10 to 30, so later platform services start
+# at 40. Workloads must not depend on each other's order.
+#
+# Paths inside a sub-helmfile are relative to that sub-helmfile.
+#
+# Every sub-helmfile pins the cluster, because helmDefaults are not inherited:
+#
+#   helmDefaults:
+#     kubeContext: kind-agentgateway-demo
+#
+# and a hook that runs kubectl passes `--context kind-agentgateway-demo`.
+# Then a wrong kubeconfig makes helm and kubectl fail instead of acting on
+# another cluster. Apply through `task deploy`, which also names the
+# repo-local kubeconfig; a bare `helmfile sync` would read the shell's.
+#
+# Apply all of it:        task deploy
+# Apply one release:      task deploy -- -l name=<release>
+# Apply the trunk only:   task up      (selector layer=trunk)
+helmfiles:
+  - path: platform/*/helmfile.yaml
+  - path: workloads/*/helmfile.yaml
+
+# helmfile 1.8 fails when a glob matches nothing. Until the first workload has
+# a helmfile.yaml, that is the normal state, so warn instead.
+missingFileHandler: Warn

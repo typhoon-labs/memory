@@ -1,0 +1,25 @@
+# Telemetry values for the release `agentgateway` (the controller chart).
+# Owned by the observability workstream (platform/50-observability).
+#
+# `monitoring.enabled` makes the chart create three things in
+# agentgateway-system:
+#   ServiceMonitor `agentgateway`       scrapes the control plane, port 9092
+#   PodMonitor `agentgateway-proxy`     scrapes the proxy pods, port 15020
+#   ConfigMap `agentgateway-dashboard`  the ready-made "Agentgateway" Grafana
+#                                       dashboard, loaded by Grafana's sidecar
+# https://agentgateway.dev/docs/kubernetes/latest/documentation/observability/metrics/overview/
+#
+# The chart does not check that the ServiceMonitor and PodMonitor kinds exist,
+# and they arrive with kube-prometheus-stack (platform/50-observability),
+# which is installed after the trunk. With the flag simply set to true,
+# `task up` would fail on a new cluster. So the flag follows the cluster: it is
+# on when both kinds are installed. On a new cluster that is one more apply of
+# this release after kube-prometheus-stack, which `task observability:install`
+# does (`task deploy -- -l name=agentgateway`).
+#
+# The check runs kubectl, like the hook in helmfile.yaml: KUBECONFIG comes from
+# the command line (see Taskfile.yml), and naming the context makes it fail on
+# any kubeconfig but ours.
+{{- $kinds := exec "kubectl" (list "--context" "kind-agentgateway-demo" "get" "customresourcedefinitions" "servicemonitors.monitoring.coreos.com" "podmonitors.monitoring.coreos.com" "--ignore-not-found" "--output" "name") | trim }}
+monitoring:
+  enabled: {{ and (ne $kinds "") (eq (len (splitList "\n" $kinds)) 2) }}

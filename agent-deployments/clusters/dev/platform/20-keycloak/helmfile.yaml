@@ -1,0 +1,18 @@
+# Keycloak with the demo realm. Stands in for Okta; exists only on kind, so the
+# chart and the realm live under local/identity/.
+commonLabels:
+  layer: trunk
+
+# Every helm call names our context, so this file cannot be applied to another
+# cluster: with any other kubeconfig the context does not exist and helm fails.
+helmDefaults:
+  kubeContext: kind-agentgateway-demo
+
+releases:
+  - name: keycloak
+    namespace: keycloak
+    createNamespace: true
+    # Local chart: version in its Chart.yaml, Keycloak image pinned by appVersion.
+    chart: ../../../../../local/identity/keycloak
+    wait: true
+    timeout: 420

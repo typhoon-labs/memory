@@ -1,0 +1,6 @@
+# Not part of the chart: values for other charts, scripts, tasks and tests.
+stack/
+scripts/
+Taskfile.yml
+alerts/*.test.yaml
+.task/

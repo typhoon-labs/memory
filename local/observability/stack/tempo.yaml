@@ -1,0 +1,34 @@
+# Tempo as one process with local storage. Stands in for the trace side of the
+# organisation's operational backend; exists only on kind.
+#
+# Values for the release `tempo` in
+# agent-deployments/clusters/dev/platform/50-observability/helmfile.yaml, which
+# pins the chart version. Starting point:
+# https://agentgateway.dev/docs/kubernetes/latest/documentation/observability/otel-stack/
+#
+# Traces arrive from the OTel Collector over OTLP gRPC on 4317; Grafana queries
+# port 3100. Nothing is persistent: a restarted Tempo starts empty.
+persistence:
+  enabled: false
+
+tempo:
+  reportingEnabled: false
+  retention: 24h
+  # The receiver the collector uses. The chart's other default receivers
+  # (Jaeger, OpenCensus, OTLP over HTTP) stay: its Service template reads them,
+  # so they cannot be removed. Nothing sends to them.
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      # Not 1Gi: Tempo idles near 300 MiB here, but when it cuts a block (every
+      # half hour) or answers a burst of trace queries it took 500 to 700 MiB
+      # more for a while, reached 1Gi, and was restarted. Nothing is persistent,
+      # so a restart loses every trace: in the middle of a demo, the trace view.
+      memory: 2Gi

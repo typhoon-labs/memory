@@ -1,0 +1,33 @@
+# chat-assistant's alert hook behind the gateway: where Alertmanager posts a
+# firing alert, and who may.
+#
+#   from a pod      http://agentgateway-proxy.agentgateway-system.svc.cluster.local/hooks/alert
+#   from the host   http://localhost:18080/hooks/alert
+#
+# The assistant then opens the incident, and asks diagnosis-agent, as the
+# caller. Values for two releases in ../../platform/80-routes/helmfile.yaml:
+# `chat-assistant-alert-hook` (route, backend) and
+# `chat-assistant-alert-hook-auth` (allow, passthrough).
+
+route:
+  name: chat-assistant-alert-hook
+  paths:
+    - path: /hooks/alert
+      backendPath: /hooks/alert
+      method: POST
+    # The same endpoint under the assistant's A2A prefix. Without this entry
+    # the wider route /a2a/chat-assistant would carry it, for any signed-in
+    # caller; with it, the rule below applies on this path too.
+    - path: /a2a/chat-assistant/hooks
+      backendPath: /hooks
+
+backend:
+  service: chat-assistant
+  port: 8080
+
+# Who may call it: only the machine identity of the alert.
+allow:
+  - '"alert-automation" in jwt.roles'
+
+# The assistant receives the alert's own token and opens the incident with it.
+passthrough: true

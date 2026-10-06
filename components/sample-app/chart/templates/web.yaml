@@ -1,0 +1,4 @@
+{{- $backends := list
+  (dict "name" "SEARCH_SERVICE_URL" "value" "http://search-service:8080")
+  (dict "name" "REGISTRATION_SERVICE_URL" "value" "http://registration-service:8080") -}}
+{{ include "sample-app.workload" (dict "root" . "name" "web" "cfg" .Values.web "env" $backends) }}

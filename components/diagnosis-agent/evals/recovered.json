@@ -1,0 +1,16 @@
+{
+  "name": "recovered",
+  "description": "The same alert, arriving after the rollback: search-service runs 2.0.0 again and answers, and 2.1.0 is now the version the Deployment retains. An agent that reasons 'an alert fired, so roll back to the retained version' would recommend the broken release here. It must see that the current version is not failing and recommend staying on it.",
+  "requires": {
+    "search_status": 200,
+    "how": "task demo:reset (after at least one task demo:break, so that 2.1.0 is retained)"
+  },
+  "question": "Alert SearchErrorRateHigh is firing for service search-service. More than half of all searches have failed for 1 minute. Investigate and report the suspected cause, the evidence and the version to roll back to.",
+  "expect": {
+    "recommended_version": "2.0.0",
+    "suspected_cause_does_not_match": ["2\\.0\\.0 (is|has) (failing|a (bug|defect|regression))"],
+    "evidence_matches": ["2\\.0\\.0", "200|no error"],
+    "tools_called": ["k8s_get_resources", "k8s_get_pod_logs"],
+    "max_seconds": 45
+  }
+}

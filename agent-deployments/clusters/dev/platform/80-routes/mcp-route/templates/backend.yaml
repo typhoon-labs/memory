@@ -1,0 +1,17 @@
+{{- $name := required "route.name" .Values.route.name -}}
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayBackend
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  mcp:
+    sessionRouting: {{ .Values.backend.sessionRouting }}
+    targets:
+      - name: {{ $name }}
+        static:
+          backendRef:
+            name: {{ required "backend.service" .Values.backend.service }}
+          port: {{ .Values.backend.port }}
+          path: {{ .Values.backend.path | quote }}
+          protocol: StreamableHTTP

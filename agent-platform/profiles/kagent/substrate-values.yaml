@@ -1,0 +1,36 @@
+# Agent Substrate, the runtime every kagent 1.x agent runs on.
+# Values for chart oci://ghcr.io/kagent-dev/substrate/helm/substrate, 0.3.0-alpha3.
+#
+# Reusable baseline. What one cluster changes goes in that cluster's own values
+# file, listed after this one (agent-deployments/clusters/<name>/platform/40-kagent/).
+#
+# The chart alone does not give a working install: its pods wait for identity
+# material that only the `kubectl-ate` plugin creates. See
+# agent-deployments/clusters/dev/platform/40-kagent/scripts/bootstrap-identity.sh.
+
+# Which Secrets the egress gateway may read on behalf of an agent.
+#
+# An agent never holds a credential. kagent compiles `ModelConfig.apiKeySecret`
+# and `RemoteMCPServer.headersFrom` into a rule on the agent's egress policy,
+# and Substrate's egress gateway reads the Secret and writes the header as the
+# request leaves. This list is the grant for that read, and it is empty by
+# default: without an entry every pod is healthy and every model call fails
+# with 403.
+#
+# An atespace is named after the Kubernetes namespace of the Agent. Agents in
+# namespace `kagent` may use Secrets in namespace `kagent`, and nowhere else.
+credentialProvider:
+  namespacePolicies:
+    - atespace: kagent
+      allowedNamespaces: [kagent]
+
+# Substrate's own database (Actors, templates, snapshots index). The chart asks
+# for a whole CPU and 1 GiB; this is a small cluster with a handful of Actors.
+postgres:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 192Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi

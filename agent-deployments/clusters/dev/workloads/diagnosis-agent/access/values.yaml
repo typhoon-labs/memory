@@ -1,0 +1,7 @@
+# Who the Role is for: the ServiceAccount of diagnosis-agent's own tool server
+# (release `diagnosis-agent-tools`, ../tools-values.yaml). The agent itself has
+# no ServiceAccount and no access to the Kubernetes API: it runs in a sandbox
+# and reaches the cluster only through that server's tools.
+serviceAccount:
+  name: diagnosis-agent-tools
+  namespace: kagent

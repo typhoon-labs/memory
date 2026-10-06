@@ -1,0 +1,2 @@
+# 2.0.0 is the code in ../../src as it stands; this release changes no files.
+# The directory must exist because the Dockerfile copies releases/<VERSION>/.

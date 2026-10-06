@@ -1,0 +1,7 @@
+apiVersion: v2
+name: observability-mcp
+description: Grafana's MCP server in read-only mode, and its JWT-protected route on the gateway
+type: application
+version: 0.1.0
+# The server's version is its image tag (values: image.tag).
+appVersion: "2.0.1"

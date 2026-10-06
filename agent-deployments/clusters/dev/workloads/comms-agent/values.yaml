@@ -1,0 +1,61 @@
+# What the dev cluster runs of comms-agent. Values for the chart
+# agent-platform/charts/agent. Every variable is described in
+# components/comms-agent/.env.example.
+
+image:
+  repository: localhost:5002/comms-agent
+  # The version that runs. 0.1.1 is the first that starts with tracing on
+  # (OTEL_EXPORTER_OTLP_ENDPOINT below); 0.1.0 stopped at start-up with it.
+  tag: 0.1.1
+
+port: 8080
+
+env:
+  DEPLOYMENT_ENVIRONMENT: dev
+
+  # Whose tokens are trusted: the same three values as
+  # agent-deployments/access/identity.yaml. The agent verifies the caller's
+  # token, then forwards that same token on both of the calls below.
+  OIDC_ISSUER: http://localhost:18081/realms/demo
+  OIDC_AUDIENCE: agentgateway
+  OIDC_JWKS_URL: http://keycloak.keycloak.svc.cluster.local:8080/realms/demo/protocol/openid-connect/certs
+
+  # delivery-mcp through the gateway's MCP route
+  # (agent-deployments/clusters/dev/domains/operations/delivery-mcp.yaml).
+  DELIVERY_MCP_URL: http://agentgateway-proxy.agentgateway-system.svc.cluster.local/mcp/delivery
+
+  # The gateway's model route; the agent posts to <MODEL_BASE_URL>/v1/messages.
+  MODEL_BASE_URL: http://agentgateway-proxy.agentgateway-system.svc.cluster.local
+  # The draft is written with MODEL_ID. MODEL_ID_FAST is not used by this agent.
+  MODEL_ID: claude-sonnet-5-5
+  MODEL_ID_FAST: claude-haiku-4-5-20251001
+  # All the time the model gets to write a draft, with no retry. When the model
+  # is down the gateway answers 503 at once; when it is slow, the agent reports
+  # after this many seconds that no draft was written (outcome `error`).
+  MODEL_TIMEOUT_SECONDS: "20"
+
+  # The address in the agent card: the gateway's route to this agent, as a
+  # browser on the host sees it. The gateway rewrites the card's url to the
+  # address each client used, so this is only what a direct caller would read.
+  A2A_PUBLIC_URL: http://localhost:18080/a2a/comms-agent/
+
+  # Traces: to the dev cluster's OpenTelemetry Collector
+  # (platform/50-observability), as OTLP over HTTP.
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector.telemetry.svc.cluster.local:4318
+  OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+
+service:
+  type: ClusterIP
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 160Mi
+  limits:
+    cpu: "1"
+    memory: 384Mi
+
+serviceAccount:
+  # The agent calls nothing in the cluster's API; the account carries no rights.
+  create: true
+  name: comms-agent

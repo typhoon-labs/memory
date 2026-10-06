@@ -1,0 +1,30 @@
+{
+  "_comment": [
+    "Prices Langfuse uses to work out the cost of a model call, in US dollars per million tokens.",
+    "Each price is copied from the provider's own pricing page, named beside it, and from nowhere else.",
+    "If a price cannot be confirmed there, leave the model out: Langfuse then shows its tokens and no cost.",
+    "Applied by `task langfuse:prices` (prices.sh). Cached-token prices are not set: no call here uses the prompt cache."
+  ],
+  "models": [
+    {
+      "modelName": "claude-sonnet-5-5",
+      "matchPattern": "(?i)^(anthropic/)?claude-sonnet-5-5$",
+      "inputUsdPerMTok": 2,
+      "outputUsdPerMTok": 10,
+      "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "sourceRow": "Claude Sonnet 5.5: Base input tokens $2 / MTok, Output tokens $10 / MTok",
+      "modelIdSource": "https://platform.claude.com/docs/en/about-claude/models/overview (Claude API ID claude-sonnet-5-5)",
+      "readOn": "2026-10-06"
+    },
+    {
+      "modelName": "claude-haiku-4-5-20251001",
+      "matchPattern": "(?i)^(anthropic/)?claude-haiku-4-5(-20251001)?$",
+      "inputUsdPerMTok": 1,
+      "outputUsdPerMTok": 5,
+      "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "sourceRow": "Claude Haiku 4.5: Base input tokens $1 / MTok, Output tokens $5 / MTok",
+      "modelIdSource": "https://platform.claude.com/docs/en/about-claude/models/overview (Claude API ID claude-haiku-4-5-20251001)",
+      "readOn": "2026-10-06"
+    }
+  ]
+}

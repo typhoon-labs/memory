@@ -1,0 +1,61 @@
+{{- $workload := required "workload: the name of the workload this route is for" .Values.workload -}}
+{{- $prefix := printf "/workloads/%s/v1" $workload -}}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: model-{{ $workload }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  parentRefs:
+    - name: {{ .Values.gateway.name }}
+      namespace: {{ .Values.gateway.namespace }}
+      sectionName: {{ .Values.gateway.listener }}
+  rules:
+    # One rule per path the model route serves, each rewritten to the path the
+    # backend expects. Nothing else under the prefix is routed.
+    {{- range list "chat/completions" "messages" "models" }}
+    - matches:
+        - path:
+            type: PathPrefix
+            value: {{ $prefix }}/{{ . }}
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /v1/{{ . }}
+        # As on the model route: a provider key sent by a client is dropped.
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            remove:
+              - x-api-key
+      backendRefs:
+        - group: agentgateway.dev
+          kind: AgentgatewayBackend
+          name: {{ $.Values.backend.name }}
+    {{- end }}
+---
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: model-{{ $workload }}-auth
+  namespace: {{ .Release.Namespace }}
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: model-{{ $workload }}
+  traffic:
+    apiKeyAuthentication:
+      # Strict: no known key, no call (401). The key is read from
+      # `Authorization: Bearer <key>`, which is what kagent's egress adds.
+      mode: Strict
+      configMapSelector:
+        matchLabels:
+          agentgateway-demo/workload-key: {{ $workload }}
+    # A known key is not enough: it must be this workload's.
+    authorization:
+      action: Allow
+      policy:
+        matchExpressions:
+          - {{ printf "apiKey.workload == %q" $workload | quote }}

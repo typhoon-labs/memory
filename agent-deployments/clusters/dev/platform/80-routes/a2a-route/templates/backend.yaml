@@ -1,0 +1,11 @@
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayBackend
+metadata:
+  name: {{ required "route.name" .Values.route.name }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  # The a2a type tells the gateway to treat this traffic as A2A; the Service
+  # needs no appProtocol.
+  a2a:
+    host: {{ required "backend.host" .Values.backend.host | quote }}
+    port: {{ .Values.backend.port }}

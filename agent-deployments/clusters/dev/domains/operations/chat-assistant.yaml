@@ -1,0 +1,57 @@
+# chat-assistant behind the gateway: where the Chat UI and other A2A clients
+# reach it, and who may call it.
+#
+#   from a pod      http://agentgateway-proxy.agentgateway-system.svc.cluster.local/a2a/chat-assistant
+#   from the host   http://localhost:18080/a2a/chat-assistant
+#
+# Values for two releases in ../../platform/80-routes/helmfile.yaml:
+# `chat-assistant-route` (route, backend, cors, timeouts) and
+# `chat-assistant-route-auth` (allow, passthrough).
+
+route:
+  name: chat-assistant
+  path: /a2a/chat-assistant
+
+backend:
+  host: chat-assistant.agents.svc.cluster.local
+  port: 8080
+
+# Who may call it: CEL expressions on the verified token, any one of which
+# allows the caller. Empty: anyone with a valid token for audience
+# `agentgateway`. Chatting and reading the incident card are for every
+# signed-in role; each button's action is then decided where it lands, at the
+# delivery-mcp route or at the other agents' routes.
+allow: []
+
+# The assistant receives the caller's own token and uses it, unchanged, for
+# every call it makes: delivery-mcp, the other agents and the model route.
+passthrough: true
+
+# The Chat UI is served from http://localhost:18083 and calls this route from
+# the browser, which is another origin. The gateway answers the preflight
+# (OPTIONS, which carries no token) itself.
+cors:
+  allowOrigins:
+    - http://localhost:18083
+  allowMethods: [GET, POST]
+  allowHeaders:
+    - Authorization
+    - Content-Type
+    - Accept
+    - A2A-Version
+    - A2A-Extensions
+    - X-A2A-Extensions
+    # W3C trace context, which the assistant also accepts.
+    - traceparent
+    - tracestate
+  exposeHeaders:
+    - A2A-Extensions
+    - X-A2A-Extensions
+    - WWW-Authenticate
+  maxAge: 600
+
+# An apply-and-verify is answered as a stream of events that can last minutes,
+# with silences while the rollout is verified.
+timeouts:
+  request: 300s
+  responseIdle: 300s

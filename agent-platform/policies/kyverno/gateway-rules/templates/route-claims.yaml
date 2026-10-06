@@ -1,0 +1,100 @@
+# A route from outside the platform's releases, attached to a platform
+# Gateway, may not lead around a platform route or take its traffic.
+#
+#   - A route to a platform backend or Service is a second door to it, without
+#     the policy that guards the first.
+#   - Among routes on one Gateway the most specific match wins, whoever owns
+#     the route: a host name beats none, an exact path beats a prefix, a longer
+#     prefix beats a shorter one. A route that claims a platform route's path,
+#     or any host name, receives that route's requests and their tokens.
+#
+# A route to the team's own backend, under a path no platform route has, is
+# not affected.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: gateway-route-claims
+spec:
+  validationActions:
+    - Deny
+  evaluation:
+    background:
+      enabled: false
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["gateway.networking.k8s.io"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["httproutes", "grpcroutes"]
+  matchConditions:
+    {{- include "gateway-rules.notAPlatformRelease" . | nindent 4 }}
+  variables:
+    - name: ns
+      expression: object.metadata.namespace
+    - name: self
+      expression: object.kind + " " + variables.ns + "/" + object.metadata.name
+    # "namespace/name" of the Gateways that a platform release owns.
+    - name: gateways
+      expression: >-
+        dyn(resource.List("gateway.networking.k8s.io/v1", "gateways", "").items)
+          .filter(i, {{ include "gateway-rules.released" "i" }})
+          .map(i, i.metadata.namespace + "/" + i.metadata.name)
+    - name: onPlatformGateway
+      expression: >-
+        object.spec.?parentRefs.orValue([])
+          .exists(p, (p.?namespace.orValue(variables.ns) + "/" + p.name) in variables.gateways)
+    # "Kind/namespace/name" of the backends and Services that a platform release owns.
+    - name: ownedBackends
+      expression: >-
+        dyn(resource.List("agentgateway.dev/v1alpha1", "agentgatewaybackends", "").items)
+          .filter(i, {{ include "gateway-rules.released" "i" }})
+          .map(i, "AgentgatewayBackend/" + i.metadata.namespace + "/" + i.metadata.name)
+        + dyn(resource.List("v1", "services", "").items)
+          .filter(i, {{ include "gateway-rules.released" "i" }})
+          .map(i, "Service/" + i.metadata.namespace + "/" + i.metadata.name)
+    - name: usedBackends
+      expression: >-
+        variables.ownedBackends.filter(o,
+          object.spec.?rules.orValue([]).exists(r,
+            r.?backendRefs.orValue([]).exists(b,
+              (b.?kind.orValue("Service") + "/" + b.?namespace.orValue(variables.ns) + "/" + b.name) == o)))
+    # The platform's routes whose path this route claims: the same path, or
+    # one under it. This route itself is left out, so that it can be updated.
+    - name: claimedRoutes
+      expression: >-
+        dyn(resource.List("gateway.networking.k8s.io/v1", "httproutes", "").items)
+          .filter(i, {{ include "gateway-rules.released" "i" }}
+            && !(i.metadata.namespace == variables.ns && i.metadata.name == object.metadata.name))
+          .filter(i, i.spec.?rules.orValue([]).exists(ir, ir.?matches.orValue([]).exists(im,
+            im.?path.?value.hasValue()
+            && object.spec.?rules.orValue([]).exists(r, r.?matches.orValue([]).exists(m,
+              m.?path.?value.hasValue()
+              && (m.path.value == im.path.value
+                  || m.path.value.startsWith(im.path.value.endsWith("/") ? im.path.value : im.path.value + "/")))))))
+          .map(i, i.metadata.namespace + "/" + i.metadata.name)
+    - name: regexPath
+      expression: >-
+        object.spec.?rules.orValue([]).exists(r, r.?matches.orValue([]).exists(m,
+          m.?path.?type.orValue("") == "RegularExpression"))
+  validations:
+    - expression: "!variables.onPlatformGateway || variables.usedBackends.size() == 0"
+      messageExpression: >-
+        variables.self + " sends traffic to " + variables.usedBackends.join(", ")
+        + ", which a platform release owns. That would be a second way in, without the policy on the platform's route. "
+        + {{ .Values.platform.changeHint | toJson }}
+    - expression: "!variables.onPlatformGateway || variables.claimedRoutes.size() == 0"
+      messageExpression: >-
+        variables.self + " claims a path at or under the path of platform route "
+        + variables.claimedRoutes.join(", ")
+        + ". The more specific match wins on a Gateway, so this route would take that route's requests. Use a path of your own. "
+        + {{ .Values.platform.changeHint | toJson }}
+    - expression: "!variables.onPlatformGateway || !variables.regexPath"
+      messageExpression: >-
+        variables.self + " matches paths by regular expression on a platform Gateway. "
+        + "Whether it takes a platform route's requests cannot be checked; use an Exact or PathPrefix match. "
+        + {{ .Values.platform.changeHint | toJson }}
+    - expression: "!variables.onPlatformGateway || object.spec.?hostnames.orValue([]).size() == 0"
+      messageExpression: >-
+        variables.self + " claims host names on a platform Gateway. "
+        + "A route with a host name wins over every route without one, so it would take the platform routes' requests for that host. Leave hostnames out. "
+        + {{ .Values.platform.changeHint | toJson }}

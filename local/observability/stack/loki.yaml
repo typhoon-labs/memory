@@ -1,0 +1,102 @@
+# Loki as one process with local storage. Stands in for the log side of the
+# organisation's operational backend; exists only on kind.
+#
+# Values for the release `loki` in
+# agent-deployments/clusters/dev/platform/50-observability/helmfile.yaml, which
+# pins the chart version. Starting point: the "local storage" option of
+# https://agentgateway.dev/docs/kubernetes/latest/documentation/observability/otel-stack/
+#
+# Logs arrive from the OTel Collector over OTLP at /otlp. Nothing is
+# persistent: a restarted Loki starts empty.
+deploymentMode: SingleBinary
+
+loki:
+  auth_enabled: false
+  commonConfig:
+    replication_factor: 1
+  schemaConfig:
+    configs:
+      - from: "2024-04-01"
+        store: tsdb
+        object_store: filesystem
+        schema: v13
+        index:
+          prefix: loki_index_
+          period: 24h
+  storage:
+    type: filesystem
+  limits_config:
+    # OTLP attributes that are not index labels are kept as structured metadata.
+    allow_structured_metadata: true
+    retention_period: 24h
+  analytics:
+    reporting_enabled: false
+
+singleBinary:
+  replicas: 1
+  persistence:
+    enabled: false
+  # The chart mounts a data volume only when persistence is on, and the root
+  # filesystem is read-only, so Loki needs this one to write anything.
+  extraVolumes:
+    - name: storage
+      emptyDir: {}
+  extraVolumeMounts:
+    - name: storage
+      mountPath: /var/loki
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+
+# --- Not installed -----------------------------------------------------------
+# The two memcached caches: the chunk cache alone requests 9.8 GiB by default.
+chunksCache:
+  enabled: false
+resultsCache:
+  enabled: false
+# The sidecar that loads alerting rules into Loki; rules live in Prometheus.
+sidecar:
+  rules:
+    enabled: false
+gateway:
+  enabled: false
+minio:
+  enabled: false
+test:
+  enabled: false
+lokiCanary:
+  enabled: false
+monitoring:
+  selfMonitoring:
+    enabled: false
+    grafanaAgent:
+      installOperator: false
+
+# The other deployment modes' components.
+backend:
+  replicas: 0
+read:
+  replicas: 0
+write:
+  replicas: 0
+ingester:
+  replicas: 0
+querier:
+  replicas: 0
+queryFrontend:
+  replicas: 0
+queryScheduler:
+  replicas: 0
+distributor:
+  replicas: 0
+compactor:
+  replicas: 0
+indexGateway:
+  replicas: 0
+bloomCompactor:
+  replicas: 0
+bloomGateway:
+  replicas: 0

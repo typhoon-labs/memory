@@ -1,0 +1,44 @@
+# diagnosis-agent's own Kubernetes tool server: kagent's tool server image,
+# cut down to what a read-only diagnosis needs.
+# Values for chart oci://ghcr.io/kagent-dev/tools/helm/kagent-tools, 0.3.0.
+#
+# The same server ships inside the kagent chart, where it runs as
+# cluster-admin and serves 124 tools. That copy is switched off
+# (agent-platform/profiles/kagent/kagent-values.yaml). This one differs in
+# three ways, each closing a different gap:
+
+tools:
+  # 1. Only the Kubernetes provider. No Helm, Istio, Cilium, Argo, Prometheus,
+  #    Kubescape, and no `shell` tool.
+  enabledTools:
+    - k8s
+  # 2. Write tools are not registered at all, so they cannot be called even by
+  #    a client that talks to this server directly.
+  args:
+    - "--read-only"
+  loglevel: info
+  resources:
+    requests:
+      cpu: 20m
+      memory: 64Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+# 3. No ClusterRole. The chart's choices are cluster-admin or read everything
+#    in the cluster; this server gets neither. The chart still creates the
+#    ServiceAccount `diagnosis-agent-tools`, and the only rights it has are the
+#    Role in namespace sample-app (./access).
+rbac:
+  create: false
+
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL

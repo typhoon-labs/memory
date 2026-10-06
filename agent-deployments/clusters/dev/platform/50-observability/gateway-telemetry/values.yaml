@@ -1,0 +1,41 @@
+# Tells the dev cluster's Gateway where to send traces and access logs. One
+# AgentgatewayPolicy that targets the Gateway, in the Gateway's namespace.
+#
+# Metrics are not configured here: Prometheus scrapes them, through the
+# ServiceMonitor and PodMonitor of the Agentgateway chart (`monitoring.enabled`
+# in ../../10-agentgateway/telemetry.yaml.gotmpl).
+#
+# Schema: Agentgateway 1.6 (agentgateway.dev/v1alpha1), `frontend.tracing` and
+# `frontend.accessLog`, from
+#   https://agentgateway.dev/docs/kubernetes/latest/documentation/observability/traces/setup/
+#   https://agentgateway.dev/docs/kubernetes/latest/documentation/observability/access-logs/export/
+#   https://agentgateway.dev/docs/kubernetes/latest/documentation/observability/traces/attribute-reference/
+
+# The Gateway to configure.
+gateway:
+  name: agentgateway-proxy
+
+# The collector's Service. The gateway sends OTLP over gRPC.
+collector:
+  service: otel-collector
+  namespace: telemetry
+  port: 4317
+
+tracing:
+  # The share of requests that arrive without trace context and get a new
+  # trace: "true" is all of them. A request that arrives with a sampled
+  # `traceparent` is always traced.
+  randomSampling: "true"
+  # deployment.environment on every span, as every component sets it.
+  environment: dev
+  # Put the verified caller on every span of a request that carries a token:
+  # user.id (the claim preferred_username), user.roles and user.team. `user.id`
+  # is the attribute Langfuse reads as a trace's user, so a trace there says
+  # who asked; in Tempo the same attribute finds one person's requests.
+  caller: true
+  # Put the prompt and the completion of a model call on its span, as
+  # gen_ai.prompt and gen_ai.completion. The gateway records no content unless
+  # an expression asks for it, and these are the names Langfuse reads as the
+  # input and output of a generation. Set from `langfuse.enabled` in
+  # ../settings.yaml; the collector removes both on the way to Tempo.
+  llmContent: false

@@ -1,0 +1,13 @@
+# Project tool versions. `mise trust && mise install` in this directory.
+# Global mise settings are not changed; these apply only inside this repository.
+
+[tools]
+# kagent 1.x needs Kubernetes 1.37+; kubectl must be within one minor of the cluster.
+kubectl = "1.37.1"
+# Agentgateway 1.6 supports Helm >= 3.12. Stay on Helm 3 until Helm 4 is checked.
+helm = "3.19.0"
+# kind >= 0.32 is needed for the kindest/node v1.37 image and top-level runtimeConfig.
+kind = "0.33.0"
+helmfile = "1.8.1"
+task = "3.54.0"
+jq = "1.8.2"

@@ -1,0 +1,99 @@
+# One declarative agent on kagent 1.x. Everything is named after the release,
+# and the release goes in the namespace of the WorkerPool (kagent resolves
+# every reference in the Agent's own namespace).
+#
+#   ConfigMap <release>-prompt      the system prompt
+#   ConfigMap <release>-runbooks    text the prompt includes
+#   ModelConfig                     which model, through which gateway route,
+#                                   with which credential
+#   RemoteMCPServer, one per tool server
+#   Harness                         the runtime image and where it runs
+#   AgentTemplate                   prompt, model and tool bindings
+#   Agent                           pairs the two; this is what callers address
+#   HTTPRoute, AgentgatewayBackend  the A2A route (its policy is a separate release)
+#
+# Schema: api.kagent.dev/v1alpha3 as served by kagent 1.0.0-alpha7
+# (https://kagent.dev/docs/kagent/1.x/reference/api-ref/) and
+# agentgateway.dev/v1alpha1 as served by Agentgateway 1.6.
+#
+# A workload sets these in
+# agent-deployments/clusters/<cluster>/workloads/<name>/values.yaml.gotmpl,
+# reading the prompt and runbooks from the component's own directory.
+
+# Shown to callers in the agent card, verbatim.
+description: ""
+
+# The system prompt. kagent renders it as a Go template when it compiles the
+# agent: {{ .AgentTemplateName }}, {{ .Description }}, {{ .ToolNames }} and
+# {{ include "runbooks/<key>" }} are available.
+prompt: ""
+
+# name: text. Each becomes a key of ConfigMap <release>-runbooks.
+runbooks: {}
+
+# Optional JSON Schema for the final answer (kagent's structured output).
+# Not tried in this repository. Read the warning in
+# templates/agenttemplate.yaml before setting it.
+outputSchema: {}
+
+model:
+  # A model the gateway's model route approves.
+  id: ""
+  # Where the agent sends model calls: a gateway route, never a provider.
+  # kagent appends /chat/completions (OpenAI wire format).
+  baseUrl: ""
+  # The credential the agent presents to that route. The agent never holds it:
+  # Substrate's egress gateway reads the Secret and sets the header
+  # `Authorization: Bearer <value>` as the request leaves the sandbox.
+  credential:
+    # Secret in the release namespace, created outside git.
+    secretName: ""
+    secretKey: AGENTGATEWAY_API_KEY
+  # false for an endpoint that cannot stream; a turn fails on every call otherwise.
+  stream: true
+
+harness:
+  # kagent's own runtime (Go ADK), pinned by digest: a tag is rejected.
+  # This digest is tag 1.0.0-alpha7.
+  image: ghcr.io/kagent-dev/kagent/golang-adk@sha256:215417b5401310bb496ae1687bb8622f93fd19991a218c6a218987836e71da84
+  # A WorkerPool in the release namespace.
+  workerPool: kagent-default
+  # Where an Actor's state goes between turns. The default is the bucket of
+  # Substrate's bundled object store.
+  snapshotLocation: s3://ate-snapshots/kagent/
+  # Literal environment for the runtime, NAME: value. No secrets: the schema
+  # has no secret-backed source.
+  env: {}
+
+# MCP servers the agent may use, and which of their tools. A map, so that the
+# component can name the tools and the cluster can give the address.
+#
+# What an agent can reach on the network is derived from the servers switched
+# on here and from model.baseUrl, and from nothing else: Substrate denies
+# every other destination. A server that is off is unreachable, not just unused.
+tools: {}
+# kubernetes:                     RemoteMCPServer <release>-kubernetes
+#   enabled: true                 off unless true
+#   description: "..."            required by the API
+#   url: http://...               Streamable HTTP endpoint
+#   timeout: 30s
+#   tools: [a, b]                 the only tools offered to the model; required
+#   authorization:                optional: a fixed Authorization header value
+#     secretName: ""              from a Secret in the release namespace. The
+#     secretKey: ""               value is sent as is, so it includes "Bearer ".
+
+# The route callers use: <gateway>/a2a/<release>, A2A over JSON-RPC. The
+# HTTPRoute is named after the release; protect it with a release of
+# agent-platform/policies/agentgateway/route-auth (passthrough: true).
+a2a:
+  enabled: true
+  gateway:
+    name: agentgateway-proxy
+    namespace: agentgateway-system
+    listener: http
+  pathPrefix: ""          # default /a2a/<release>
+  # The kagent controller serves every agent's A2A endpoint on one port, at
+  # /agents/<namespace>/<agent>. The route exposes this agent's path only.
+  controller:
+    host: ""              # default kagent-controller.<release namespace>.svc.cluster.local
+    port: 8083

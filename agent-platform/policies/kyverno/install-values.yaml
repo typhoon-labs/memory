@@ -1,0 +1,62 @@
+# Kyverno, as small as it goes: the admission controller and nothing else.
+# Values for the upstream chart oci://ghcr.io/kyverno/charts/kyverno, checked
+# with chart 3.9.1 (Kyverno v1.19.1) on Kubernetes 1.37.
+#
+# Kyverno is four controllers. Only the first is needed to refuse a resource
+# at admission, which is all this platform uses it for:
+#
+#   admission controller    answers the API server's webhook        on, 1 replica
+#   background controller   generate and mutate-existing rules      off
+#   reports controller      policy reports and background scans     off
+#   cleanup controller      cleanup policies and TTL labels         off
+#
+# One replica means that while its pod is away (a restart, a node drain) a
+# resource that a policy covers cannot be created or changed: the policies in
+# ./gateway-rules fail closed. Nothing else in the cluster is sent to Kyverno,
+# so workloads keep starting and Helm releases of workloads keep applying. For
+# anything but a demo, run two or more replicas.
+
+admissionController:
+  replicas: 1
+  container:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        memory: 384Mi
+
+backgroundController:
+  enabled: false
+reportsController:
+  enabled: false
+cleanupController:
+  enabled: false
+
+features:
+  # Reports need the reports controller.
+  admissionReports:
+    enabled: false
+  aggregateReports:
+    enabled: false
+  policyReports:
+    enabled: false
+  validatingAdmissionPolicyReports:
+    enabled: false
+  backgroundScan:
+    enabled: false
+  # The rules in ./gateway-rules look other resources up, which a Kubernetes
+  # ValidatingAdmissionPolicy cannot do, so none can be generated from them.
+  generateValidatingAdmissionPolicy:
+    enabled: false
+
+crds:
+  # A post-upgrade job that rewrites stored objects of older Kyverno versions.
+  # There are none on a new installation.
+  migration:
+    enabled: false
+  # The chart's switches for single resource kinds (`crds.groups`) are left
+  # alone. Tried on 3.9.1: without ClusterPolicy, Policy, PolicyException and
+  # UpdateRequest the admission controller does not start, and those are the
+  # large ones; the six that can go (cleanup policies and reports) are a few
+  # kilobytes each.

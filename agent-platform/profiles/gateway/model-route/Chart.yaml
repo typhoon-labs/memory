@@ -1,0 +1,5 @@
+apiVersion: v2
+name: model-route
+description: The gateway's model route - one LLM backend and the route that exposes it
+type: application
+version: 0.1.0

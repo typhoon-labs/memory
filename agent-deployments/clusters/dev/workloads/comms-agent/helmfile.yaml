@@ -1,0 +1,25 @@
+# comms-agent: drafts a status update for an incident; it does not post.
+# Picked up by ../../helmfile.yaml (workloads/*/helmfile.yaml).
+#
+# The image must be in the registry first: `task demo:publish`, or
+# `task comms-agent:build comms-agent:push` for this one alone.
+# The gateway route to it (/a2a/comms-agent) is not part of this file: it is the
+# release `comms-agent-route` in ../../platform/80-routes/helmfile.yaml, and who
+# may call it is in ../../domains/operations/comms-agent.yaml.
+commonLabels:
+  layer: workload
+
+# Not inherited from the root helmfile. With any other kubeconfig this context
+# does not exist, and helm fails before it changes anything.
+helmDefaults:
+  kubeContext: kind-agentgateway-demo
+
+releases:
+  - name: comms-agent
+    namespace: agents
+    createNamespace: true
+    chart: ../../../../../agent-platform/charts/agent
+    values:
+      - values.yaml
+    wait: true
+    timeout: 120

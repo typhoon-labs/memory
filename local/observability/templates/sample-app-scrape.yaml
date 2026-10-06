@@ -1,0 +1,27 @@
+{{- with .Values.sampleApp.scrape }}
+{{- if .enabled }}
+# Scrapes the Sample App's three Services (web, search-service,
+# registration-service) at /metrics.
+#
+# It lives here and not in the Sample App's release, although that chart can
+# create one (`serviceMonitor.enabled`): delivery-mcp applies a change by
+# upgrading that release and may patch only the search-service Deployment, so
+# a ServiceMonitor inside the release makes its upgrade fail.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: sample-app
+  namespace: {{ $.Release.Namespace }}
+spec:
+  namespaceSelector:
+    matchNames:
+      - {{ .namespace }}
+  selector:
+    matchLabels:
+      {{- toYaml .serviceLabels | nindent 6 }}
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: {{ .interval }}
+{{- end }}
+{{- end }}

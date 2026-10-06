@@ -1,0 +1,63 @@
+# What the dev cluster runs of delivery-mcp. Values for the chart
+# agent-platform/charts/agent. Every variable is described in
+# components/delivery-mcp/README.md.
+
+image:
+  repository: localhost:5002/delivery-mcp
+  # The version that runs. 0.1.1 is the first that starts with tracing on
+  # (OTEL_EXPORTER_OTLP_ENDPOINT below); 0.1.0 stopped at start-up with it.
+  tag: 0.1.1
+
+port: 8080
+
+env:
+  DEPLOYMENT_ENVIRONMENT: dev
+
+  # Whose tokens are trusted: the same three values as
+  # agent-deployments/access/identity.yaml. The service verifies every caller
+  # itself, whatever the gateway did before it.
+  OIDC_ISSUER: http://localhost:18081/realms/demo
+  OIDC_AUDIENCE: agentgateway
+  OIDC_JWKS_URL: http://keycloak.keycloak.svc.cluster.local:8080/realms/demo/protocol/openid-connect/certs
+
+  # Changes are applied by upgrading the Helm release `sample-app` in namespace
+  # `sample-app`, with the rights in access/ (release delivery-mcp-access).
+  APPLIER: helm
+  # helm needs the Sample App chart, at the version the release was installed
+  # from. `task demo:publish` (or `task sample-app:chart:push`) pushes it to
+  # the local registry as an OCI chart; this is that registry as a pod sees it.
+  HELM_CHART_REF: oci://agentgateway-demo-registry:5000/charts/sample-app
+  HELM_CHART_VERSION: 0.1.0
+  # The local registry speaks HTTP.
+  HELM_PLAIN_HTTP: "true"
+
+  # The earlier versions a change may return to. 2.1.0 is the faulty one.
+  RETAINED_VERSIONS: 2.0.0
+
+  # A change is `applied` only after this request answers 200 with a result.
+  VERIFY_SEARCH_URL: http://search-service.sample-app.svc.cluster.local:8080/search?q=red
+  VERIFY_TIMEOUT_SECONDS: "90"
+
+  # restart_workload deletes the pods this selects; {service} is the service's name.
+  RESTART_LABEL_SELECTOR: app.kubernetes.io/instance=sample-app,app.kubernetes.io/name={service}
+
+  # Traces: to the dev cluster's OpenTelemetry Collector
+  # (platform/50-observability), as OTLP over HTTP.
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector.telemetry.svc.cluster.local:4318
+  OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+
+service:
+  type: ClusterIP
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: "1"
+    memory: 384Mi
+
+serviceAccount:
+  create: true
+  # Named in access/values.yaml: the Role in `sample-app` is bound to it.
+  name: delivery-mcp

@@ -1,0 +1,45 @@
+{{- $tools := include "kagent-agent.tools" . | fromJsonArray -}}
+# What the agent does: its model, its prompt and the tools it may call.
+apiVersion: api.kagent.dev/v1alpha3
+kind: AgentTemplate
+metadata:
+  name: {{ .Release.Name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kagent-agent.labels" . | nindent 4 }}
+spec:
+  description: {{ required "description: shown in the agent card" .Values.description | quote }}
+  modelConfig:
+    name: {{ .Release.Name }}
+  systemPromptFrom:
+    name: {{ .Release.Name }}-prompt
+    key: system
+  # Go templating of the prompt, with the runbooks as {{ "{{" }} include "runbooks/<key>" {{ "}}" }}.
+  promptTemplate:
+    dataSources:
+      - name: {{ .Release.Name }}-runbooks
+        alias: runbooks
+  {{- with .Values.outputSchema }}
+  # Per kagent's documentation, not tried here: the runtime validates the
+  # final answer against this schema and returns it as a JSON data part, with
+  # no fallback to text. An answer that is not exactly this JSON fails the
+  # whole turn, and the caller gets no prose.
+  outputSchema:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- if $tools }}
+  tools:
+    {{- range $tools }}
+    - mcp:
+        server:
+          kind: RemoteMCPServer
+          name: {{ $.Release.Name }}-{{ .name }}
+        {{- if not .tools }}
+        {{- fail (printf "tools[%s].tools is empty: kagent would expose every tool the server has. List the tools." .name) }}
+        {{- end }}
+        # Only these reach the model. kagent does not check the names against
+        # the server: a misspelt tool is simply never offered.
+        tools:
+          {{- toYaml .tools | nindent 10 }}
+    {{- end }}
+  {{- end }}

@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: keycloak-realm
+  namespace: {{ .Release.Namespace }}
+data:
+  demo-realm.json: |-
+{{ .Files.Get "files/demo-realm.json" | indent 4 }}

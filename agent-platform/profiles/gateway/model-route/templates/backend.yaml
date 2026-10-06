@@ -1,0 +1,71 @@
+{{- $p := .Values.modelProvider -}}
+{{- $models := list (required "modelProvider.models.default" $p.models.default) (required "modelProvider.models.fast" $p.models.fast) -}}
+{{- if not (has $p.active (list "local" "bedrock")) -}}
+{{- fail (printf "modelProvider.active must be local or bedrock, got %q" $p.active) -}}
+{{- end -}}
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayBackend
+metadata:
+  name: {{ .Values.backend.name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    model-provider: {{ $p.active }}
+spec:
+  ai:
+    provider:
+      {{- if eq $p.active "local" }}
+      # An Anthropic Messages API at a custom address. No `policies.tls`, so the
+      # gateway connects over plain HTTP.
+      anthropic: {}
+      host: {{ required "modelProvider.local.host" $p.local.host | quote }}
+      port: {{ required "modelProvider.local.port" $p.local.port }}
+      # Required with a custom host: without it, an OpenAI-format request is
+      # translated but still sent to /v1/chat/completions upstream.
+      pathPrefix: {{ $p.local.pathPrefix | default "/v1" | quote }}
+      {{- else }}
+      bedrock:
+        region: {{ required "modelProvider.bedrock.region" $p.bedrock.region | quote }}
+      {{- end }}
+  policies:
+    {{- if eq $p.active "local" }}
+    {{- with $p.local.credentialSecret }}
+    # The Secret's `Authorization` key is sent to the endpoint as x-api-key.
+    auth:
+      secretRef:
+        name: {{ . }}
+    {{- end }}
+    {{- else }}
+    {{- with $p.bedrock.credentialSecret }}
+    # Secret keys: accessKey, secretKey and optionally sessionToken. Without a
+    # Secret the proxy uses the ambient AWS credentials of its pod.
+    auth:
+      aws:
+        secretRef:
+          name: {{ . }}
+    {{- end }}
+    {{- end }}
+    # Approved models. The backend refuses a request whose `model` is not in
+    # the list with 403, whatever the caller's token allows. Reading the list of
+    # models (GET) carries no model and is allowed.
+    authorization:
+      action: Allow
+      policy:
+        matchExpressions:
+          - {{ printf "request.method == \"GET\" || json(request.body).model in %s" (toJson $models) | quote }}
+    ai:
+      # How each path is handled. Clients may use either request format; the
+      # gateway translates to the provider's own.
+      routes:
+        "/v1/messages/count_tokens": AnthropicTokenCount
+        "/v1/messages": Messages
+        "/v1/chat/completions": Completions
+        "/v1/models": Passthrough
+        # Anything else under the route's paths, such as /v1/models/<id>.
+        "*": Passthrough
+      {{- if eq $p.active "bedrock" }}
+      # Clients keep sending the approved IDs; Bedrock receives its own.
+      modelAliases:
+        {{- range $client, $bedrock := $p.bedrock.modelIds }}
+        {{ $client | quote }}: {{ required (printf "modelProvider.bedrock.modelIds.%s" $client) $bedrock | quote }}
+        {{- end }}
+      {{- end }}

@@ -1,0 +1,25 @@
+# diagnosis-agent behind the gateway: who may call it.
+#
+#   from a pod      http://agentgateway-proxy.agentgateway-system.svc.cluster.local/a2a/diagnosis-agent
+#   from the host   http://localhost:18080/a2a/diagnosis-agent
+#
+# Values for release `diagnosis-agent-route-auth` (chart
+# agent-platform/policies/agentgateway/route-auth). The route itself is part
+# of release `diagnosis-agent`.
+
+target:
+  name: diagnosis-agent
+
+# CEL expressions on the verified token, any one of which allows the caller.
+# Empty: every caller with a valid token, human or machine. The agent only
+# reads, and what it reads is one namespace of a demo application, so the
+# alert automation and every signed-in role may ask it.
+allow: []
+
+# kagent receives the caller's token and takes the caller's name from it
+# (claim preferred_username). It records that caller as the owner of the
+# conversation and does not verify the token: this policy is the verification.
+#
+# The token goes no further. The agent's own calls carry its own credential
+# (model route) or none (its tool server).
+passthrough: true

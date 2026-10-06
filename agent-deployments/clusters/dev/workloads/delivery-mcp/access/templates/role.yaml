@@ -1,0 +1,60 @@
+# The rights delivery-mcp needs in this namespace, for two things only:
+#
+#   apply_change       `helm upgrade --reuse-values` on the release, without
+#                      --wait, --force or --install
+#   restart_workload   delete a service's pods by label
+#
+# The Deployment stays written by the Helm release alone: delivery-mcp may
+# patch the one selectable Deployment, which is what helm does on its behalf,
+# and holds no create, update or delete on any workload.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: delivery-mcp
+  namespace: {{ .Release.Namespace }}
+rules:
+  # Helm keeps each revision of a release in a Secret named
+  # sh.helm.release.v1.<release>.v<n>. An upgrade lists them, reads the
+  # latest, creates the next, marks the previous one superseded (update) and
+  # prunes revisions beyond its history limit (delete).
+  #
+  # This is as narrow as helm allows, and it is wider than the task: RBAC
+  # cannot limit `list` or `create` to names that are not known in advance, so
+  # this grants the same verbs on every Secret in the namespace. The Sample App
+  # keeps no Secret here. If it ever does, move the release's storage or accept
+  # that delivery-mcp can read it.
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "create", "update", "delete"]
+
+  # helm reads every object of the release to compute what to change.
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    resourceNames: {{ toJson .Values.release.deployments }}
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["services"]
+    resourceNames: {{ toJson .Values.release.services }}
+    verbs: ["get"]
+  {{- with .Values.release.serviceMonitors }}
+  - apiGroups: ["monitoring.coreos.com"]
+    resources: ["servicemonitors"]
+    resourceNames: {{ toJson . }}
+    verbs: ["get"]
+  {{- end }}
+
+  # ...and patches only what differs: the Deployment whose image tag changed.
+  # No patch on the other Deployments or on any Service, so a release that
+  # would change more than the selected version fails instead of applying.
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    resourceNames: {{ toJson .Values.release.selectable }}
+    verbs: ["patch"]
+
+  # restart_workload: one deletecollection with a label selector. No get or
+  # list on pods. RBAC cannot limit it by label, so it covers every pod in
+  # this namespace; the selector is fixed by delivery-mcp's configuration and
+  # the service name is checked against the two it knows.
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["deletecollection"]

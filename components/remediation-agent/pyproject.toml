@@ -1,0 +1,39 @@
+[project]
+name = "remediation-agent"
+version = "0.1.0"
+description = "Applies an approved change as the caller and reports the verified result"
+requires-python = ">=3.13"
+dependencies = [
+    "strands-agents[a2a,anthropic]==1.58.0",
+    # The MCP client used to call delivery-mcp. Held to the 1.x line: it is the
+    # line delivery-mcp (FastMCP 3) serves with, and its HTTP client is httpx, which
+    # the OpenTelemetry instrumentation covers. Strands allows 1.23 up to 2.1.
+    "mcp>=1.30,<2",
+    "pyjwt[crypto]>=2.10,<3",
+    "httpx>=0.28.1,<1.0",
+    "uvicorn>=0.34.2,<1.0",
+    "opentelemetry-sdk>=1.30.0,<2.0",
+    "opentelemetry-exporter-otlp>=1.30.0,<2.0",
+    "opentelemetry-instrumentation-httpx>=0.51b0",
+    "opentelemetry-instrumentation-starlette>=0.51b0",
+]
+
+[tool.uv]
+package = false
+dev-dependencies = [
+    "pytest>=9.0.2",
+    "pytest-asyncio>=1.3.0",
+    "ruff>=0.15.1",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]

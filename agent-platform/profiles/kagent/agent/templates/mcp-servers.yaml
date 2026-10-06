@@ -1,0 +1,28 @@
+{{- range (include "kagent-agent.tools" . | fromJsonArray) }}
+---
+# A tool server the agent may call. The controller connects to it too, to list
+# its tools (status.discoveredTools); `kubectl get remotemcpserver` shows
+# ACCEPTED when that worked.
+apiVersion: api.kagent.dev/v1alpha3
+kind: RemoteMCPServer
+metadata:
+  name: {{ $.Release.Name }}-{{ required "tools[].name" .name }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "kagent-agent.labels" $ | nindent 4 }}
+spec:
+  description: {{ required (printf "tools[%s].description" .name) .description | quote }}
+  protocol: STREAMABLE_HTTP
+  url: {{ required (printf "tools[%s].url" .name) .url | quote }}
+  timeout: {{ .timeout | default "30s" }}
+  {{- with .authorization }}
+  # A static header from a Secret in this namespace. Like the model
+  # credential, it is added by the egress gateway and never enters the sandbox.
+  headersFrom:
+    - name: Authorization
+      valueFrom:
+        type: Secret
+        name: {{ required "tools[].authorization.secretName" .secretName | quote }}
+        key: {{ required "tools[].authorization.secretKey" .secretKey | quote }}
+  {{- end }}
+{{- end }}

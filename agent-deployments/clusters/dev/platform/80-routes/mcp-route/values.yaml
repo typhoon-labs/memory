@@ -1,0 +1,41 @@
+# One MCP server behind the gateway:
+#
+#   AgentgatewayBackend <route.name>         the server, over Streamable HTTP
+#   HTTPRoute <route.name>                   <route.path> on the shared Gateway
+#   AgentgatewayPolicy <route.name>-tools    which role may see and call which tool
+#
+# Who is a valid caller, and that the server receives the caller's token, is a
+# separate release of agent-platform/policies/agentgateway/route-auth that
+# targets HTTPRoute <route.name>. Install both in the server's namespace.
+#
+# Schema: Agentgateway 1.6 (agentgateway.dev/v1alpha1), as verified in
+# agent-platform/profiles/gateway/mcp-route.example.yaml.
+
+# The Gateway this route attaches to.
+gateway:
+  name: agentgateway-proxy
+  namespace: agentgateway-system
+  listener: http
+
+route:
+  # Names the HTTPRoute and the AgentgatewayBackend.
+  name: ""
+  # The path prefix clients use, for example /mcp/delivery. The gateway serves
+  # MCP at exactly this path; nothing is appended.
+  path: ""
+
+backend:
+  # A Service in the release namespace.
+  service: ""
+  port: 8080
+  # The server's own MCP endpoint path.
+  path: /mcp
+  # Stateless: the gateway keeps no session, so a request does not depend on
+  # which proxy pod answered an earlier one, or on the proxy not having
+  # restarted. For a server that keeps per-session state, use Stateful.
+  sessionRouting: Stateless
+
+# Tool name -> roles (values of the token's `roles` claim) that may see it in
+# tools/list and call it. "*" means any caller with a valid token. A tool that
+# is not listed here is hidden from everyone.
+tools: {}

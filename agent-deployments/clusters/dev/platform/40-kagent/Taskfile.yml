@@ -1,0 +1,54 @@
+# kagent 1.x and Agent Substrate. Included by the root Taskfile as `kagent:`.
+#
+#   task kagent:install     Substrate, its identity bootstrap, then kagent. Safe to re-run.
+#   task kagent:status      pods, WorkerPool, agents, Actors, node memory
+#   task kagent:ate -- ...  the Agent Substrate CLI, such as `-- get actors --atespace kagent`
+#   task kagent:uninstall   removes all of it, including what Helm leaves behind
+#
+# Every kubectl, helm and helmfile command names the repo-local kubeconfig and
+# the context (see the root Taskfile). The scripts do the same in scripts/lib.sh.
+version: "3"
+
+tasks:
+  tools:
+    desc: Download kubectl-ate into .bin/ (git-ignored); `-- --with-cli` adds the kagent CLI
+    silent: true
+    cmds:
+      - "{{.TASKFILE_DIR}}/scripts/tools.sh {{.CLI_ARGS}}"
+
+  install:
+    desc: Install Agent Substrate and kagent (safe to re-run)
+    preconditions:
+      - sh: test "$(kubectl --kubeconfig "{{.ROOT_DIR}}/local/kind/kubeconfig" config current-context 2>/dev/null)" = "kind-agentgateway-demo"
+        msg: "{{.ROOT_DIR}}/local/kind/kubeconfig is missing or its context is not kind-agentgateway-demo. Run `task up` first."
+      - sh: command -v jq openssl base64 curl >/dev/null
+        msg: "The identity bootstrap needs jq, openssl, base64 and curl."
+      - sh: kubectl --kubeconfig "{{.ROOT_DIR}}/local/kind/kubeconfig" --context kind-agentgateway-demo api-versions | grep -qx certificates.k8s.io/v1beta1
+        msg: "The cluster does not serve certificates.k8s.io/v1beta1, which Agent Substrate needs. It is set at cluster creation (local/kind/cluster.yaml)."
+    cmds:
+      - "{{.TASKFILE_DIR}}/scripts/tools.sh"
+      - 'echo "node memory before (whole node, every workstream): $(docker stats --no-stream --format "{{`{{.MemUsage}}`}}" agentgateway-demo-control-plane)"'
+      # This directory's helmfile only: five releases, in order, with the
+      # identity bootstrap as a hook after the second.
+      - KUBECONFIG="{{.ROOT_DIR}}/local/kind/kubeconfig" helmfile --kubeconfig "{{.ROOT_DIR}}/local/kind/kubeconfig" --kube-context kind-agentgateway-demo --file "{{.TASKFILE_DIR}}/helmfile.yaml" sync
+      # Helm does not wait for the WorkerPool, and nothing runs without a ready Worker.
+      - "{{.TASKFILE_DIR}}/scripts/wait-kagent.sh"
+      - 'echo "node memory after  (whole node; \`task kagent:status\` shows this install alone): $(docker stats --no-stream --format "{{`{{.MemUsage}}`}}" agentgateway-demo-control-plane)"'
+
+  status:
+    desc: What runs in ate-system and kagent, and node memory
+    silent: true
+    cmds:
+      - "{{.TASKFILE_DIR}}/scripts/status.sh"
+
+  ate:
+    desc: "Run the Agent Substrate CLI against this cluster: `task kagent:ate -- get actors --atespace kagent`"
+    silent: true
+    cmds:
+      - '"{{.TASKFILE_DIR}}/.bin/kubectl-ate" --kubeconfig "{{.ROOT_DIR}}/local/kind/kubeconfig" --context kind-agentgateway-demo {{.CLI_ARGS}}'
+
+  uninstall:
+    desc: Remove kagent and Agent Substrate, with the identity material and volumes Helm leaves behind
+    prompt: "This deletes every agent, conversation and snapshot in namespaces kagent and ate-system. Continue?"
+    cmds:
+      - "{{.TASKFILE_DIR}}/scripts/uninstall.sh"

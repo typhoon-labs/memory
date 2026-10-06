@@ -1,0 +1,106 @@
+# delivery-mcp tasks. Included by the root Taskfile as `delivery-mcp:` (for
+# example `task delivery-mcp:test`); also runs on its own from this directory.
+#
+#   task test            pytest: every tool, one permitted and one refused case per rule
+#   task lint            ruff check and format check
+#   task run-local       test issuer :18199, stub search :18198, delivery-mcp :18190 (fake applier)
+#   task stop-local      stop what run-local started
+#   task token -- NAME   a token from the test issuer (developer, incident-manager, ...)
+#   task build           the image localhost:5002/delivery-mcp:<version>
+#   task push            push it to the local registry
+#   task kmcp:install    download the kmcp CLI into .tools/ (nothing outside this directory)
+#   task kmcp:manifest   render the kmcp MCPServer for this project into deploy/mcpserver.yaml
+version: "3"
+
+# Top-level variables are shared by every included Taskfile, so each carries
+# this component's name. REGISTRY is the root Taskfile's; the default applies
+# when this file is run on its own.
+vars:
+  DELIVERY_MCP_VERSION: '{{.DELIVERY_MCP_VERSION | default "0.1.1"}}'
+  DELIVERY_MCP_IMAGE: '{{.REGISTRY | default "localhost:5002"}}/delivery-mcp:{{.DELIVERY_MCP_VERSION}}'
+  DELIVERY_MCP_KMCP_VERSION: v0.4.0
+  DELIVERY_MCP_KMCP: "{{.TASKFILE_DIR}}/.tools/bin/kmcp"
+
+tasks:
+  sync:
+    desc: Install the locked dependencies into .venv
+    cmds:
+      - uv sync --frozen
+    sources: [pyproject.toml, uv.lock]
+    generates: [.venv/pyvenv.cfg]
+
+  test:
+    desc: Run the tests (a signing key is generated for the run; nothing is called outside this machine)
+    deps: [sync]
+    cmds:
+      - .venv/bin/python -m pytest -q {{.CLI_ARGS}}
+
+  lint:
+    desc: ruff check and format check
+    deps: [sync]
+    cmds:
+      - .venv/bin/ruff check src tests scripts
+      - .venv/bin/ruff format --check src tests scripts
+
+  run-local:
+    desc: "Run on :18190 with the fake applier, a test issuer (:18199) and a stub search service (:18198)"
+    deps: [sync]
+    cmds:
+      - scripts/local.sh up
+
+  stop-local:
+    desc: Stop what run-local started
+    cmds:
+      - scripts/local.sh down
+
+  token:
+    desc: "Print a token from the test issuer: `task token -- platform-engineer`"
+    silent: true
+    cmds:
+      - scripts/local.sh token {{.CLI_ARGS | default "developer"}}
+
+  build:
+    desc: Build the image ({{.DELIVERY_MCP_IMAGE}})
+    cmds:
+      - docker build --build-arg VERSION={{.DELIVERY_MCP_VERSION}} -t {{.DELIVERY_MCP_IMAGE}} .
+
+  push:
+    desc: Push the image to the local registry
+    cmds:
+      - docker push {{.DELIVERY_MCP_IMAGE}}
+
+  kmcp:install:
+    desc: Download the kmcp CLI {{.DELIVERY_MCP_KMCP_VERSION}} into .tools/bin and check it against the published checksum
+    vars:
+      ARCH:
+        sh: uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/'
+      OS:
+        sh: uname | tr '[:upper:]' '[:lower:]'
+      URL: "https://github.com/kagent-dev/kmcp/releases/download/{{.DELIVERY_MCP_KMCP_VERSION}}/kmcp-{{.OS}}-{{.ARCH}}"
+    cmds:
+      # The project's install script writes to /usr/local/bin with sudo and edits
+      # the shell profile; the release binary is fetched directly instead.
+      - mkdir -p .tools/bin
+      - curl -fsSL -o .tools/bin/kmcp "{{.URL}}"
+      - test "$(curl -fsSL "{{.URL}}.sha256" | cut -d' ' -f1)" = "$(sha256sum .tools/bin/kmcp | cut -d' ' -f1)"
+      - chmod +x .tools/bin/kmcp
+    status:
+      - test -x .tools/bin/kmcp
+
+  kmcp:manifest:
+    desc: Render the kmcp MCPServer resource for this project (dry run; nothing is applied)
+    deps: [kmcp:install]
+    # A dry run needs no cluster. Make sure it cannot reach one.
+    env:
+      KUBECONFIG: /dev/null
+    cmds:
+      - >-
+        {{.DELIVERY_MCP_KMCP}} deploy --file kmcp.yaml --image {{.DELIVERY_MCP_IMAGE}} --namespace tools
+        --transport http --port 8080 --dry-run --no-inspector
+        --env OIDC_ISSUER=http://localhost:18081/realms/demo
+        --env OIDC_JWKS_URL=http://keycloak.keycloak.svc.cluster.local:8080/realms/demo/protocol/openid-connect/certs
+        --env OIDC_AUDIENCE=agentgateway
+        --env APP_VERSION={{.DELIVERY_MCP_VERSION}}
+        --output deploy/mcpserver.yaml
+      - cmd: echo "wrote deploy/mcpserver.yaml"
+        silent: true

@@ -1,0 +1,12 @@
+# Selects every pod of the namespace for both directions and allows nothing.
+# The other policies of this chart add what is allowed; policies only add.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: {{ .Release.Namespace }}
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress

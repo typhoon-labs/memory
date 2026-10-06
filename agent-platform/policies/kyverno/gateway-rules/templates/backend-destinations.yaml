@@ -1,0 +1,101 @@
+# An AgentgatewayBackend from outside the platform's releases may not lead to
+# what the platform's routes guard.
+#
+# The gateway's proxy is the one workload that the network lets reach the
+# tool servers, the agents and the model provider. A backend tells it where to
+# connect, and a host name needs no ReferenceGrant. So a backend is refused
+# when it is a model backend or a forward proxy, or names a Service of the
+# platform, the model provider's host, or a bare address.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: gateway-backend-destinations
+spec:
+  validationActions:
+    - Deny
+  evaluation:
+    background:
+      enabled: false
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["agentgateway.dev"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["agentgatewaybackends"]
+  matchConditions:
+    {{- include "gateway-rules.notAPlatformRelease" . | nindent 4 }}
+  variables:
+    - name: ns
+      expression: object.metadata.namespace
+    - name: self
+      expression: >-
+        "AgentgatewayBackend " + variables.ns + "/" + object.metadata.name
+    # "namespace/name" of the Services that a platform release owns.
+    - name: services
+      expression: >-
+        dyn(resource.List("v1", "services", "").items)
+          .filter(i, {{ include "gateway-rules.released" "i" }})
+          .map(i, i.metadata.namespace + "/" + i.metadata.name)
+    - name: namespaces
+      expression: >-
+        dyn(resource.List("v1", "namespaces", "").items).map(i, i.metadata.name)
+    - name: targets
+      expression: object.spec.?mcp.?targets.orValue([])
+    # Every host this backend names, in lower case.
+    - name: hosts
+      expression: >-
+        ((object.spec.?a2a.?host.hasValue() ? [object.spec.a2a.host] : [])
+         + (object.spec.?static.?host.hasValue() ? [object.spec.static.host] : [])
+         + variables.targets.filter(t, t.?static.?host.hasValue()).map(t, t.static.host))
+        .map(h, h.lowerAscii())
+    # A host is a platform Service when it is a cluster DNS name, short or
+    # long (name, name.namespace, name.namespace.svc...), of one of them.
+    - name: serviceHosts
+      expression: >-
+        variables.hosts.filter(h,
+          (h.split(".").size() == 1 && (variables.ns + "/" + h) in variables.services)
+          || (h.split(".").size() >= 2
+              && (h.split(".").size() == 2 || h.split(".")[2] == "svc")
+              && h.split(".")[1] in variables.namespaces
+              && (h.split(".")[1] + "/" + h.split(".")[0]) in variables.services))
+    - name: serviceRefs
+      expression: >-
+        variables.targets
+          .filter(t, t.?static.?backendRef.?name.hasValue()
+            && (variables.ns + "/" + t.static.backendRef.name) in variables.services)
+          .map(t, "Service " + t.static.backendRef.name)
+    - name: modelHosts
+      expression: >-
+        variables.hosts.filter(h, h in {{ toJson (.Values.platform.modelHosts | default list) }})
+    - name: addresses
+      expression: >-
+        variables.hosts.filter(h, h.matches("^[0-9.]+$") || h.contains(":"))
+  validations:
+    - expression: "!has(object.spec.ai)"
+      messageExpression: >-
+        variables.self + " is a model backend. Models are reached through the platform's model route only: "
+        + "it holds the provider's credential, lets approved models through and records who called. "
+        + {{ .Values.platform.changeHint | toJson }}
+    - expression: "!has(object.spec.dynamicForwardProxy)"
+      messageExpression: >-
+        variables.self + " is a forward proxy: it would let its callers reach, through the gateway, whatever the gateway can reach. "
+        + {{ .Values.platform.changeHint | toJson }}
+    - expression: variables.serviceHosts.size() == 0 && variables.serviceRefs.size() == 0
+      messageExpression: >-
+        variables.self + " names " + (variables.serviceHosts + variables.serviceRefs).join(", ")
+        + ", a Service that a platform release owns. That would be a second way in, without the policy on the platform's route. "
+        + {{ .Values.platform.changeHint | toJson }}
+    - expression: variables.modelHosts.size() == 0
+      messageExpression: >-
+        variables.self + " names the model provider's host " + variables.modelHosts.join(", ")
+        + ". Models are reached through the platform's model route only. "
+        + {{ .Values.platform.changeHint | toJson }}
+    - expression: variables.addresses.size() == 0
+      messageExpression: >-
+        variables.self + " names the address " + variables.addresses.join(", ")
+        + ". An address can be anything the gateway reaches, a tool server or the model provider included, and cannot be checked. Name a Service of your own. "
+        + {{ .Values.platform.changeHint | toJson }}
+    - expression: "!variables.targets.exists(t, has(t.selector))"
+      messageExpression: >-
+        variables.self + " picks its MCP servers by label. A selector can pick a platform Service; name a Service of your own in static.backendRef. "
+        + {{ .Values.platform.changeHint | toJson }}

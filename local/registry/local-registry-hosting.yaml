@@ -1,0 +1,12 @@
+# Documents the local registry for tools that look for it (KEP-1755), as in
+# https://kind.sigs.k8s.io/docs/user/local-registry/
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: local-registry-hosting
+  namespace: kube-public
+data:
+  localRegistryHosting.v1: |
+    host: "localhost:5002"
+    hostFromClusterNetwork: "agentgateway-demo-registry:5000"
+    help: "https://kind.sigs.k8s.io/docs/user/local-registry/"

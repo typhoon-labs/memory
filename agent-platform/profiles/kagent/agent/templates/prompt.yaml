@@ -1,0 +1,30 @@
+{{- /*
+The prompt and the runbooks are ConfigMaps, not inline in the AgentTemplate, so
+that the text is readable in the cluster as it was written. kagent watches
+both: an edit compiles a new revision, and only conversations started after
+that use it.
+*/ -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-prompt
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kagent-agent.labels" . | nindent 4 }}
+data:
+  system: {{ required "prompt: the system prompt" .Values.prompt | toJson }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-runbooks
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kagent-agent.labels" . | nindent 4 }}
+data:
+  {{- range $name, $text := .Values.runbooks }}
+  {{- if not (trim $text) }}
+  {{- fail (printf "runbooks.%s is empty: the prompt would include nothing where it expects this text" $name) }}
+  {{- end }}
+  {{ $name }}: {{ $text | toJson }}
+  {{- end }}

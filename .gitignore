@@ -1,0 +1,26 @@
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+*.secret.yaml
+*.key
+*.pem
+kubeconfig*
+
+# Node
+node_modules/
+dist/
+.mastra/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Tooling
+.task/
+.DS_Store
+
+# Scratch: pulled charts, downloads, experiments
+.scratch/
+.tools/

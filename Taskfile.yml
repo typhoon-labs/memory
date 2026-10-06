@@ -1,0 +1,202 @@
+# Cluster trunk tasks. Tools come from mise.toml (`mise trust && mise install`).
+#
+#   task up        kind cluster, local registry, Gateway API, Agentgateway,
+#                  Keycloak and the JWT-protected model route. Safe to re-run.
+#   task down      removes what `task up` created, and nothing else
+#   task status    what is running, where to reach it, node memory
+#   task token     access token for a user or the machine client
+#   task deploy    apply every helmfile under agent-deployments/clusters/dev
+#   task smoke     positive and negative checks of the model route
+#
+# KUBECONFIG. No task may use the default kubeconfig or the current kube
+# context. With Task 3.54 a KUBECONFIG exported in the calling shell replaces a
+# Taskfile `env` entry, so `env` alone is not enough. Every command below
+# therefore names the repo-local kubeconfig and the context itself:
+#
+#   kubectl   --kubeconfig "{{.ROOT_DIR}}/local/kind/kubeconfig" --context kind-agentgateway-demo
+#   helm      --kubeconfig "{{.ROOT_DIR}}/local/kind/kubeconfig" --kube-context kind-agentgateway-demo
+#   helmfile  the same two flags, and KUBECONFIG=... written on the command
+#             line itself, because helmfile hooks start kubectl without flags
+#   kind      --name agentgateway-demo --kubeconfig "{{.ROOT_DIR}}/local/kind/kubeconfig"
+#
+# Naming the context is the guard: with any other kubeconfig the context does
+# not exist and the command fails before it changes anything. `up` and `deploy`
+# also check it first (task `guard`). As a second layer, `env` below sets
+# KUBECONFIG and .taskrc.yml turns on ENV_PRECEDENCE so that it wins over the
+# shell for included tasks too.
+#
+# ADDING TASKS. Other workstreams create one of the files under `includes`;
+# this file does not need editing. An included task is called as
+# `task <namespace>:<task>` and runs in its own directory.
+#
+# Rules for an included Taskfile, all checked with Task 3.54:
+#   - Write the kubeconfig and context flags above on every kubectl, helm,
+#     helmfile and kind command. Do not rely on the inherited KUBECONFIG.
+#   - Use {{.ROOT_DIR}} for the repository root. {{.TASKFILE_DIR}} is the
+#     directory of whichever Taskfile the running task belongs to.
+#   - Top-level `vars` are NOT private. A name defined in one included file
+#     replaces the same name in this file and in every other included file
+#     that does not define it. Prefix variable names with the component's name.
+version: "3"
+
+vars:
+  # Optional memory cap on the kind node container, such as 12g. Empty means
+  # no cap, which is how kind creates a node. Set it for one run with
+  # `task up NODE_MEMORY=12g`. To lift a cap again, recreate the cluster:
+  # `docker update --memory 0` leaves a limit unchanged.
+  NODE_MEMORY: ""
+  # Image names are {{.REGISTRY}}/<component>:<version>.
+  REGISTRY: "localhost:5002"
+
+env:
+  # The second layer only; see KUBECONFIG above. Written out in full, not
+  # built from a variable, because an included Taskfile can replace variables.
+  KUBECONFIG: "{{.ROOT_DIR}}/local/kind/kubeconfig"
+  GATEWAY_URL: http://localhost:18080
+  KEYCLOAK_URL: http://localhost:18081
+
+includes:
+  sample-app:
+    taskfile: components/sample-app/Taskfile.yml
+    dir: components/sample-app
+    optional: true
+  delivery-mcp:
+    taskfile: components/delivery-mcp/Taskfile.yml
+    dir: components/delivery-mcp
+    optional: true
+  remediation-agent:
+    taskfile: components/remediation-agent/Taskfile.yml
+    dir: components/remediation-agent
+    optional: true
+  comms-agent:
+    taskfile: components/comms-agent/Taskfile.yml
+    dir: components/comms-agent
+    optional: true
+  chat-assistant:
+    taskfile: components/chat-assistant/Taskfile.yml
+    dir: components/chat-assistant
+    optional: true
+  diagnosis-agent:
+    taskfile: components/diagnosis-agent/Taskfile.yml
+    dir: components/diagnosis-agent
+    optional: true
+  observability:
+    taskfile: local/observability/Taskfile.yml
+    dir: local/observability
+    optional: true
+  traffic:
+    taskfile: local/traffic/Taskfile.yml
+    dir: local/traffic
+    optional: true
+  demo:
+    taskfile: demo/Taskfile.yml
+    dir: demo
+    optional: true
+  kagent:
+    taskfile: agent-deployments/clusters/dev/platform/40-kagent/Taskfile.yml
+    dir: agent-deployments/clusters/dev/platform/40-kagent
+    optional: true
+  langfuse:
+    taskfile: agent-deployments/clusters/dev/platform/60-langfuse/Taskfile.yml
+    dir: agent-deployments/clusters/dev/platform/60-langfuse
+    optional: true
+  registry:
+    taskfile: agent-deployments/clusters/dev/platform/70-agentregistry/Taskfile.yml
+    dir: agent-deployments/clusters/dev/platform/70-agentregistry
+    optional: true
+
+# The cluster name, the node name and the kubeconfig path are written out in
+# the commands below on purpose. They are fixed by the conventions, and a
+# variable could be replaced by an included Taskfile (see above), which must
+# never be able to point `down` at another cluster.
+tasks:
+  default:
+    desc: List tasks
+    silent: true
+    cmds:
+      - task --list
+
+  up:
+    desc: Create the cluster trunk (safe to re-run)
+    cmds:
+      - task: preflight
+      - "{{.ROOT_DIR}}/local/registry/registry.sh up"
+      - task: cluster-create
+      # Restore the repo-local kubeconfig if it was deleted; never the default one.
+      - kind export kubeconfig --name agentgateway-demo --kubeconfig "{{.ROOT_DIR}}/local/kind/kubeconfig"
+      - task: guard
+      - "{{.ROOT_DIR}}/local/registry/registry.sh wire"
+      - kubectl --kubeconfig "{{.ROOT_DIR}}/local/kind/kubeconfig" --context kind-agentgateway-demo apply -f "{{.ROOT_DIR}}/local/registry/local-registry-hosting.yaml"
+      # Memory and swap go together: Docker rejects a memory limit above the swap limit.
+      - 'if [ -n "{{.NODE_MEMORY}}" ]; then docker update --memory "{{.NODE_MEMORY}}" --memory-swap "{{.NODE_MEMORY}}" agentgateway-demo-control-plane; fi'
+      # Only the releases labelled layer=trunk, so that `task up` does not
+      # depend on the state of other workstreams. `task deploy` applies all.
+      - KUBECONFIG="{{.ROOT_DIR}}/local/kind/kubeconfig" helmfile --kubeconfig "{{.ROOT_DIR}}/local/kind/kubeconfig" --kube-context kind-agentgateway-demo --file "{{.ROOT_DIR}}/agent-deployments/clusters/dev/helmfile.yaml" --selector layer=trunk sync
+      - kubectl --kubeconfig "{{.ROOT_DIR}}/local/kind/kubeconfig" --context kind-agentgateway-demo -n agentgateway-system wait --for=condition=Programmed gateway/agentgateway-proxy --timeout=180s
+      - kubectl --kubeconfig "{{.ROOT_DIR}}/local/kind/kubeconfig" --context kind-agentgateway-demo -n agentgateway-system rollout status deployment/agentgateway-proxy --timeout=180s
+      - kubectl --kubeconfig "{{.ROOT_DIR}}/local/kind/kubeconfig" --context kind-agentgateway-demo -n keycloak rollout status deployment/keycloak --timeout=300s
+      - task: status
+
+  down:
+    desc: Remove the kind cluster, the registry and the kubeconfig that `task up` created
+    cmds:
+      # Deletes only the cluster with this name; other kind clusters are untouched.
+      - kind delete cluster --name agentgateway-demo --kubeconfig "{{.ROOT_DIR}}/local/kind/kubeconfig"
+      # Removes the registry container only if `task up` created it.
+      - "{{.ROOT_DIR}}/local/registry/registry.sh down"
+      - rm -f "{{.ROOT_DIR}}/local/kind/kubeconfig" "{{.ROOT_DIR}}/local/kind/kubeconfig.lock"
+
+  status:
+    desc: Show what is running and where to reach it
+    silent: true
+    cmds:
+      - "{{.ROOT_DIR}}/local/kind/status.sh"
+
+  token:
+    desc: "Print an access token: `task token -- developer`, or `task token -- alert-automation` for the machine client"
+    silent: true
+    cmds:
+      - "{{.ROOT_DIR}}/local/identity/token.sh {{.CLI_ARGS | default \"developer\"}}"
+
+  deploy:
+    desc: "Apply every helmfile for the dev cluster; pass helmfile flags after --, such as `-- -l name=sample-app`"
+    cmds:
+      - task: guard
+      - KUBECONFIG="{{.ROOT_DIR}}/local/kind/kubeconfig" helmfile --kubeconfig "{{.ROOT_DIR}}/local/kind/kubeconfig" --kube-context kind-agentgateway-demo --file "{{.ROOT_DIR}}/agent-deployments/clusters/dev/helmfile.yaml" {{.CLI_ARGS}} sync
+
+  smoke:
+    desc: Check the model route (valid token, no token, wrong audience, unapproved model)
+    silent: true
+    cmds:
+      - "{{.ROOT_DIR}}/local/models/smoke.sh"
+
+  # --- helpers ---------------------------------------------------------------
+
+  guard:
+    internal: true
+    silent: true
+    preconditions:
+      # Fails fast unless the repo-local kubeconfig exists and resolves to our
+      # cluster's context. Reads the file by path, never the shell's KUBECONFIG.
+      - sh: test "$(kubectl --kubeconfig "{{.ROOT_DIR}}/local/kind/kubeconfig" config current-context 2>/dev/null)" = "kind-agentgateway-demo"
+        msg: |
+          {{.ROOT_DIR}}/local/kind/kubeconfig is missing or its context is not kind-agentgateway-demo.
+          Nothing was changed. Run `task up` to create the cluster and the kubeconfig.
+
+  preflight:
+    internal: true
+    silent: true
+    preconditions:
+      - sh: command -v docker kind kubectl helm helmfile jq curl >/dev/null
+        msg: "Missing tools. Run `mise trust && mise install` in {{.ROOT_DIR}} and use a shell with mise activated (or `mise exec -- task up`)."
+      - sh: kubectl version --client -o json | jq -e '.clientVersion.minor | tonumber >= 37' >/dev/null
+        msg: "kubectl must be 1.37 or later (the cluster is Kubernetes 1.37). mise.toml pins it; check that mise is active in this shell."
+      - sh: docker info >/dev/null 2>&1
+        msg: "Docker is not running."
+
+  cluster-create:
+    internal: true
+    status:
+      - kind get clusters 2>/dev/null | grep -qx agentgateway-demo
+    cmds:
+      - kind create cluster --name agentgateway-demo --config "{{.ROOT_DIR}}/local/kind/cluster.yaml" --kubeconfig "{{.ROOT_DIR}}/local/kind/kubeconfig" --wait 120s

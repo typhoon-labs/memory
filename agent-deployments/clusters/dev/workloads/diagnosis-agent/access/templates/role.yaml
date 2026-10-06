@@ -1,0 +1,42 @@
+# Everything diagnosis-agent can see in the cluster, whatever the model asks
+# for: read pods, their logs, events, Deployments and ReplicaSets in this one
+# namespace. No Secrets, no ConfigMaps, no other namespace, no verb that writes.
+#
+# This is the boundary. The tool server is also started read-only and the
+# agent is offered four tools, but those are settings of software that could
+# be wrong; this Role is checked by the API server on every call.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: diagnosis-agent-read
+  namespace: {{ .Release.Namespace }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "events"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+  # Rollout history is the Deployment's ReplicaSets: one per revision, each
+  # with the image it ran.
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["get", "list"]
+  # `kubectl get events` and `kubectl describe` read this group as well.
+  - apiGroups: ["events.k8s.io"]
+    resources: ["events"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: diagnosis-agent-read
+  namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: diagnosis-agent-read
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.serviceAccount.name }}
+    namespace: {{ .Values.serviceAccount.namespace }}

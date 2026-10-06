@@ -1,0 +1,17 @@
+# Who the Role is for: delivery-mcp's ServiceAccount (../values.yaml).
+serviceAccount:
+  name: delivery-mcp
+  namespace: tools
+
+# The Helm release delivery-mcp upgrades. The Role is created in the release's
+# namespace, which is the namespace this chart is installed into.
+release:
+  # Every Deployment and Service the release holds. helm reads each one on
+  # every upgrade, to work out what changed.
+  deployments: [web, search-service, registration-service]
+  services: [web, search-service, registration-service]
+  # The one Deployment a change is allowed to alter: the one whose version
+  # delivery-mcp selects (searchService.image.tag).
+  selectable: [search-service]
+  # The release's ServiceMonitor, read if the chart's serviceMonitor is enabled.
+  serviceMonitors: [sample-app]

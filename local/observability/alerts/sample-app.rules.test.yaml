@@ -1,0 +1,108 @@
+# Unit test for sample-app.rules.yaml: `task observability:test-rules`, which
+# runs `promtool test rules` in the Prometheus pod.
+#
+# Samples are 5 seconds apart, as the Sample App is scraped. The n-th value of
+# a series is the sample at n x 5 seconds; `_` is "no sample", `stale` is the
+# marker Prometheus writes when a pod goes away.
+rule_files:
+  - sample-app.rules.yaml
+
+evaluation_interval: 5s
+
+tests:
+  # The demo's incident. search-service 2.0.0 answers nine searches every 5s
+  # and is replaced at 1m by 2.1.0, which fails every search.
+  - name: a failing release fires 10 seconds after its second scrape
+    interval: 5s
+    input_series:
+      - series: 'http_requests_total{service_name="search-service", version="2.0.0", method="GET", route="/search", status="200"}'
+        values: '0+9x12 stale'
+      - series: 'http_requests_total{service_name="search-service", version="2.0.0", method="GET", route="/search", status="500"}'
+        values: '0x12 stale'
+      # First scrape of the new pod at 1m05s: the series exists, at zero.
+      - series: 'http_requests_total{service_name="search-service", version="2.1.0", method="GET", route="/search", status="500"}'
+        values: '_x13 0+9x20'
+    alert_rule_test:
+      # One scrape of the new pod: rate() has nothing to compare yet.
+      - eval_time: 1m05s
+        alertname: SearchErrorRatioHigh
+        exp_alerts: []
+      # Second scrape at 1m10s: the ratio is 100% and the alert is pending.
+      # Pending alerts are not listed, so this still expects none.
+      - eval_time: 1m15s
+        alertname: SearchErrorRatioHigh
+        exp_alerts: []
+      # Held for 10s: firing, with the labels the alert hook and the route read.
+      - eval_time: 1m20s
+        alertname: SearchErrorRatioHigh
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              service: search-service
+              service_name: search-service
+              version: 2.1.0
+              diagnose: "true"
+            exp_annotations:
+              summary: 'Search is failing: 100% of requests to search-service 2.1.0 return a server error.'
+              impact: Visitors of the Sample App cannot search the catalogue.
+              description: 'More than 5% of GET /search requests to search-service version 2.1.0 returned HTTP 5xx over the last 30 seconds.'
+
+  # After the rollback the failing pod is gone and 2.0.0 serves again.
+  - name: the alert ends when the failing version is replaced
+    interval: 5s
+    input_series:
+      - series: 'http_requests_total{service_name="search-service", version="2.1.0", method="GET", route="/search", status="500"}'
+        values: '0+9x12 stale'
+      - series: 'http_requests_total{service_name="search-service", version="2.0.0", method="GET", route="/search", status="200"}'
+        values: '_x13 0+9x20'
+      - series: 'http_requests_total{service_name="search-service", version="2.0.0", method="GET", route="/search", status="500"}'
+        values: '_x13 0x20'
+    alert_rule_test:
+      - eval_time: 30s
+        alertname: SearchErrorRatioHigh
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              service: search-service
+              service_name: search-service
+              version: 2.1.0
+              diagnose: "true"
+            exp_annotations:
+              summary: 'Search is failing: 100% of requests to search-service 2.1.0 return a server error.'
+              impact: Visitors of the Sample App cannot search the catalogue.
+              description: 'More than 5% of GET /search requests to search-service version 2.1.0 returned HTTP 5xx over the last 30 seconds.'
+      # 2.1.0's last sample was at 1m. The 30s window still holds two of its
+      # samples until 1m25s, so the alert ends about 25 seconds after the
+      # failing pod is gone.
+      - eval_time: 1m20s
+        alertname: SearchErrorRatioHigh
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              service: search-service
+              service_name: search-service
+              version: 2.1.0
+              diagnose: "true"
+            exp_annotations:
+              summary: 'Search is failing: 100% of requests to search-service 2.1.0 return a server error.'
+              impact: Visitors of the Sample App cannot search the catalogue.
+              description: 'More than 5% of GET /search requests to search-service version 2.1.0 returned HTTP 5xx over the last 30 seconds.'
+      - eval_time: 1m25s
+        alertname: SearchErrorRatioHigh
+        exp_alerts: []
+
+  # Normal traffic: one failed search in 200 is not an incident.
+  - name: a healthy service with a rare error does not fire
+    interval: 5s
+    input_series:
+      - series: 'http_requests_total{service_name="search-service", version="2.0.0", method="GET", route="/search", status="200"}'
+        values: '0+9x60'
+      - series: 'http_requests_total{service_name="search-service", version="2.0.0", method="GET", route="/search", status="500"}'
+        values: '0x20 1x40'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: SearchErrorRatioHigh
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: SearchErrorRatioHigh
+        exp_alerts: []

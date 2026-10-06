@@ -1,0 +1,163 @@
+# kagent 1.x: the controller, its API and A2A endpoint, and one WorkerPool.
+# Values for chart oci://ghcr.io/kagent-dev/kagent/helm/kagent, 1.0.0-alpha7.
+#
+# Reusable baseline. What one cluster changes goes in that cluster's own values
+# file, listed after this one (agent-deployments/clusters/<name>/platform/40-kagent/).
+#
+# Three decisions differ from the chart's defaults, all for the same reason:
+# an agent gets only what its own workload directory grants it.
+#
+#   1. No provider key. The chart's default ModelConfig points at the gateway's
+#      model route and carries no credential, so it cannot reach a provider
+#      and cannot pass the gateway either. Each agent brings its own
+#      ModelConfig with its own gateway credential.
+#   2. No bundled tool server. The chart's `kagent-tools` runs as
+#      cluster-admin and serves 124 tools, writes and a `shell` included. A
+#      workload that needs Kubernetes tools installs its own instance of the
+#      same server, read-only, with a Role in the one namespace it may read
+#      (agent-deployments/clusters/dev/workloads/diagnosis-agent/ shows how).
+#   3. No Grafana MCP server. It needs a Grafana token and tracks an unpinned
+#      `latest` image.
+
+controller:
+  # Agent Substrate must already run in ate-system. The controller connects to
+  # it at startup and restarts until it can.
+  substrate:
+    enabled: true
+    ateApiEndpoint: dns:///api.ate-system.svc:443
+    atenetRouterURL: http://atenet-router.ate-system.svc:80
+
+  # Lets grpcurl discover the API. Sessions, checkpoints and the Substrate
+  # status call have no HTTP form, so this is the only way to look at them
+  # without the kagent CLI. Turn off outside a development cluster.
+  grpc:
+    reflection: true
+
+  # WHO IS CALLING. Port 8083 carries everything on one port: A2A (JSON-RPC and
+  # gRPC), kagent's own API (create, edit and delete agents and templates, read
+  # conversations) and an MCP endpoint. The open source build does not really
+  # authenticate it:
+  #
+  #   insecure        every request is admitted, and every caller is the same
+  #                   user, admin@kagent.dev, unless it names another in the
+  #                   X-User-Id header. A token is ignored.
+  #   trusted-proxy   a bearer token is required, and its payload is DECODED
+  #                   BUT NOT VERIFIED: neither signature nor expiry. A token
+  #                   that nobody signed is accepted.
+  #
+  # Either way kagent trusts whatever reaches it, so two things outside it do
+  # the work: the gateway route in front of an agent verifies the token and
+  # passes it on, and the NetworkPolicy at the end of this file lets nothing
+  # else reach the port.
+  #
+  # trusted-proxy is chosen because it makes that verified token count: the
+  # owner of a conversation is the token's user, and another user who asks for
+  # it gets "not found".
+  auth:
+    mode: trusted-proxy
+    # Keycloak and Okta both carry the login name here; `sub` is an opaque id.
+    userIdClaim: preferred_username
+
+# The bundled UI is switched off. In trusted-proxy mode it needs a sign-in
+# proxy in front of it to obtain a token (the chart's `oauth2-proxy`, not
+# installed here); without one every call it makes is refused as
+# unauthenticated. To use it, enable oauth2-proxy against the identity
+# provider and set replicas to 1.
+ui:
+  replicas: 0
+
+# Capacity for Actors, shared by every agent in this namespace. A Worker hosts
+# one Actor, and only while a turn is running (an Actor is suspended to a
+# snapshot at the end of every turn), so size this for turns that run at the
+# same time, plus one for the golden snapshot kagent builds whenever an agent's
+# definition changes. An idle Worker holds about 10 MiB. A turn that finds no
+# free Worker fails with a plain timeout that names neither capacity nor the pool.
+substrateWorkerPool:
+  create: true
+  name: kagent-default
+  replicas: 2
+  # kagent compiles every agent for the gVisor sandbox class; keep the pool on it.
+  sandboxClass: gvisor
+  workerImage: ghcr.io/kagent-dev/substrate/ateom-gvisor:v0.3.0-alpha3
+
+# The default ModelConfig (`default-model-config`). OpenAI wire format, because
+# that is what Agentgateway's model route serves to kagent: kagent appends
+# /chat/completions to baseUrl. No apiKeySecretRef on purpose; see point 1.
+providers:
+  default: openAI
+  openAI:
+    provider: OpenAI
+    model: claude-haiku-4-5-20251001
+    apiKeySecretRef: ""
+    apiKeySecretKey: ""
+    config:
+      baseUrl: http://agentgateway-proxy.agentgateway-system.svc.cluster.local/v1
+
+kagent-tools:
+  enabled: false
+
+grafana-mcp:
+  enabled: false
+
+# The MCPServer controller (kmcp). Small, and other workloads may use it.
+kmcp:
+  enabled: true
+
+# Rendered by the chart as part of the release.
+extraObjects:
+  # Who may open a connection to the controller's port. kagent verifies no
+  # token (see controller.auth above), so reaching the port is the same as
+  # being allowed to do anything with it, as anyone.
+  #
+  #   the gateway's proxy    callers, after the route's policy verified their token
+  #   Substrate's egress     Actors: the runtime stores each turn's task through
+  #                          the controller's TaskStoreService
+  #   the controller itself  it lists the tools of its own /mcp endpoint
+  #   the UI                 when it is switched on
+  #
+  # Everything else in the cluster is refused, including a pod that presents a
+  # token it wrote itself. The kubelet's probes and `kubectl port-forward`
+  # come from the node and are not affected.
+  #
+  # This selects the controller's pods for all ingress, so its metrics port
+  # (controller.metrics, off) would need a rule here as well.
+  - apiVersion: networking.k8s.io/v1
+    kind: NetworkPolicy
+    metadata:
+      name: kagent-controller-callers
+      namespace: '{{ include "kagent.namespace" . }}'
+    spec:
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: kagent
+          app.kubernetes.io/instance: '{{ .Release.Name }}'
+          app.kubernetes.io/component: controller
+      policyTypes:
+        - Ingress
+      ingress:
+        - ports:
+            - protocol: TCP
+              port: 8083
+          from:
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: agentgateway-system
+              podSelector:
+                matchLabels:
+                  gateway.networking.k8s.io/gateway-name: agentgateway-proxy
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: ate-system
+              podSelector:
+                matchLabels:
+                  app: atenet-egress
+            - podSelector:
+                matchLabels:
+                  app.kubernetes.io/name: kagent
+                  app.kubernetes.io/instance: '{{ .Release.Name }}'
+                  app.kubernetes.io/component: controller
+            - podSelector:
+                matchLabels:
+                  app.kubernetes.io/name: kagent
+                  app.kubernetes.io/instance: '{{ .Release.Name }}'
+                  app.kubernetes.io/component: ui

@@ -1,0 +1,60 @@
+# Out: what every workload behind the gateway needs, and nothing else. A
+# Service address counts as the pods behind it.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: only-to-the-platform
+  namespace: {{ .Release.Namespace }}
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    # Cluster DNS.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.dns.namespace }}
+          podSelector:
+            matchLabels:
+              {{- toYaml .Values.dns.podLabels | nindent 14 }}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # The gateway: tools, other agents and the model.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.gateway.namespace }}
+          podSelector:
+            matchLabels:
+              {{- toYaml .Values.gateway.podLabels | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.gateway.port }}
+    # The identity provider, for the keys that verify a caller's token.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.identity.namespace }}
+          podSelector:
+            matchLabels:
+              {{- toYaml .Values.identity.podLabels | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.identity.port }}
+    # The telemetry collector.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.collector.namespace }}
+          podSelector:
+            matchLabels:
+              {{- toYaml .Values.collector.podLabels | nindent 14 }}
+      ports:
+        {{- range .Values.collector.ports }}
+        - protocol: TCP
+          port: {{ . }}
+        {{- end }}

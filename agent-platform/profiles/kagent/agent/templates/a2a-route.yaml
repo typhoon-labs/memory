@@ -1,0 +1,59 @@
+{{- if .Values.a2a.enabled }}
+{{- $path := include "kagent-agent.a2aPath" . }}
+{{- $host := .Values.a2a.controller.host | default (printf "kagent-controller.%s.svc.cluster.local" .Release.Namespace) }}
+# The agent behind the gateway, as A2A over JSON-RPC:
+#
+#   <gateway>{{ $path }}                                 POST, JSON-RPC
+#   <gateway>{{ $path }}/.well-known/agent-card.json     GET
+#
+# kagent serves every agent from its controller, at /agents/<namespace>/<name>
+# on port {{ .Values.a2a.controller.port }}. That port also carries kagent's whole API (create, edit and
+# delete agents, read conversations), so the route rewrites to this one
+# agent's path and exposes nothing else.
+#
+# Who may call it is a separate release of
+# agent-platform/policies/agentgateway/route-auth that targets HTTPRoute
+# `{{ .Release.Name }}`, with `passthrough: true`: kagent reads the caller's
+# name from the token the gateway has verified. Never apply this route
+# without that policy: kagent itself verifies nothing.
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayBackend
+metadata:
+  name: {{ .Release.Name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kagent-agent.labels" . | nindent 4 }}
+spec:
+  # The a2a type tells the gateway to treat this traffic as A2A.
+  a2a:
+    host: {{ $host | quote }}
+    port: {{ .Values.a2a.controller.port }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ .Release.Name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kagent-agent.labels" . | nindent 4 }}
+spec:
+  parentRefs:
+    - name: {{ .Values.a2a.gateway.name }}
+      namespace: {{ .Values.a2a.gateway.namespace }}
+      sectionName: {{ .Values.a2a.gateway.listener }}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: {{ $path | quote }}
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /agents/{{ .Release.Namespace }}/{{ .Release.Name }}
+      backendRefs:
+        - group: agentgateway.dev
+          kind: AgentgatewayBackend
+          name: {{ .Release.Name }}
+{{- end }}

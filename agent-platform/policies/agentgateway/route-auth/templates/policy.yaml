@@ -1,0 +1,42 @@
+{{- $target := required "target.name: the route to protect" .Values.target.name -}}
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: {{ $target }}-auth
+  namespace: {{ .Release.Namespace }}
+spec:
+  targetRefs:
+    - group: {{ .Values.target.group }}
+      kind: {{ .Values.target.kind }}
+      name: {{ $target }}
+  traffic:
+    jwtAuthentication:
+      # Strict: a request without a valid token is refused with 401.
+      mode: Strict
+      providers:
+        - issuer: {{ required "identity.issuer" .Values.identity.issuer | quote }}
+          audiences:
+            - {{ required "identity.audience" .Values.identity.audience | quote }}
+          jwks:
+            remote:
+              url: {{ required "identity.jwksUrl" .Values.identity.jwksUrl | quote }}
+              cacheDuration: 5m
+    {{- with .Values.allow }}
+    authorization:
+      action: Allow
+      policy:
+        matchExpressions:
+          # The rules are alternatives, joined into one expression. Agentgateway
+          # 1.6.0 also treats separate matchExpressions entries as alternatives
+          # (checked by running), but its API reference says all must be true.
+          # One expression means the same under either reading.
+          - {{ printf "(%s)" (join ") || (" .) | quote }}
+    {{- end }}
+  {{- if .Values.passthrough }}
+  backend:
+    auth:
+      # Without this the gateway removes the Authorization header once it has
+      # validated the token. Passthrough sends the same token on to the backend,
+      # which needs it to act as the caller.
+      passthrough: {}
+  {{- end }}

@@ -1,0 +1,27 @@
+# The outer limit of what any kagent agent can reach, whatever its own egress
+# policy says: pods in this cluster. Install in Substrate's namespace.
+#
+# WHY. Substrate gives each Actor an allowlist that kagent derives from the
+# agent's definition, and everything else is denied. But the derivation adds a
+# host nobody asked for: for a ModelConfig with provider OpenAI, kagent
+# 1.0.0-alpha7 allows api.openai.com:443, and for provider Anthropic
+# api.anthropic.com:443, even when baseUrl points at the gateway. No
+# credential goes with it, and nothing in kagent can switch it off.
+#
+# On this platform an agent has no business outside the cluster at all: its
+# model is behind Agentgateway, and so are its tools. So the rule is stated
+# once, one layer below kagent: the egress gateway's pods, which every byte
+# from an Actor passes through, may open connections to pods of this cluster
+# only. An allowlist entry for an outside host then leads nowhere.
+#
+# It needs a network plugin that enforces NetworkPolicy (kind's does).
+#
+# If an agent ever needs an outside destination, add it here on purpose
+# (`allowedCIDRs`) rather than removing the policy.
+
+# Labels of the egress gateway's pods (chart `substrate`).
+egressGatewayPodLabels:
+  app: atenet-egress
+
+# Extra destinations outside the cluster, as CIDR blocks. Empty: none.
+allowedCIDRs: []

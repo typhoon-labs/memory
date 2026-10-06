@@ -1,0 +1,39 @@
+# The network boundary of namespace `agents` (chat-assistant,
+# remediation-agent, comms-agent). Values for release
+# `agents-network-boundary`, chart
+# agent-platform/policies/network/workload-boundary, which explains the rules
+# that hold for every workload: in from the gateway only; out to DNS, the
+# gateway, Keycloak's keys and the collector only.
+#
+# The three agents call delivery-mcp, each other and the model through the
+# gateway, so they need nothing more on the way out.
+#
+# A template only to read this kind cluster's addresses; see kind-addresses.sh.
+{{- $kind := exec "./kind-addresses.sh" (list) | fromJson }}
+
+servingPorts:
+  - 8080   # A2A, and for chat-assistant also the alert hook and the Chat UI
+
+# Every entry below is a path that does not go through the gateway.
+exceptions:
+  # The Chat UI is a static site that chat-assistant serves itself, on NodePort
+  # 30083 (http://localhost:18083). A browser on this machine reaches the pod
+  # from the Docker network's gateway address.
+  #
+  # This opens more than the UI. The same port serves the A2A endpoint and
+  # /hooks/alert, and a NetworkPolicy cannot tell paths apart: from this
+  # machine, http://localhost:18083 reaches them without the gateway. What
+  # holds there is chat-assistant's own check (seen on 2026-10-06: 401 without
+  # a token, 403 for a developer on the hook; its agent card is served without
+  # one, which the gateway does not do). To close it, serve the UI from a pod
+  # of its own.
+  chat-ui-from-this-machine:
+    podLabels:
+      app.kubernetes.io/name: chat-assistant
+    ingress:
+      - from:
+          - ipBlock:
+              cidr: {{ $kind.host }}/32
+        ports:
+          - protocol: TCP
+            port: 8080

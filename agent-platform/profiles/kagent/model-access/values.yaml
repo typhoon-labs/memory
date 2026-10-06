@@ -1,0 +1,60 @@
+# Model access for one workload in its own name, not in a caller's.
+#
+# WHY. The model route (HTTPRoute `model`) accepts a Keycloak token, which
+# names a person or the alert automation. A kagent agent that should be known
+# to the gateway as itself, whoever calls it, needs a credential of its own,
+# and the one kind kagent 1.x can attach for it is a fixed value from a Secret:
+# Substrate's egress gateway adds it as `Authorization: Bearer <value>` when a
+# request leaves the sandbox. A token that expires in 30 minutes is not a
+# fixed value, and a provider key must never leave the gateway.
+#
+# WHAT. The same model backend, behind a second route with a second kind of
+# credential: a key the gateway issued to this one workload.
+#
+#   HTTPRoute `model-<workload>`
+#       /workloads/<workload>/v1/chat/completions, /messages and /models,
+#       rewritten to /v1/... on the model backend
+#   AgentgatewayPolicy `model-<workload>-auth`
+#       apiKeyAuthentication: the caller presents a key whose SHA-256 the
+#       gateway knows, and that key must be the one issued to <workload>
+#
+# The key is created by mint-key.sh, not by this chart, and is in no file:
+#
+#   Secret    <workload namespace>/<workload>-gateway-key     the key, for the workload
+#   ConfigMap <release namespace>/workload-key-<workload>     its hash and what it names:
+#       {"keyHash":"sha256:<hex>","metadata":{"workload":"...","namespace":"..."}}
+#
+# It is not a provider key. It is worth nothing outside this gateway, opens one
+# route, names one workload (the policy reads it as `apiKey.workload`; the
+# gateway's log and its token and cost figures carry the route's name), and is
+# revoked by deleting one ConfigMap. Which models it may use is decided by the
+# backend, as for every caller.
+#
+# THE ALTERNATIVE, which also works (checked on kagent 1.0.0-alpha7): a
+# ModelConfig with `apiKeyPassthrough: true` and no Secret sends the token of
+# whoever called the agent on to the model route. The agent then uses the
+# ordinary route (/v1) and needs none of this. The gateway verified that token
+# there as it does for everyone: a token nobody signed, which kagent itself
+# accepts, got 401. A model call is then made as the caller, a person or
+# alert-automation, and nothing names the workload. This chart is for when the
+# workload must be named, or must work whoever calls it. For tools there is no
+# such choice: the v1alpha3 API has no way to forward a caller's token to an
+# MCP server.
+#
+# Install in the namespace of the model backend.
+#
+# Schema: Agentgateway 1.6, AgentgatewayPolicy `traffic.apiKeyAuthentication`.
+
+# The workload this door is for. Required.
+workload: ""
+
+# The Gateway the route attaches to.
+gateway:
+  name: agentgateway-proxy
+  namespace: agentgateway-system
+  listener: http
+
+# The model backend of the trunk's model route (AgentgatewayBackend in the
+# release namespace).
+backend:
+  name: model-provider

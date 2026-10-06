@@ -1,0 +1,76 @@
+# Sample App: three Deployments and their Services, named web, search-service
+# and registration-service whatever the release is called, so other
+# components can rely on http://<name>.<namespace>.svc.cluster.local:8080.
+
+# Images are <imageRegistry>/<repository>:<tag>.
+imageRegistry: localhost:5002
+# IfNotPresent keeps a rollback instant and independent of the registry: the
+# earlier version is still on the node. After rebuilding an existing tag,
+# restart the Deployment with imagePullPolicy=Always once, or use a new tag.
+imagePullPolicy: IfNotPresent
+
+web:
+  image:
+    repository: web
+    tag: 1.0.0
+  replicas: 1
+  team: web
+  service:
+    type: NodePort
+    # Mapped to host port 18082 by the kind cluster.
+    nodePort: 30082
+
+searchService:
+  image:
+    repository: search-service
+    # 2.0.0 is healthy. 2.1.0 fails every search with HTTP 500: the defect is
+    # in the image, so this tag is the only way to introduce or remove it.
+    tag: 2.0.0
+  replicas: 1
+  team: search
+  service:
+    type: ClusterIP
+
+registrationService:
+  image:
+    repository: registration-service
+    tag: 1.0.0
+  # Registrations are kept in the pod's memory: more than one replica would
+  # give each its own count.
+  replicas: 1
+  team: registration
+  service:
+    type: ClusterIP
+
+# Sets deployment.environment on traces.
+environment: dev
+
+otlp:
+  # Base URL of an OTLP receiver that speaks HTTP (usually port 4318), for
+  # example http://<collector>.telemetry.svc.cluster.local:4318. The services
+  # post spans to <endpoint>/v1/traces. Empty: spans are not exported; logs
+  # still carry trace ids.
+  endpoint: ""
+
+# The Prometheus Operator may not be installed, so this is off by default.
+# Without it, scrape the pods by the annotations below.
+serviceMonitor:
+  enabled: false
+  interval: 15s
+  # Extra labels, for a Prometheus that selects ServiceMonitors by label.
+  labels: {}
+
+# Put on every pod. /metrics is served on the same port as the application.
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "8080"
+  prometheus.io/path: /metrics
+
+# The same for all three; each is one idle Node process of about 20 MiB.
+resources:
+  requests:
+    cpu: 20m
+    memory: 48Mi
+  limits:
+    cpu: 500m
+    memory: 128Mi

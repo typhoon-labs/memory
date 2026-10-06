@@ -1,0 +1,30 @@
+# Agentregistry: the catalog of this platform's agents, MCP servers and skills.
+# Picked up by ../../helmfile.yaml (platform/*/helmfile.yaml).
+#
+#   task registry:install       this file only
+#   task deploy -- -l name=agentregistry
+#   task registry:publish       the entries under catalog/
+#
+# A catalog only. It writes nothing to the cluster; values.yaml says how that
+# is enforced.
+#
+# Chart: https://aregistry.ai/docs/setup/kubernetes/
+commonLabels:
+  layer: platform
+
+# Not inherited from the root helmfile. With any other kubeconfig this context
+# does not exist, and helm fails before it changes anything.
+helmDefaults:
+  kubeContext: kind-agentgateway-demo
+
+releases:
+  - name: agentregistry
+    namespace: agentregistry
+    createNamespace: true
+    chart: oci://ghcr.io/agentregistry-dev/agentregistry/charts/agentregistry
+    # Server v0.4.0; `task registry:arctl` fetches the CLI of the same version.
+    version: 0.4.0
+    values:
+      - values.yaml
+    wait: true
+    timeout: 300

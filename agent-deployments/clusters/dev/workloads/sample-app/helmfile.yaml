@@ -1,0 +1,28 @@
+# Sample App: web, search-service and registration-service in one release.
+# Picked up by ../../helmfile.yaml (workloads/*/helmfile.yaml).
+#
+# The chart belongs to the component; what this cluster runs is in values.yaml.
+# Images and the chart must be in the registry first: `task demo:publish`.
+#
+# The chart is installed from the component's directory. delivery-mcp later
+# upgrades this same release from the chart `task demo:publish` pushed to the
+# registry (oci://localhost:5002/charts/sample-app), changing only
+# searchService.image.tag; the two are the same chart as long as it is
+# published after every change to it.
+commonLabels:
+  layer: workload
+
+# Not inherited from the root helmfile. With any other kubeconfig this context
+# does not exist, and helm fails before it changes anything.
+helmDefaults:
+  kubeContext: kind-agentgateway-demo
+
+releases:
+  - name: sample-app
+    namespace: sample-app
+    createNamespace: true
+    chart: ../../../../../components/sample-app/chart
+    values:
+      - values.yaml
+    wait: true
+    timeout: 120

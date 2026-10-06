@@ -1,0 +1,28 @@
+# How the agent is allowed to run: kagent's own runtime, on Agent Substrate.
+# Each conversation is an Actor in a gVisor sandbox on a Worker of the pool,
+# suspended to a snapshot at the end of every turn.
+#
+# A Harness reports no status of its own; readiness is on the Agent.
+apiVersion: api.kagent.dev/v1alpha3
+kind: Harness
+metadata:
+  name: {{ .Release.Name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kagent-agent.labels" . | nindent 4 }}
+spec:
+  kagent: {}
+  workload:
+    image: {{ required "harness.image, pinned by sha256 digest" .Values.harness.image | quote }}
+  {{- with .Values.harness.env }}
+  env:
+    {{- range $name, $value := . }}
+    - name: {{ $name }}
+      value: {{ $value | quote }}
+    {{- end }}
+  {{- end }}
+  substrate:
+    workerPoolRef:
+      name: {{ required "harness.workerPool" .Values.harness.workerPool }}
+    snapshotPolicy:
+      location: {{ required "harness.snapshotLocation" .Values.harness.snapshotLocation | quote }}

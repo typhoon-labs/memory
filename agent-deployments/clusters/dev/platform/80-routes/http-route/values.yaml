@@ -1,0 +1,25 @@
+# One plain HTTP endpoint of a Service behind the gateway: an HTTPRoute whose
+# rules each map a path on the gateway to a path on the Service. For something
+# that is neither MCP nor A2A, such as a webhook.
+#
+# Who may call it, and that the Service receives the caller's token, is a
+# separate release of agent-platform/policies/agentgateway/route-auth that
+# targets HTTPRoute <route.name>. Install both in the Service's namespace.
+
+# The Gateway this route attaches to.
+gateway:
+  name: agentgateway-proxy
+  namespace: agentgateway-system
+  listener: http
+
+route:
+  # Names the HTTPRoute.
+  name: ""
+  # Each entry: `path`, a prefix on the gateway, and `backendPath`, the prefix it
+  # becomes on the Service. Optional `method` limits the entry to one method.
+  paths: []
+
+backend:
+  # A Service in the release namespace.
+  service: ""
+  port: 8080

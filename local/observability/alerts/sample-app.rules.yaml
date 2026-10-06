@@ -1,0 +1,48 @@
+# Alert rules for the Sample App, as a plain Prometheus rule file. It is loaded
+# into the cluster as a PrometheusRule (templates/rules.yaml) and tested by
+# sample-app.rules.test.yaml (`task observability:test-rules`).
+#
+# How fast SearchErrorRatioHigh fires, counted from the first failed search:
+#
+#   up to 5s    Prometheus starts scraping the new search-service pod
+#   up to 5s    its first scrape (interval 5s, random start)
+#          5s   the second scrape: rate() needs two samples of one series
+#   up to 5s    the next evaluation of this group (interval 5s): pending
+#         10s   `for`: firing, and sent to Alertmanager at once
+#   under 1s    Alertmanager: no group wait, token, webhook
+#
+# About 25 seconds as a rule (measured 23 to 25 from the release command), 31
+# at worst. It depends on two settings outside this file: the Sample App is
+# scraped every 5s (templates/sample-app-scrape.yaml), and the Alertmanager
+# route does not wait (templates/alert-route.yaml).
+groups:
+  - name: sample-app.search
+    # The cluster default is 30s; this group must not wait that long.
+    interval: 5s
+    rules:
+      - alert: SearchErrorRatioHigh
+        # The share of searches answered with a server error, per running
+        # version. Per version, so that the healthy answers of the version
+        # that was just replaced do not dilute the ratio of the new one, and
+        # so that the alert names the version that fails.
+        #
+        # The 30s window holds six scrapes. search-service creates its
+        # status="500" series at zero when it starts, so the first failed
+        # search already counts as an increase.
+        expr: |
+          sum by (service_name, version) (rate(http_requests_total{service_name="search-service", route="/search", status=~"5.."}[30s]))
+            /
+          sum by (service_name, version) (rate(http_requests_total{service_name="search-service", route="/search"}[30s]))
+            > 0.05
+        for: 10s
+        labels:
+          severity: critical
+          # The name the alert hook opens the incident for.
+          service: search-service
+          # The Alertmanager route sends alerts with this label to the
+          # diagnosis automation.
+          diagnose: "true"
+        annotations:
+          summary: 'Search is failing: {{ $value | humanizePercentage }} of requests to search-service {{ $labels.version }} return a server error.'
+          impact: Visitors of the Sample App cannot search the catalogue.
+          description: 'More than 5% of GET /search requests to search-service version {{ $labels.version }} returned HTTP 5xx over the last 30 seconds.'

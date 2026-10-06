@@ -1,0 +1,5 @@
+apiVersion: v2
+name: gateway-telemetry
+description: Sends the gateway's traces and access logs to the OpenTelemetry Collector
+type: application
+version: 0.1.0

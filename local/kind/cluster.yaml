@@ -1,0 +1,41 @@
+# kind cluster for the demo. Created by `task up`, removed by `task down`.
+#
+# Nothing here can be changed on a running cluster: API runtime config and
+# port mappings are fixed at creation. To change them, `task down && task up`.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: agentgateway-demo
+
+# kagent 1.x runs agents on Agent Substrate, which needs Kubernetes 1.37+ and
+# the certificates.k8s.io/v1beta1 API (off by default). This is the exact kind
+# configuration from https://kagent.dev/docs/kagent/1.x/setup/installation/
+# (needs kind v0.32.0 or later).
+runtimeConfig:
+  "certificates.k8s.io/v1beta1": "true"
+
+# Local registry, wired as in https://kind.sigs.k8s.io/docs/user/local-registry/
+# The per-registry hosts.toml is written by local/registry/registry.sh.
+# kind notes this patch is redundant for node images from kind v0.27.0 on; it
+# is kept so the file matches the documented setup.
+containerdConfigPatches:
+  - |-
+    [plugins."io.containerd.grpc.v1.cri".registry]
+      config_path = "/etc/containerd/certs.d"
+
+nodes:
+  - role: control-plane
+    # The v1.37.0 image published with kind v0.33.0, pinned by digest.
+    image: kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5
+    # Host port -> NodePort, from agent-platform/docs/conventions.md.
+    # Bound to 127.0.0.1 only, on ports reserved for this project.
+    extraPortMappings:
+      - { containerPort: 30080, hostPort: 18080, listenAddress: "127.0.0.1", protocol: TCP } # Agentgateway
+      - { containerPort: 30081, hostPort: 18081, listenAddress: "127.0.0.1", protocol: TCP } # Keycloak
+      - { containerPort: 30082, hostPort: 18082, listenAddress: "127.0.0.1", protocol: TCP } # Sample App web
+      - { containerPort: 30083, hostPort: 18083, listenAddress: "127.0.0.1", protocol: TCP } # Chat UI
+      - { containerPort: 30084, hostPort: 18084, listenAddress: "127.0.0.1", protocol: TCP } # Grafana
+      - { containerPort: 30085, hostPort: 18085, listenAddress: "127.0.0.1", protocol: TCP } # Langfuse
+      - { containerPort: 30086, hostPort: 18086, listenAddress: "127.0.0.1", protocol: TCP } # Agentregistry UI
+      - { containerPort: 30087, hostPort: 18087, listenAddress: "127.0.0.1", protocol: TCP } # Spare
+      - { containerPort: 30088, hostPort: 18088, listenAddress: "127.0.0.1", protocol: TCP } # Spare
+      - { containerPort: 30089, hostPort: 18089, listenAddress: "127.0.0.1", protocol: TCP } # Spare

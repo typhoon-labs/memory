@@ -1,0 +1,114 @@
+{{- $name := include "observability-mcp.name" . -}}
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayBackend
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  mcp:
+    targets:
+      - name: {{ $name }}
+        static:
+          backendRef:
+            name: {{ $name }}
+          port: 8000
+          # Streamable HTTP; the server's endpoint path is the default, /mcp.
+          protocol: StreamableHTTP
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  parentRefs:
+    - name: {{ .Values.route.gateway.name }}
+      namespace: {{ .Values.route.gateway.namespace }}
+      sectionName: {{ .Values.route.gateway.listener }}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: {{ .Values.route.path }}
+      backendRefs:
+        - group: agentgateway.dev
+          kind: AgentgatewayBackend
+          name: {{ $name }}
+---
+# Who is a valid caller. The caller's token stops at the gateway: the server
+# reads Grafana with its own Viewer credential, the same for every caller.
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: {{ $name }}-auth
+  namespace: {{ .Release.Namespace }}
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: {{ $name }}
+  traffic:
+    jwtAuthentication:
+      # Strict: no valid token, no MCP session (401).
+      mode: Strict
+      providers:
+        - issuer: {{ required "identity.issuer" .Values.identity.issuer | quote }}
+          audiences:
+            - {{ required "identity.audience" .Values.identity.audience | quote }}
+          jwks:
+            remote:
+              url: {{ required "identity.jwksUrl" .Values.identity.jwksUrl | quote }}
+              cacheDuration: 5m
+---
+# What holds for the backend, whichever route leads to it: the credential the
+# gateway presents to the server, and which tools exist for callers. The tool
+# rule is enforced on tools/list (other tools are hidden) and on tools/call
+# (the call is refused).
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: {{ $name }}-tools
+  namespace: {{ .Release.Namespace }}
+spec:
+  targetRefs:
+    - group: agentgateway.dev
+      kind: AgentgatewayBackend
+      name: {{ $name }}
+  backend:
+    auth:
+      # The server requires a token of its own from its caller, and only the
+      # gateway has it: read from the Secret's `Authorization` key and sent as
+      # `Authorization: Bearer <value>`. (An MCP target with a `backendRef`
+      # cannot carry this itself: the API refuses target policies there.)
+      secretRef:
+        name: {{ .Values.credentialsSecret }}
+    mcp:
+      authorization:
+        action: Allow
+        policy:
+          # No condition on who calls: every caller a route has let in may
+          # read. That is any valid Keycloak token on the route above (the
+          # three human roles and the machine client `alert-automation`), and
+          # the workloads of ../workload-access on theirs.
+          matchExpressions:
+            - {{ printf "mcp.tool.name in %s" (toJson (required "allowedTools: at least one tool" .Values.allowedTools)) | quote }}
+
+{{- with .Values.workloadRoutesNamespace }}
+---
+# Lets the routes for workloads with a gateway key (../workload-access, which
+# live next to those keys) use this backend from their namespace.
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: {{ $name }}-workload-routes
+  namespace: {{ $.Release.Namespace }}
+spec:
+  from:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      namespace: {{ . }}
+  to:
+    - group: agentgateway.dev
+      kind: AgentgatewayBackend
+      name: {{ $name }}
+{{- end }}

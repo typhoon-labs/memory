@@ -1,0 +1,52 @@
+# Agentregistry as a catalog only. Values for the chart agentregistry 0.4.0;
+# every key is in https://aregistry.ai/docs/reference/helm/
+#
+# The server, its web UI and its API are one pod; PostgreSQL is the chart's
+# bundled one, which the chart describes as for evaluation only.
+
+service:
+  type: NodePort
+  nodePorts:
+    # The UI and the API: http://localhost:18086
+    http: 30086
+    # The registry's own MCP endpoint. A NodePort Service needs a port for it;
+    # this one is fixed outside 30080-30089, which the conventions reserve.
+    # It has no host port mapping.
+    mcp: 31313
+
+# CATALOG ONLY. The registry also has a deployment integration: a `Deployment`
+# resource in the registry makes the server create kagent agents, Deployments,
+# Services, Secrets and ConfigMaps in the cluster. The chart's default
+# ClusterRole allows that in every namespace, and the open-source server has
+# no login, so anyone who reaches the API could use it.
+#
+# Here the server gets no Kubernetes rights and no API token at all. Whatever
+# is sent to it, it can only write to its own database.
+rbac:
+  enabled: false
+automountServiceAccountToken: false
+serviceAccount:
+  automountServiceAccountToken: false
+
+revisionHistoryLimit: 1
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: "1"
+    memory: 512Mi
+
+database:
+  postgres:
+    type: bundled
+    bundled:
+      storage: 1Gi
+      resources:
+        requests:
+          cpu: 50m
+          memory: 96Mi
+        limits:
+          cpu: "1"
+          memory: 512Mi

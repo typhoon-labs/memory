@@ -1,0 +1,78 @@
+# Traffic generator tasks. Included by the root Taskfile as `traffic:` (for
+# example `task traffic:run`).
+#
+# From this machine (needs Node 22+):
+#   task traffic:run                     steady traffic to the Sample App in the cluster
+#   task traffic:peak                    the same at peak rate
+#   task traffic:run TRAFFIC_TARGET_URL=http://localhost:18182 TRAFFIC_RATE=5     the local Docker trio, 5 requests a second
+#
+# In the cluster:
+#   task traffic:build traffic:push traffic:deploy
+#   then  task traffic:peak-on / task traffic:peak-off / task traffic:undeploy
+#
+# The cluster tasks name the repo-local kubeconfig and the context on every
+# kubectl command, as the root Taskfile's header requires. The path is built
+# from {{.ROOT_DIR}}, so run them from the repository root; from this directory
+# the kubeconfig is not found and kubectl fails before it changes anything.
+version: "3"
+
+# Top-level variables are shared by every included Taskfile, so each carries
+# this component's name. REGISTRY is the root Taskfile's; the default applies
+# when this file is run on its own.
+vars:
+  TRAFFIC_VERSION: '{{.TRAFFIC_VERSION | default "1.0.0"}}'
+  TRAFFIC_IMAGE: '{{.REGISTRY | default "localhost:5002"}}/traffic:{{.TRAFFIC_VERSION}}'
+  # The Sample App's web through the kind port mapping.
+  TRAFFIC_TARGET_URL: '{{.TRAFFIC_TARGET_URL | default "http://localhost:18082"}}'
+  # Requests per second in steady mode; peak multiplies it.
+  TRAFFIC_RATE: '{{.TRAFFIC_RATE | default "2"}}'
+  TRAFFIC_PEAK_MULTIPLIER: '{{.TRAFFIC_PEAK_MULTIPLIER | default "5"}}'
+
+tasks:
+  run:
+    desc: Send steady traffic from this machine until stopped (TRAFFIC_TARGET_URL, TRAFFIC_RATE)
+    # The names on the left are the ones traffic.mjs reads.
+    env: &settings
+      TARGET_URL: "{{.TRAFFIC_TARGET_URL}}"
+      RATE: "{{.TRAFFIC_RATE}}"
+      PEAK_MULTIPLIER: "{{.TRAFFIC_PEAK_MULTIPLIER}}"
+    cmds:
+      - node traffic.mjs {{.CLI_ARGS}}
+
+  peak:
+    desc: Send peak traffic from this machine until stopped (TRAFFIC_RATE x TRAFFIC_PEAK_MULTIPLIER)
+    env: *settings
+    cmds:
+      - node traffic.mjs --peak {{.CLI_ARGS}}
+
+  build:
+    desc: Build the traffic generator image ({{.TRAFFIC_IMAGE}})
+    cmds:
+      - docker build -t {{.TRAFFIC_IMAGE}} .
+
+  push:
+    desc: Push the image to the local registry
+    cmds:
+      - docker push {{.TRAFFIC_IMAGE}}
+
+  # The Deployment and its namespace (sample-app) are fixed in deployment.yaml.
+  deploy:
+    desc: Run the traffic generator in the cluster, steady mode
+    cmds:
+      - kubectl --kubeconfig "{{.ROOT_DIR}}/local/kind/kubeconfig" --context kind-agentgateway-demo apply -f deployment.yaml
+      - kubectl --kubeconfig "{{.ROOT_DIR}}/local/kind/kubeconfig" --context kind-agentgateway-demo -n sample-app rollout status deployment/traffic --timeout=60s
+
+  peak-on:
+    desc: Switch the in-cluster generator to peak mode
+    cmds:
+      - kubectl --kubeconfig "{{.ROOT_DIR}}/local/kind/kubeconfig" --context kind-agentgateway-demo -n sample-app set env deployment/traffic MODE=peak
+
+  peak-off:
+    desc: Switch the in-cluster generator back to steady mode
+    cmds:
+      - kubectl --kubeconfig "{{.ROOT_DIR}}/local/kind/kubeconfig" --context kind-agentgateway-demo -n sample-app set env deployment/traffic MODE=steady
+
+  undeploy:
+    desc: Remove the traffic generator from the cluster
+    cmds:
+      - kubectl --kubeconfig "{{.ROOT_DIR}}/local/kind/kubeconfig" --context kind-agentgateway-demo delete -f deployment.yaml --ignore-not-found

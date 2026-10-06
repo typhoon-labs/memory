@@ -1,0 +1,29 @@
+# The model route: one LLM backend behind the gateway, a valid token required.
+#
+#   model-route-auth   who may call it     values: agent-deployments/access/
+#   model-route        where it goes       values: ../model-provider.yaml
+commonLabels:
+  layer: trunk
+
+# Every helm call names our context, so this file cannot be applied to another
+# cluster: with any other kubeconfig the context does not exist and helm fails.
+helmDefaults:
+  kubeContext: kind-agentgateway-demo
+
+releases:
+  # Local charts: versions are in their Chart.yaml files.
+  - name: model-route-auth
+    namespace: agentgateway-system
+    chart: ../../../../../agent-platform/policies/agentgateway/route-auth
+    values:
+      - ../../../../access/identity.yaml
+      - ../../../../access/model-route.yaml
+
+  - name: model-route
+    namespace: agentgateway-system
+    chart: ../../../../../agent-platform/profiles/gateway/model-route
+    # The policy first, so the route is never served without it.
+    needs:
+      - agentgateway-system/model-route-auth
+    values:
+      - ../model-provider.yaml

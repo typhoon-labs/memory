@@ -1,0 +1,56 @@
+# observability-mcp: Grafana's MCP server, read-only, behind the gateway.
+# Picked up by ../../helmfile.yaml (workloads/*/helmfile.yaml).
+#
+#   observability-mcp                   the server and its route, in `tools`
+#   observability-mcp-workload-access   a route per workload that presents a
+#                                       gateway key instead of a Keycloak token
+#
+# Callers with a Keycloak token reach it at
+#   from a pod    http://agentgateway-proxy.agentgateway-system.svc.cluster.local/mcp/observability
+#   from the host http://localhost:18080/mcp/observability
+# The first is the value of OBSERVABILITY_MCP_URL in the cluster.
+#
+# diagnosis-agent (kagent) presents its gateway key at
+#   http://agentgateway-proxy.agentgateway-system.svc/workloads/diagnosis-agent/mcp/observability
+# with the gateway's short name, because kagent keeps one credential per host
+# name and the model route already uses the long one.
+#
+# Needs Grafana (release kube-prometheus-stack in platform/50-observability):
+# the hook creates a Viewer service account in it, and the Secret
+# `observability-mcp-credentials` that the server and the gateway read.
+commonLabels:
+  layer: workload
+
+# Not inherited from the root helmfile. With any other kubeconfig this context
+# does not exist, and helm fails before it changes anything.
+helmDefaults:
+  kubeContext: kind-agentgateway-demo
+
+releases:
+  - name: observability-mcp
+    namespace: tools
+    createNamespace: true
+    # A local chart: Grafana's own Helm chart for the server is deprecated,
+    # and agent-platform/charts/agent cannot pass arguments to a container.
+    chart: ./chart
+    values:
+      - ../../../../access/identity.yaml
+      - values.yaml
+    wait: true
+    timeout: 180
+    hooks:
+      # Names the kubeconfig and the context itself.
+      - events: ["presync"]
+        showlogs: true
+        command: ../../../../../local/observability/scripts/grafana-mcp-credential.sh
+
+  # In the gateway's namespace, next to the workload keys' hashes
+  # (agent-platform/profiles/kagent/model-access/mint-key.sh creates them).
+  - name: observability-mcp-workload-access
+    namespace: agentgateway-system
+    chart: ./workload-access
+    needs:
+      - tools/observability-mcp
+    values:
+      - workloads:
+          - diagnosis-agent

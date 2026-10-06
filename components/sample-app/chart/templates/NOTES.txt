@@ -1,0 +1,8 @@
+Sample App is installed in namespace {{ .Release.Namespace }}.
+
+  web                    {{ .Values.web.image.tag }}    http://localhost:18082 (NodePort {{ .Values.web.service.nodePort }})
+  search-service         {{ .Values.searchService.image.tag }}    http://search-service.{{ .Release.Namespace }}.svc.cluster.local:8080
+  registration-service   {{ .Values.registrationService.image.tag }}    http://registration-service.{{ .Release.Namespace }}.svc.cluster.local:8080
+
+The search-service version is the value searchService.image.tag.
+Check that search works:  curl -fsS 'http://localhost:18082/api/search?q=red'

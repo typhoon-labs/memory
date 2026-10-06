@@ -1,0 +1,68 @@
+# An AgentgatewayPolicy from outside the platform's releases may not attach to
+# anything of the platform.
+#
+# A policy must be in its target's namespace, so this concerns whoever may
+# create policies where a platform route or backend lives. Such a policy needs
+# no weakening field to weaken: at the same target the older of two policies
+# wins each field, at a more specific target (a route rule, a backend) the new
+# one does, and a field the platform left unset (a header transformation, a
+# backend credential) simply applies. So the rule is on the target, not on the
+# fields.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: gateway-policy-targets
+spec:
+  validationActions:
+    - Deny
+  evaluation:
+    background:
+      enabled: false
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["agentgateway.dev"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["agentgatewaypolicies"]
+  matchConditions:
+    {{- include "gateway-rules.notAPlatformRelease" . | nindent 4 }}
+  variables:
+    - name: ns
+      expression: object.metadata.namespace
+    # "Kind/name" of everything in this namespace that a policy can target and
+    # that a platform release owns.
+    - name: owned
+      expression: >-
+        dyn(resource.List("gateway.networking.k8s.io/v1", "gateways", variables.ns).items)
+          .filter(i, {{ include "gateway-rules.released" "i" }}).map(i, "Gateway/" + i.metadata.name)
+        + dyn(resource.List("gateway.networking.k8s.io/v1", "httproutes", variables.ns).items)
+          .filter(i, {{ include "gateway-rules.released" "i" }}).map(i, "HTTPRoute/" + i.metadata.name)
+        + dyn(resource.List("gateway.networking.k8s.io/v1", "grpcroutes", variables.ns).items)
+          .filter(i, {{ include "gateway-rules.released" "i" }}).map(i, "GRPCRoute/" + i.metadata.name)
+        + dyn(resource.List("agentgateway.dev/v1alpha1", "agentgatewaybackends", variables.ns).items)
+          .filter(i, {{ include "gateway-rules.released" "i" }}).map(i, "AgentgatewayBackend/" + i.metadata.name)
+        + dyn(resource.List("v1", "services", variables.ns).items)
+          .filter(i, {{ include "gateway-rules.released" "i" }}).map(i, "Service/" + i.metadata.name)
+    - name: named
+      expression: >-
+        object.spec.?targetRefs.orValue([])
+          .filter(t, (t.kind + "/" + t.name) in variables.owned)
+          .map(t, t.kind + " " + t.name)
+    - name: selected
+      expression: >-
+        object.spec.?targetSelectors.orValue([])
+          .filter(s, variables.owned.exists(o, o.startsWith(s.kind + "/")))
+          .map(s, s.kind)
+  validations:
+    - expression: variables.named.size() == 0
+      messageExpression: >-
+        "AgentgatewayPolicy " + variables.ns + "/" + object.metadata.name + " targets "
+        + variables.named.join(", ") + ", which a platform release owns. "
+        + "The gateway merges every policy on a target, and a more specific or an older one replaces the platform's rule, so only a platform release may attach a policy there. "
+        + {{ .Values.platform.changeHint | toJson }}
+    - expression: variables.selected.size() == 0
+      messageExpression: >-
+        "AgentgatewayPolicy " + variables.ns + "/" + object.metadata.name + " selects every "
+        + variables.selected.join(" and ") + " with some labels, in a namespace where a platform release owns one. "
+        + "Name your own targets in targetRefs instead. "
+        + {{ .Values.platform.changeHint | toJson }}

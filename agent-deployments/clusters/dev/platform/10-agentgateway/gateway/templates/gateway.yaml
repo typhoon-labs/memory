@@ -1,0 +1,26 @@
+# One shared Gateway for model, MCP and A2A routes. The controller creates a
+# Deployment and a Service with the Gateway's name in this namespace.
+#
+# From the host:       http://localhost:18080
+# From inside a pod:   http://agentgateway-proxy.agentgateway-system.svc.cluster.local
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: agentgateway-proxy
+  namespace: {{ .Release.Namespace }}
+spec:
+  # The GatewayClass that the Agentgateway controller creates.
+  gatewayClassName: agentgateway
+  infrastructure:
+    parametersRef:
+      group: agentgateway.dev
+      kind: AgentgatewayParameters
+      name: agentgateway-proxy
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+      allowedRoutes:
+        namespaces:
+          # Routes live with their workloads, in their own namespaces.
+          from: All

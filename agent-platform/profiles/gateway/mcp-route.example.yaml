@@ -1,0 +1,141 @@
+# Gateway pattern: an MCP server behind the gateway.
+#
+#   - the caller needs a valid token (issuer and audience)
+#   - each tool is limited to the roles allowed to call it, at the gateway
+#   - the server still receives the caller's token and applies its own rules
+#
+# An example to copy, not a release. Worked for `delivery-mcp` in namespace
+# `tools`; the tool names and roles are the contract in
+# agent-platform/docs/conventions.md. Replace names, namespace, port and rules.
+# The namespace must exist. Issuer, audience and key URL are the dev cluster's
+# values from agent-deployments/access/identity.yaml.
+#
+# Clients reach it at:
+#   from a pod    http://agentgateway-proxy.agentgateway-system.svc.cluster.local/mcp/delivery
+#   from the host http://localhost:18080/mcp/delivery
+#
+# Schema: Agentgateway 1.6 (agentgateway.dev/v1alpha1), from
+#   https://agentgateway.dev/docs/kubernetes/latest/documentation/mcp/static-mcp/
+#   https://agentgateway.dev/docs/kubernetes/latest/documentation/mcp/tool-access/
+#   https://agentgateway.dev/docs/kubernetes/latest/documentation/security/backend-authn/key/
+#
+# VERIFIED BY APPLYING, 2026-10-06, Agentgateway 1.6.0 on Kubernetes 1.37,
+# against a stub MCP server (FastMCP, Streamable HTTP) with the ten tool names
+# of the contract plus one tool that no rule names:
+#   - all four resources accepted, both policies attached
+#   - no token: 401 on initialize
+#   - tools/list per role returns exactly that role's tools plus the two
+#     "any signed-in" tools; the tool without a rule is listed for nobody
+#   - tools/call of a tool the role may not use: JSON-RPC error "Unknown tool"
+#   - the server received the caller's own bearer token (passthrough)
+# NOT VERIFIED: the commented `mcp:` OAuth block, and the real delivery-mcp.
+---
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayBackend
+metadata:
+  name: delivery-mcp
+  namespace: tools
+spec:
+  mcp:
+    targets:
+      - name: delivery-mcp
+        static:
+          # Service `delivery-mcp` in this namespace.
+          backendRef:
+            name: delivery-mcp
+          port: 8080
+          # Streamable HTTP; the server's endpoint path defaults to /mcp.
+          protocol: StreamableHTTP
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: delivery-mcp
+  namespace: tools
+spec:
+  parentRefs:
+    - name: agentgateway-proxy
+      namespace: agentgateway-system
+      sectionName: http
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /mcp/delivery
+      backendRefs:
+        - group: agentgateway.dev
+          kind: AgentgatewayBackend
+          name: delivery-mcp
+---
+# Who is a valid caller, and what the server receives.
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: delivery-mcp-auth
+  namespace: tools
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: delivery-mcp
+  traffic:
+    jwtAuthentication:
+      # Strict: no valid token, no MCP session (401).
+      mode: Strict
+      providers:
+        - issuer: http://localhost:18081/realms/demo
+          audiences:
+            - agentgateway
+          jwks:
+            remote:
+              url: http://keycloak.keycloak.svc.cluster.local:8080/realms/demo/protocol/openid-connect/certs
+              cacheDuration: 5m
+      # For an interactive MCP client that discovers the authorization server
+      # itself (the backup act with client `mcp-client`), add the MCP OAuth
+      # settings below and the two /.well-known/... path matches from
+      # https://agentgateway.dev/docs/kubernetes/latest/documentation/mcp/auth/setup/
+      # NOT VERIFIED here: agents and scripts already hold a token.
+      #
+      # mcp:
+      #   provider: Keycloak
+      #   clientId: mcp-client
+      #   resourceMetadata:
+      #     resource: http://localhost:18080/mcp/delivery
+      #     bearerMethodsSupported: [header]
+  backend:
+    auth:
+      # The gateway removes the Authorization header once it has validated the
+      # token. Passthrough puts the same token back on the request to the
+      # server, which needs it to apply its own rules as the caller.
+      passthrough: {}
+---
+# Which role may use which tool. Enforced by the gateway on tools/list (other
+# tools are hidden) and on tools/call (the call is refused). The service
+# enforces the same roles again, plus the rules only it can know.
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: delivery-mcp-tools
+  namespace: tools
+spec:
+  targetRefs:
+    - group: agentgateway.dev
+      kind: AgentgatewayBackend
+      name: delivery-mcp
+  backend:
+    mcp:
+      authorization:
+        action: Allow
+        policy:
+          # Once an Allow rule exists, a tool that no clause names is hidden
+          # from everyone, so a new tool needs a clause here before anyone can
+          # call it. Written as one expression on purpose: 1.6.0 treats
+          # separate matchExpressions entries as alternatives too, but its API
+          # reference says all must be true.
+          matchExpressions:
+            - >-
+              mcp.tool.name in ["list_incidents", "get_incident"]
+              || (mcp.tool.name in ["open_incident", "record_diagnosis"] && "alert-automation" in jwt.roles)
+              || (mcp.tool.name == "propose_change" && "developer" in jwt.roles)
+              || (mcp.tool.name in ["approve_change", "reject_change", "post_status_update"] && "incident-manager" in jwt.roles)
+              || (mcp.tool.name in ["apply_change", "restart_workload"] && "platform-engineer" in jwt.roles)

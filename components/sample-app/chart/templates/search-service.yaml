@@ -1,0 +1,1 @@
+{{ include "sample-app.workload" (dict "root" . "name" "search-service" "cfg" .Values.searchService) }}

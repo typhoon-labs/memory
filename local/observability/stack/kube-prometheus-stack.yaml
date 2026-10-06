@@ -1,0 +1,173 @@
+# kube-prometheus-stack, cut down to what the demo needs: the operator,
+# Prometheus, Alertmanager and Grafana. Stands in for the organisation's real
+# operational backend (New Relic or Dynatrace), so it exists only on kind.
+#
+# Values for the release `kube-prometheus-stack` in
+# agent-deployments/clusters/dev/platform/50-observability/helmfile.yaml, which
+# pins the chart version. Starting point: the Agentgateway OTel stack guide,
+# https://agentgateway.dev/docs/kubernetes/latest/documentation/observability/otel-stack/
+#
+# Metrics are not persistent: a new Prometheus pod starts empty. Grafana keeps
+# its database on a volume, for the reason given there.
+
+# --- Not installed -----------------------------------------------------------
+# The bundled rules alert on cluster components this demo does not watch.
+defaultRules:
+  create: false
+nodeExporter:
+  enabled: false
+kubeStateMetrics:
+  enabled: false
+kubeApiServer:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeEtcd:
+  enabled: false
+kubeProxy:
+  enabled: false
+coreDns:
+  enabled: false
+
+# Container CPU and memory, for the two "Overview" panels of the ready-made
+# Agentgateway dashboard. Only cAdvisor is scraped, and only those two metrics
+# are kept.
+kubelet:
+  enabled: true
+  serviceMonitor:
+    kubelet: false
+    probes: false
+    resource: false
+    cAdvisor: true
+    cAdvisorMetricRelabelings:
+      - sourceLabels: [__name__]
+        action: keep
+        regex: container_(cpu_usage_seconds_total|memory_working_set_bytes)
+
+prometheusOperator:
+  # No admission webhook: it needs a certificate job and one more image. A
+  # rule that does not parse is then skipped by the operator instead of being
+  # refused on apply, so check `task observability:status` after changing one.
+  admissionWebhooks:
+    enabled: false
+  tls:
+    enabled: false
+  serviceMonitor:
+    selfMonitor: false
+
+# --- Prometheus ---------------------------------------------------------------
+prometheus:
+  serviceMonitor:
+    selfMonitor: false
+  prometheusSpec:
+    # Pick up every ServiceMonitor, PodMonitor and PrometheusRule in the
+    # cluster, whatever its labels. A component only has to create one.
+    ruleSelectorNilUsesHelmValues: false
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    probeSelectorNilUsesHelmValues: false
+    scrapeConfigSelectorNilUsesHelmValues: false
+    # From the Agentgateway guide.
+    enableFeatures:
+      - native-histograms
+    # The default for targets that do not set their own. The Sample App is
+    # scraped every 5s (../templates/sample-app-scrape.yaml) and its alert rule
+    # group is evaluated every 5s; ../alerts/sample-app.rules.yaml says why.
+    scrapeInterval: 30s
+    evaluationInterval: 30s
+    retention: 24h
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        memory: 1Gi
+
+# --- Alertmanager ---------------------------------------------------------------
+alertmanager:
+  serviceMonitor:
+    selfMonitor: false
+  alertmanagerSpec:
+    # The receiver and its route are an AlertmanagerConfig in the chart
+    # local/observability (templates/alert-route.yaml).
+    alertmanagerConfigSelector:
+      matchLabels:
+        alertmanager: demo
+    # Without this the operator adds `namespace="telemetry"` to the route, and
+    # an alert about a service in another namespace would never match.
+    alertmanagerConfigMatcherStrategy:
+      type: None
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+      limits:
+        memory: 128Mi
+
+# --- Grafana ----------------------------------------------------------------
+grafana:
+  # The login is the chart's default for user `admin`: demo only, and reachable
+  # only from this machine (127.0.0.1:18084). The password is not written in
+  # this repository; `task observability:login` prints it from the cluster.
+  service:
+    type: NodePort
+    # Mapped to host port 18084 by the kind cluster.
+    nodePort: 30084
+  serviceMonitor:
+    enabled: false
+  # Grafana's database holds the service account that observability-mcp reads
+  # Grafana with (scripts/grafana-mcp-credential.sh). On a volume it outlives
+  # the pod; without one, any change to these values would replace the pod and
+  # silently invalidate that credential.
+  persistence:
+    enabled: true
+    size: 1Gi
+  # One pod at a time on the volume.
+  deploymentStrategy:
+    type: Recreate
+  # kind's volumes are writable by any user, so no root init container.
+  initChownData:
+    enabled: false
+  # Only this demo's dashboards, not the chart's cluster dashboards.
+  defaultDashboardsEnabled: false
+  sidecar:
+    dashboards:
+      # A ConfigMap with the label grafana_dashboard="1" in any namespace is
+      # loaded. That is how the Agentgateway chart's dashboard and the ones in
+      # ../dashboards/ arrive.
+      searchNamespace: ALL
+  # The Prometheus data source (uid `prometheus`) is created by the chart.
+  additionalDataSources:
+    - name: Loki
+      type: loki
+      uid: loki
+      access: proxy
+      url: http://loki.telemetry.svc.cluster.local:3100
+    - name: Tempo
+      type: tempo
+      uid: tempo
+      access: proxy
+      url: http://tempo.telemetry.svc.cluster.local:3100
+  grafana.ini:
+    server:
+      # The address in a browser on this machine. Links that Grafana and the
+      # MCP server's `generate_deeplink` build start with it.
+      root_url: http://localhost:18084
+    analytics:
+      reporting_enabled: false
+      check_for_updates: false
+      check_for_plugin_updates: false
+    news:
+      news_feed_enabled: false
+    dashboards:
+      # What the projector shows first. The file is written by the dashboard
+      # sidecar from ../dashboards/sample-app.json.
+      default_home_dashboard_path: /tmp/dashboards/sample-app.json
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 512Mi

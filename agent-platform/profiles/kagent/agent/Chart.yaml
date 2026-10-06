@@ -1,0 +1,7 @@
+apiVersion: v2
+name: kagent-agent
+description: One declarative kagent 1.x agent - its model binding, tools, prompt, runtime and gateway route - with no code
+type: application
+version: 0.1.0
+# The kagent API these templates are written for (api.kagent.dev/v1alpha3).
+appVersion: "1.0.0-alpha7"

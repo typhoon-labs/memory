@@ -1,0 +1,5 @@
+apiVersion: v2
+name: substrate-egress-boundary
+description: Keeps everything an agent sends inside the cluster - Agent Substrate's egress gateway may connect to pods of this cluster and to nothing else
+type: application
+version: 0.1.0

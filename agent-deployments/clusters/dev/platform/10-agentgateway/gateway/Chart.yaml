@@ -1,0 +1,5 @@
+apiVersion: v2
+name: agentgateway-proxy
+description: The dev cluster's Gateway and the settings of its Agentgateway proxy
+type: application
+version: 0.1.0

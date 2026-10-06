@@ -1,0 +1,26 @@
+# remediation-agent behind the gateway: where it is reached and who may call it.
+#
+#   from a pod      http://agentgateway-proxy.agentgateway-system.svc.cluster.local/a2a/remediation-agent
+#   from the host   http://localhost:18080/a2a/remediation-agent
+#
+# Values for two releases in ../../platform/80-routes/helmfile.yaml:
+# `remediation-agent-route` (route, backend) and `remediation-agent-route-auth`
+# (allow, passthrough).
+
+route:
+  name: remediation-agent
+  path: /a2a/remediation-agent
+
+backend:
+  host: remediation-agent.agents.svc.cluster.local
+  port: 8080
+
+# Who may call the agent, its agent card included: CEL expressions on the
+# verified token, any one of which allows the caller. The agent applies a
+# change, which only a platform engineer may do.
+allow:
+  - '"platform-engineer" in jwt.roles'
+
+# The agent receives the caller's own token and uses it, unchanged, to call
+# delivery-mcp and the model route. It has no identity of its own.
+passthrough: true

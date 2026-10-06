@@ -1,0 +1,46 @@
+{{- $name := required "route.name" .Values.route.name -}}
+{{- /*
+One clause per tool: the tool's name, and the roles that may use it. A tool
+whose roles include "*" needs only a valid token, which the route's own policy
+has already required.
+*/ -}}
+{{- $clauses := list -}}
+{{- range $tool, $roles := .Values.tools -}}
+  {{- if has "*" $roles -}}
+    {{- $clauses = append $clauses (printf "mcp.tool.name == %q" $tool) -}}
+  {{- else if $roles -}}
+    {{- $holders := list -}}
+    {{- range $roles -}}
+      {{- $holders = append $holders (printf "%q in jwt.roles" .) -}}
+    {{- end -}}
+    {{- $clauses = append $clauses (printf "(mcp.tool.name == %q && (%s))" $tool (join " || " $holders)) -}}
+  {{- end -}}
+{{- end -}}
+{{- if not $clauses -}}
+  {{- fail "tools: list at least one tool with a role; with none, every tool would be hidden from everyone" -}}
+{{- end -}}
+# Which role may use which tool. The gateway enforces it on tools/list (a tool
+# the caller's role lacks is not listed) and on tools/call (the call is
+# refused before it reaches the server). The server applies the same roles
+# again, and the rules only it can know.
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: {{ $name }}-tools
+  namespace: {{ .Release.Namespace }}
+spec:
+  targetRefs:
+    - group: agentgateway.dev
+      kind: AgentgatewayBackend
+      name: {{ $name }}
+  backend:
+    mcp:
+      authorization:
+        action: Allow
+        policy:
+          # One expression of alternatives. Agentgateway 1.6.0 also treats
+          # separate matchExpressions entries as alternatives, but its API
+          # reference says all must be true; one expression means the same
+          # under either reading.
+          matchExpressions:
+            - {{ join " || " $clauses | quote }}

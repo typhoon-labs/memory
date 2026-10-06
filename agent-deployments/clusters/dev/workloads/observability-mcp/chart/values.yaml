@@ -1,0 +1,62 @@
+# Grafana's MCP server (https://github.com/grafana/mcp-grafana), read-only,
+# reachable only through the gateway.
+#
+#   Deployment + Service   the server, MCP over Streamable HTTP at /mcp
+#   AgentgatewayBackend    the server as an MCP backend
+#   HTTPRoute              the gateway path
+#   AgentgatewayPolicy     -auth: a valid Keycloak token is required
+#                          -tools: the tools that are listed and callable, and
+#                          the server's own token, which the gateway presents
+#   ReferenceGrant         for the workload routes of ../workload-access
+#
+# The gateway resources follow agent-platform/profiles/gateway/mcp-route.example.yaml.
+# What the dev cluster runs is in ../values.yaml.
+
+image:
+  repository: grafana/mcp-grafana
+  # Required: the version that runs.
+  tag: ""
+
+# The Grafana the server reads, as seen from a pod.
+grafanaUrl: ""
+
+# Secret in the release namespace, created outside git by
+# local/observability/scripts/grafana-mcp-credential.sh:
+#   grafana-token   a Grafana service account token with role Viewer
+#   Authorization   the token the server requires from its caller (the gateway)
+credentialsSecret: observability-mcp-credentials
+
+# The server's tool categories (`--enabled-tools`). Write tools are switched
+# off in the server itself (`--disable-write`), whatever is listed here.
+toolCategories: []
+
+# The gateway path. Clients use <gateway>/<path>.
+route:
+  path: /mcp/observability
+  # The Gateway the route attaches to.
+  gateway:
+    name: agentgateway-proxy
+    namespace: agentgateway-system
+    listener: http
+
+# The namespace whose HTTPRoutes may also use this backend: the routes of
+# ../workload-access. Empty: none.
+workloadRoutesNamespace: ""
+
+# Whose tokens are trusted: agent-deployments/access/identity.yaml.
+identity:
+  issuer: ""
+  audience: ""
+  jwksUrl: ""
+
+# The tools the gateway lists and lets through, for any caller with a valid
+# token. A tool that is not named here is hidden from everyone, so a new
+# server version cannot add a tool unnoticed.
+allowedTools: []
+
+resources:
+  requests:
+    cpu: 20m
+    memory: 48Mi
+  limits:
+    memory: 256Mi

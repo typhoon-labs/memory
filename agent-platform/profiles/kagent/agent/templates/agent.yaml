@@ -1,0 +1,17 @@
+# The runnable pairing, and the name callers use. kagent compiles it into an
+# immutable revision and builds a golden snapshot of the runtime before it
+# reports Ready (about a minute). A conversation keeps the revision it started on.
+#
+#   kubectl get agents.api.kagent.dev {{ .Release.Name }} -n {{ .Release.Namespace }} -o jsonpath='{.status.conditions}'
+apiVersion: api.kagent.dev/v1alpha3
+kind: Agent
+metadata:
+  name: {{ .Release.Name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kagent-agent.labels" . | nindent 4 }}
+spec:
+  templateRef:
+    name: {{ .Release.Name }}
+  harnessRef:
+    name: {{ .Release.Name }}

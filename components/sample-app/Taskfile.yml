@@ -1,0 +1,95 @@
+# Sample App tasks. Included by the root Taskfile as `sample-app:` (for
+# example `task sample-app:build`); also runs on its own from this directory.
+#
+#   task test         tests from source (needs Node 22+, no Docker)
+#   task build        the four images: web, registration-service, search-service 2.0.0 and 2.1.0
+#   task push         push them to the local registry
+#   task chart:push   package the chart and push it to the registry as an OCI chart
+#   task run-local    run the three services with Docker on ports 18182 to 18184
+#   task stop-local   remove what run-local started
+#   task lint         helm lint and helm template of the chart
+#
+# Swap the search version locally, as the incident and the rollback do in the
+# cluster:   task run-local SAMPLE_APP_SEARCH_VERSION=2.1.0    then    task run-local
+#
+# No task here talks to a cluster: helm lint, template, package and push need
+# no kubeconfig.
+version: "3"
+
+# Top-level variables are shared by every included Taskfile, so each carries
+# this component's name. REGISTRY is the root Taskfile's; the default applies
+# when this file is run on its own.
+vars:
+  SAMPLE_APP_REGISTRY: '{{.REGISTRY | default "localhost:5002"}}'
+  SAMPLE_APP_WEB_VERSION: '{{.SAMPLE_APP_WEB_VERSION | default "1.0.0"}}'
+  SAMPLE_APP_REGISTRATION_VERSION: '{{.SAMPLE_APP_REGISTRATION_VERSION | default "1.0.0"}}'
+  # Every search-service version that is built and pushed.
+  SAMPLE_APP_SEARCH_VERSIONS: "2.0.0 2.1.0"
+  # The one run-local starts.
+  SAMPLE_APP_SEARCH_VERSION: '{{.SAMPLE_APP_SEARCH_VERSION | default "2.0.0"}}'
+
+tasks:
+  test:
+    desc: Run the tests from source (2.0.0 finds "red", 2.1.0 fails, registration confirms)
+    cmds:
+      - node --test "test/*.test.js"
+
+  build:
+    desc: Build web, registration-service and every search-service version
+    cmds:
+      - docker build -f web/Dockerfile --build-arg VERSION={{.SAMPLE_APP_WEB_VERSION}} -t {{.SAMPLE_APP_REGISTRY}}/web:{{.SAMPLE_APP_WEB_VERSION}} .
+      - docker build -f registration-service/Dockerfile --build-arg VERSION={{.SAMPLE_APP_REGISTRATION_VERSION}} -t {{.SAMPLE_APP_REGISTRY}}/registration-service:{{.SAMPLE_APP_REGISTRATION_VERSION}} .
+      # One source tree: the version is a build argument, and the bug is in the 2.1.0 image.
+      - for: { var: SAMPLE_APP_SEARCH_VERSIONS }
+        cmd: docker build -f search-service/Dockerfile --build-arg VERSION={{.ITEM}} -t {{.SAMPLE_APP_REGISTRY}}/search-service:{{.ITEM}} .
+
+  push:
+    desc: Push the images to the registry ({{.SAMPLE_APP_REGISTRY}})
+    cmds:
+      - docker push {{.SAMPLE_APP_REGISTRY}}/web:{{.SAMPLE_APP_WEB_VERSION}}
+      - docker push {{.SAMPLE_APP_REGISTRY}}/registration-service:{{.SAMPLE_APP_REGISTRATION_VERSION}}
+      - for: { var: SAMPLE_APP_SEARCH_VERSIONS }
+        cmd: docker push {{.SAMPLE_APP_REGISTRY}}/search-service:{{.ITEM}}
+
+  chart:push:
+    desc: Package the chart and push it to oci://{{.SAMPLE_APP_REGISTRY}}/charts/sample-app
+    # delivery-mcp applies a change with `helm upgrade` and needs the chart the
+    # release was installed from. It pulls this one, by the chart version in
+    # chart/Chart.yaml. The local registry speaks HTTP, hence --plain-http.
+    vars:
+      PACKAGE_DIR: "{{.ROOT_DIR}}/.scratch/sample-app-chart"
+    cmds:
+      - rm -rf "{{.PACKAGE_DIR}}" && mkdir -p "{{.PACKAGE_DIR}}"
+      - helm package chart --destination "{{.PACKAGE_DIR}}"
+      - helm push "{{.PACKAGE_DIR}}"/sample-app-*.tgz oci://{{.SAMPLE_APP_REGISTRY}}/charts --plain-http
+      - rm -rf "{{.PACKAGE_DIR}}"
+
+  run-local:
+    desc: "Run the three services with Docker: web :18182, search :18183, registration :18184 (SAMPLE_APP_SEARCH_VERSION=2.1.0 for the broken one)"
+    # The names on the left are the ones compose.yaml reads.
+    env: &compose-env
+      REGISTRY: "{{.SAMPLE_APP_REGISTRY}}"
+      WEB_VERSION: "{{.SAMPLE_APP_WEB_VERSION}}"
+      REGISTRATION_VERSION: "{{.SAMPLE_APP_REGISTRATION_VERSION}}"
+      SEARCH_VERSION: "{{.SAMPLE_APP_SEARCH_VERSION}}"
+    cmds:
+      # Only a service whose image changed is recreated, so re-running with
+      # another search version swaps search-service and leaves the rest alone.
+      - docker compose up --detach --wait
+      - cmd: echo "web http://localhost:18182   search-service {{.SAMPLE_APP_SEARCH_VERSION}} http://localhost:18183   registration-service http://localhost:18184"
+        silent: true
+
+  stop-local:
+    desc: Stop and remove the containers and network that run-local created
+    env: *compose-env
+    cmds:
+      - docker compose down --remove-orphans
+
+  lint:
+    desc: Lint the chart and render it with the dev selection
+    vars:
+      SELECTION: "{{.TASKFILE_DIR}}/../../agent-deployments/clusters/dev/workloads/sample-app/values.yaml"
+    cmds:
+      - helm lint chart --strict
+      - helm lint chart --strict --values {{.SELECTION}} --set serviceMonitor.enabled=true
+      - helm template sample-app chart --namespace sample-app --values {{.SELECTION}} > /dev/null

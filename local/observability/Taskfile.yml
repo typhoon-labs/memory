@@ -1,0 +1,131 @@
+# Observability tasks. Included by the root Taskfile as `observability:`; run
+# them from the repository root, for example `task observability:status`.
+# `install` calls the root Taskfile's `deploy`, so it works only from there.
+#
+#   task observability:install          apply the releases, one at a time, in order
+#   task observability:status           what is running, scraped and delivered; memory
+#   task observability:open             Grafana in the browser: the Sample App dashboard
+#   task observability:open -- platform     the Platform overview dashboard
+#   task observability:open -- gateway      the ready-made Agentgateway dashboard
+#   task observability:open -- logs|traces  Explore, on Loki or Tempo
+#   task observability:urls             the addresses, printed
+#   task observability:login            the demo-only Grafana login, read from the cluster
+#   task observability:test-rules       unit tests of the alert rules (promtool)
+#
+# What the releases are: agent-deployments/clusters/dev/platform/50-observability/helmfile.yaml
+# and agent-deployments/clusters/dev/workloads/observability-mcp/helmfile.yaml.
+#
+# Following the root Taskfile's rules: every kubectl command names the
+# repo-local kubeconfig and the context, and this file defines no top-level
+# variables (they would be global).
+version: "3"
+
+tasks:
+  install:
+    desc: Apply the observability releases one at a time, in order (safe to re-run)
+    cmds:
+      # 1. The stack. kube-prometheus-stack first: it brings the ServiceMonitor,
+      #    PodMonitor, PrometheusRule and AlertmanagerConfig kinds.
+      - for: [kube-prometheus-stack, loki, tempo, otel-collector]
+        task: :deploy
+        vars: { CLI_ARGS: "-l name={{.ITEM}}" }
+      # 2. The gateway: its chart's monitoring resources (they need the kinds
+      #    from step 1, see platform/10-agentgateway/telemetry.yaml.gotmpl),
+      #    then its traces and access logs to the collector.
+      - for: [agentgateway, gateway-telemetry]
+        task: :deploy
+        vars: { CLI_ARGS: "-l name={{.ITEM}}" }
+      # 3. Dashboards, the alert rule and the route to the alert hook.
+      - task: :deploy
+        vars: { CLI_ARGS: "-l name=observability-content" }
+      # 4. Grafana's MCP server behind the gateway, and the route for
+      #    workloads that present a gateway key.
+      - for: [observability-mcp, observability-mcp-workload-access]
+        task: :deploy
+        vars: { CLI_ARGS: "-l name={{.ITEM}}" }
+      - task: status
+
+  status:
+    desc: Show what is running, what is scraped, the alert and where telemetry goes
+    silent: true
+    cmds:
+      - "{{.ROOT_DIR}}/local/observability/scripts/status.sh"
+
+  urls:
+    desc: Print the addresses of Grafana, its dashboards and the collector
+    silent: true
+    cmds:
+      - |
+        cat <<'TEXT'
+        Grafana              http://localhost:18084          login: task observability:login
+          Sample App         http://localhost:18084/d/sample-app
+          Platform overview  http://localhost:18084/d/platform-overview
+          Agentgateway       http://localhost:18084/d/agentgateway
+          Logs (Loki)        http://localhost:18084/explore?schemaVersion=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22loki%22%7D%7D
+          Traces (Tempo)     http://localhost:18084/explore?schemaVersion=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%7D%7D
+        Collector, in the cluster
+          OTLP over gRPC     otel-collector.telemetry.svc.cluster.local:4317
+          OTLP over HTTP     http://otel-collector.telemetry.svc.cluster.local:4318
+        observability-mcp, through the gateway
+          Keycloak token     http://agentgateway-proxy.agentgateway-system.svc.cluster.local/mcp/observability
+            from the host    http://localhost:18080/mcp/observability
+          workload key       http://agentgateway-proxy.agentgateway-system.svc/workloads/<workload>/mcp/observability
+        TEXT
+
+  open:
+    desc: "Open Grafana in the browser: the Sample App dashboard, or `-- platform`, `-- gateway`, `-- logs`, `-- traces`"
+    silent: true
+    cmds:
+      - |
+        case "{{.CLI_ARGS | default "sample-app"}}" in
+          sample-app) path='/d/sample-app?refresh=5s' ;;
+          platform)   path='/d/platform-overview?refresh=10s' ;;
+          gateway)    path='/d/agentgateway' ;;
+          logs)       path='/explore?schemaVersion=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22loki%22%7D%7D' ;;
+          traces)     path='/explore?schemaVersion=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%7D%7D' ;;
+          *) echo "unknown page '{{.CLI_ARGS}}': sample-app, platform, gateway, logs or traces" >&2; exit 2 ;;
+        esac
+        url="http://localhost:18084${path}"
+        # Not in the background: Task ends a script's background jobs with it.
+        if command -v xdg-open >/dev/null 2>&1; then xdg-open "${url}" >/dev/null 2>&1 || true
+        elif command -v open >/dev/null 2>&1; then open "${url}" || true
+        fi
+        echo "${url}"
+
+  login:
+    desc: Print the demo-only Grafana login, read from the cluster
+    silent: true
+    cmds:
+      - |
+        echo "user      admin"
+        echo "password  $(kubectl --kubeconfig "{{.ROOT_DIR}}/local/kind/kubeconfig" --context kind-agentgateway-demo -n telemetry get secret kube-prometheus-stack-grafana --output 'jsonpath={.data.admin-password}' | base64 -d)"
+
+  test-rules:
+    desc: Run the alert rules' unit tests with promtool, in the Prometheus pod
+    silent: true
+    cmds:
+      # promtool comes with the Prometheus that evaluates the rules, so nothing
+      # is installed. The pod's root filesystem is read-only; /dev/shm is not.
+      - |
+        tar -C "{{.ROOT_DIR}}/local/observability/alerts" -cf - . |
+          kubectl --kubeconfig "{{.ROOT_DIR}}/local/kind/kubeconfig" --context kind-agentgateway-demo -n telemetry \
+            exec -i prometheus-kube-prometheus-stack-prometheus-0 --container prometheus -- sh -c '
+              dir=/dev/shm/rule-test
+              rm -rf "$dir" && mkdir -p "$dir/tmp" && tar -C "$dir" -xf - &&
+                promtool check rules "$dir"/*.rules.yaml &&
+                TMPDIR="$dir/tmp" promtool test rules "$dir"/*.test.yaml
+              rc=$?
+              rm -rf "$dir"
+              exit $rc'
+
+  alert-secret:
+    desc: Create or update the Secret with the alert automation's client credentials (also run by install)
+    silent: true
+    cmds:
+      - "{{.ROOT_DIR}}/local/observability/scripts/alert-secret.sh"
+
+  mcp-credential:
+    desc: Create or renew the Grafana credential of observability-mcp (also run by install)
+    silent: true
+    cmds:
+      - "{{.ROOT_DIR}}/local/observability/scripts/grafana-mcp-credential.sh"

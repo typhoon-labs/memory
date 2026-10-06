@@ -1,0 +1,82 @@
+# What a gateway resource may not do unless it is part of a platform release.
+# Four Kyverno ValidatingPolicies and the read access they need. Install after
+# Kyverno (../install-values.yaml).
+#
+# WHY. Who may call which tool, agent or model is written in gateway policies
+# attached to routes and backends (../../agentgateway/route-auth and the route
+# charts). Agentgateway merges every policy that applies, field by field, and
+# the more specific one wins
+# (https://agentgateway.dev/docs/kubernetes/latest/documentation/about/policies/target-merge/).
+# So whoever may create gateway resources in a namespace can undo those rules
+# without touching them. Each of these was done on the dev cluster, with
+# Agentgateway 1.6.0, before the policies below existed:
+#
+#   - A second AgentgatewayPolicy on the same route, with the token made
+#     optional. It was accepted and attached, and had no effect only as long
+#     as it was the younger of the two: once the platform's policy had been
+#     recreated, requests without a token reached the tool server.
+#   - A second HTTPRoute to the tool server's Service, with no policy:
+#     `developer` was offered all ten tools, `apply_change` included.
+#   - The same from another namespace, with an AgentgatewayBackend that names
+#     the Service by its DNS name. No ReferenceGrant is asked for a host name.
+#   - A backend that names the model provider's host: the model answered
+#     through the gateway without a token.
+#   - A route with the exact path of a platform route, or with a host name and
+#     the path `/`, from another namespace: it took the platform route's
+#     traffic, callers' bearer tokens included.
+#
+# WHAT. A resource is "of the platform" when it was applied by one of the
+# platform's deployers (below) as part of a Helm release: it then carries
+# Helm's label `app.kubernetes.io/managed-by: Helm` and its release
+# annotation. Every other request to create or change a gateway resource is
+# checked:
+#
+#   gateway-policy-targets         An AgentgatewayPolicy may not target a
+#                                  Gateway, route, backend or Service of the
+#                                  platform, by name or by label selector.
+#   gateway-route-claims           A route on a platform Gateway may not send
+#                                  traffic to a backend or Service of the
+#                                  platform, claim a path at or under a
+#                                  platform route's path, match paths by
+#                                  regular expression, or claim a host name.
+#   gateway-backend-destinations   An AgentgatewayBackend may not be a model
+#                                  backend or a forward proxy, and may not
+#                                  name a Service of the platform, the model
+#                                  provider's host, or a bare address.
+#   gateway-platform-objects       Nobody but a deployer changes or deletes a
+#                                  gateway resource of the platform.
+#
+# A team's own route to its own backend, with its own policy, passes all four.
+#
+# WHAT IT DOES NOT CATCH, and what would:
+#   - A deployer applying by hand with Helm's label and annotation written in.
+#     The exemption is for an identity; keep that identity to the pipeline.
+#   - A team that uses Helm for its own gateway resources: they look like the
+#     platform's. Nobody else can then attach to them, and the team's own
+#     later policy on them is refused. Give the platform's releases a label
+#     that only a deployer may set, and test for that instead.
+#   - A backend that names a DNS name outside the cluster which resolves to an
+#     address inside it, or a team's own Service of type ExternalName, or with
+#     endpoints written by hand, that points at a platform Service. Closing
+#     these needs rules on Service and EndpointSlice.
+#   - A GRPCRoute that claims a platform path through its service and method.
+#   - A team's route to its own backend without any authentication. That
+#     weakens nothing of the platform's; whether every route must authenticate
+#     is a separate rule.
+#
+# Schema: Kyverno 1.19, `policies.kyverno.io/v1` ValidatingPolicy, with the
+# CEL library function resource.List
+# (https://kyverno.io/docs/policy-types/validating-policy/).
+
+platform:
+  # Who applies the platform's releases, as the Kubernetes API sees them. At
+  # least one group or user name is required.
+  deployers:
+    groups: []
+    usernames: []
+  # Host names of the model provider, as the gateway's model backend names
+  # them. No other backend may point there.
+  modelHosts: []
+  # Where a change to the platform's gateway rules is made. Printed at the end
+  # of every refusal.
+  changeHint: "Platform routes and their rules change through the platform's releases."

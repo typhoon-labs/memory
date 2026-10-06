@@ -1,0 +1,9 @@
+# The build context is this directory. Images need only the service's own
+# source, lib/, seed/ and package.json.
+chart/
+test/
+node_modules/
+compose.yaml
+Taskfile.yml
+.task/
+**/Dockerfile

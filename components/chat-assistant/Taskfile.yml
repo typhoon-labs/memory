@@ -1,0 +1,78 @@
+# chat-assistant tasks. Included by the root Taskfile as `chat-assistant:` (for example
+# `task chat-assistant:test`); also runs on its own from this directory.
+#
+#   task test         type checks and the test suite (stub downstreams, a fake model; no model is called)
+#   task build        the UI, the server, and the image localhost:5002/chat-assistant:<version>
+#   task push         push the image to the local registry
+#   task run-local    server on :18193 and UI on :18194 (stubs and a test issuer unless variables say otherwise)
+#   task stop-local   stop them
+#   task walk         walk the incident over A2A as every role against the local server (stub mode)
+#   task spike        re-run the check of Mastra's built-in A2A endpoint
+version: "3"
+
+# Top-level variables are shared by every included Taskfile, so each carries
+# this component's name. REGISTRY is the root Taskfile's; the default applies
+# when this file is run on its own.
+vars:
+  CHAT_ASSISTANT_VERSION: '{{.CHAT_ASSISTANT_VERSION | default "0.1.5"}}'
+  CHAT_ASSISTANT_IMAGE: '{{.REGISTRY | default "localhost:5002"}}/chat-assistant:{{.CHAT_ASSISTANT_VERSION}}'
+
+tasks:
+  install:
+    desc: Install the locked dependencies
+    cmds:
+      - npm ci --no-audit --no-fund
+    sources: [package.json, package-lock.json, packages/*/package.json]
+    generates: [node_modules/.package-lock.json]
+
+  test:
+    desc: Type checks and tests (stub downstreams, a run-time test issuer and a fake model; nothing is called outside this machine)
+    deps: [install]
+    env:
+      MASTRA_TELEMETRY_DISABLED: "1"
+    cmds:
+      - npm run typecheck --workspace @chat-assistant/server
+      - npm run typecheck --workspace @chat-assistant/ui
+      - npm test --workspace @chat-assistant/server -- {{.CLI_ARGS}}
+
+  build-app:
+    desc: Build the UI (Vite) and the server (tsc) without Docker
+    deps: [install]
+    cmds:
+      - npm run build --workspace @chat-assistant/ui
+      - npm run build --workspace @chat-assistant/server
+
+  build:
+    desc: Build the image ({{.CHAT_ASSISTANT_IMAGE}}); the UI and the server are built inside it
+    cmds:
+      - docker build --build-arg VERSION={{.CHAT_ASSISTANT_VERSION}} -t {{.CHAT_ASSISTANT_IMAGE}} .
+
+  push:
+    desc: Push the image to the local registry
+    cmds:
+      - docker push {{.CHAT_ASSISTANT_IMAGE}}
+
+  run-local:
+    desc: "Run the server on :18193 and the UI on :18194 (in-memory stubs and a test issuer by default; see scripts/local.sh)"
+    deps: [install]
+    cmds:
+      - scripts/local.sh up
+
+  stop-local:
+    desc: Stop what run-local started
+    cmds:
+      - scripts/local.sh down
+
+  walk:
+    desc: "Walk the incident over A2A as every role against the local server: each card, each action, each refusal (stub mode)"
+    deps: [install]
+    cmds:
+      - scripts/local.sh walk {{.CLI_ARGS}}
+
+  spike:
+    desc: Show what Mastra's built-in A2A endpoint can and cannot do (no model is called)
+    deps: [install]
+    env:
+      MASTRA_TELEMETRY_DISABLED: "1"
+    cmds:
+      - npm run spike --workspace @chat-assistant/server

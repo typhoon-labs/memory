@@ -1,0 +1,28 @@
+{{- if not .Values.servingPorts }}
+{{- fail "servingPorts: list the container ports the gateway may call; with none, nothing in this namespace is reachable" }}
+{{- end }}
+# In: the gateway's proxy pods, on the ports the workloads serve. A caller's
+# token has been verified, and the route's rules applied, before a connection
+# from here is opened.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: only-from-the-gateway
+  namespace: {{ .Release.Namespace }}
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.gateway.namespace }}
+          podSelector:
+            matchLabels:
+              {{- toYaml .Values.gateway.podLabels | nindent 14 }}
+      ports:
+        {{- range .Values.servingPorts }}
+        - protocol: TCP
+          port: {{ . }}
+        {{- end }}

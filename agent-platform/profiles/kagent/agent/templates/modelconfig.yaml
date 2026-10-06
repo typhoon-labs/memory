@@ -1,0 +1,27 @@
+{{- $credential := .Values.model.credential -}}
+# Which model the agent uses, and how it reaches it.
+#
+# provider OpenAI means the OpenAI wire format, not the company: it is the
+# format kagent speaks to an Agentgateway model route, which translates to the
+# provider behind it.
+#
+# The credential is not the agent's to hold. kagent records the Secret's name
+# and key in the compiled revision, and Substrate's egress gateway writes
+# `Authorization: Bearer <value>` on requests to the host of baseUrl, and only
+# that host. Inside the sandbox the runtime sees the placeholder
+# `kagent-credential-injected`.
+apiVersion: api.kagent.dev/v1alpha3
+kind: ModelConfig
+metadata:
+  name: {{ .Release.Name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kagent-agent.labels" . | nindent 4 }}
+spec:
+  provider: OpenAI
+  model: {{ required "model.id" .Values.model.id | quote }}
+  stream: {{ .Values.model.stream }}
+  apiKeySecret: {{ required "model.credential.secretName" $credential.secretName | quote }}
+  apiKeySecretKey: {{ required "model.credential.secretKey" $credential.secretKey | quote }}
+  openAI:
+    baseUrl: {{ required "model.baseUrl: a gateway route, ending in /v1" .Values.model.baseUrl | quote }}

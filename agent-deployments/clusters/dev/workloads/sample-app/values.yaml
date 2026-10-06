@@ -1,0 +1,23 @@
+# What the dev cluster runs of the Sample App. Anything not set here comes
+# from components/sample-app/chart/values.yaml.
+
+# The search-service version: the one line the incident and the rollback change.
+searchService:
+  image:
+    tag: 2.0.0
+
+# Where the three services send traces: the base URL of an OTLP receiver that
+# speaks HTTP (port 4318), without /v1/traces. This is the dev cluster's
+# OpenTelemetry Collector (platform/50-observability).
+otlp:
+  endpoint: http://otel-collector.telemetry.svc.cluster.local:4318
+
+# The chart's own ServiceMonitor stays off (`serviceMonitor.enabled`, default
+# false). Prometheus scrapes the three services every 5s through a
+# ServiceMonitor that the observability stack keeps in its own namespace
+# (local/observability/templates/sample-app-scrape.yaml).
+#
+# Do not switch the chart's on here. It would become part of this release, and
+# delivery-mcp, which upgrades the release to apply a change, may only patch
+# the search-service Deployment: its upgrade then fails with "cannot patch
+# sample-app with kind ServiceMonitor ... forbidden" (seen on 2026-10-06).

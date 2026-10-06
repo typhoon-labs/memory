@@ -1,0 +1,5 @@
+apiVersion: v2
+name: diagnosis-agent-access
+description: What diagnosis-agent's tool server may read in the Sample App's namespace, and nothing more.
+type: application
+version: 0.1.0

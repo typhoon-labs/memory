@@ -1,0 +1,5 @@
+apiVersion: v2
+name: observability-mcp-workload-access
+description: A second door to observability-mcp, for workloads that cannot present a user's token - they present a key the gateway issued to them
+type: application
+version: 0.1.0

@@ -1,0 +1,47 @@
+# One agent or tool workload: a Deployment, a Service and a ServiceAccount, all
+# named after the release.
+#
+# The chart supplies what is the same for every workload:
+#   - GET /healthz on the container port as liveness and readiness probe
+#   - a non-root, no-privilege-escalation container (the image must set a
+#     numeric USER, for example `USER 10001`; a named user cannot be checked)
+#   - PORT (the container port), APP_VERSION (the image tag) and
+#     OTEL_SERVICE_NAME (the release name), unless `env` sets them
+#   - one replica
+#
+# A workload sets the rest in agent-deployments/clusters/<cluster>/workloads/<name>/values.yaml.
+
+image:
+  # Required, for example localhost:5002/delivery-mcp
+  repository: ""
+  # Required. The version that runs; also the value of APP_VERSION.
+  tag: ""
+
+# The port the container listens on, and the port of the Service.
+port: 8080
+
+# Plain environment variables, KEY: value. Values are passed as strings.
+env: {}
+
+# Optional: the name of a Secret in the release namespace whose keys all become
+# environment variables. The Secret is created outside git.
+envFromSecret: ""
+
+service:
+  # ClusterIP or NodePort
+  type: ClusterIP
+  # Only with type NodePort: the fixed node port (30000-32767).
+  nodePort: null
+
+# Container resources, as in a pod spec: {requests: {...}, limits: {...}}
+resources: {}
+
+serviceAccount:
+  # Create a ServiceAccount for the workload.
+  create: true
+  # Its name. Empty: the release name when created, "default" when not.
+  name: ""
+
+# Extra labels and annotations for the pod.
+podLabels: {}
+podAnnotations: {}

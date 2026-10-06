@@ -1,0 +1,25 @@
+name: delivery-mcp
+framework: fastmcp-python
+version: 0.1.0
+description: Incident and change state with separation-of-duties rules, enforced against the caller's verified identity
+author: agentgateway-demo
+# No secret is needed: the service holds no credential of its own. It verifies
+# callers with the issuer's public keys and acts in the cluster through its
+# ServiceAccount.
+secrets:
+    local:
+        enabled: false
+        provider: env
+        file: .env.local
+    production:
+        enabled: false
+        provider: kubernetes
+        secretName: delivery-mcp-secrets-production
+        namespace: tools
+    staging:
+        enabled: false
+        provider: kubernetes
+        secretName: delivery-mcp-secrets-staging
+        namespace: tools
+created_at: 2026-10-06T06:15:18.372932636-07:00
+updated_at: 2026-10-06T06:15:18.373780118-07:00

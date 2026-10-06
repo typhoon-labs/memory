@@ -1,0 +1,59 @@
+# comms-agent tasks. Included by the root Taskfile as `comms-agent:` (for example
+# `task comms-agent:test`); also runs on its own from this directory.
+#
+#   task test         pytest, with stand-ins for delivery-mcp and the model (no model is called)
+#   task lint         ruff check and format check
+#   task run-local    run on :18192 (needs `task delivery-mcp:run-local` and the model endpoint)
+#   task stop-local   stop it
+#   task build        the image localhost:5002/comms-agent:<version>
+#   task push         push it to the local registry
+version: "3"
+
+# Top-level variables are shared by every included Taskfile, so each carries
+# this component's name. REGISTRY is the root Taskfile's; the default applies
+# when this file is run on its own.
+vars:
+  COMMS_AGENT_VERSION: '{{.COMMS_AGENT_VERSION | default "0.1.1"}}'
+  COMMS_AGENT_IMAGE: '{{.REGISTRY | default "localhost:5002"}}/comms-agent:{{.COMMS_AGENT_VERSION}}'
+
+tasks:
+  sync:
+    desc: Install the locked dependencies into .venv
+    cmds:
+      - uv sync --frozen
+    sources: [pyproject.toml, uv.lock]
+    generates: [.venv/pyvenv.cfg]
+
+  test:
+    desc: Run the tests (stand-ins for delivery-mcp and the model; nothing is called outside this machine)
+    deps: [sync]
+    cmds:
+      - .venv/bin/python -m pytest -q {{.CLI_ARGS}}
+
+  lint:
+    desc: ruff check and format check
+    deps: [sync]
+    cmds:
+      - .venv/bin/ruff check src tests scripts
+      - .venv/bin/ruff format --check src tests scripts
+
+  run-local:
+    desc: "Run on :18192 against delivery-mcp on :18190 and the model endpoint (MODEL_BASE_URL, default http://localhost:7070)"
+    deps: [sync]
+    cmds:
+      - scripts/local.sh up
+
+  stop-local:
+    desc: Stop what run-local started
+    cmds:
+      - scripts/local.sh down
+
+  build:
+    desc: Build the image ({{.COMMS_AGENT_IMAGE}})
+    cmds:
+      - docker build --build-arg VERSION={{.COMMS_AGENT_VERSION}} -t {{.COMMS_AGENT_IMAGE}} .
+
+  push:
+    desc: Push the image to the local registry
+    cmds:
+      - docker push {{.COMMS_AGENT_IMAGE}}

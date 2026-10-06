@@ -1,0 +1,79 @@
+# What the dev cluster binds diagnosis-agent to. Values for the chart
+# agent-platform/profiles/kagent/agent, merged over the component's own
+# components/diagnosis-agent/config/agent.yaml.
+#
+# A helmfile template only to read the prompt and the runbook from the
+# component's directory; a chart cannot read files outside itself.
+{{- $component := "../../../../../components/diagnosis-agent" }}
+
+prompt: {{ readFile (printf "%s/prompts/system.md" $component) | toJson }}
+
+# Each runbook is a skill directory in the Agent Skills layout
+# (skills/<name>/SKILL.md). Its text is handed to the agent inside the prompt,
+# without the front matter: see "Why not as a kagent skill" at the end of this
+# file. regexReplaceAll takes (pattern, text, replacement), so the file is the
+# second argument and cannot be piped in.
+runbooks:
+  search-service-runbook: {{ regexReplaceAll "(?s)\\A---\\n.*?\\n---\\n" (readFile (printf "%s/skills/search-service-runbook/SKILL.md" $component)) "" | toJson }}
+
+model:
+  # Not the model route everyone else uses (/v1, a user's token), but this
+  # workload's own door to the same backend, opened with the key in the Secret
+  # below. Both are created by release `diagnosis-agent-model-access`.
+  baseUrl: http://agentgateway-proxy.agentgateway-system.svc.cluster.local/workloads/diagnosis-agent/v1
+  credential:
+    secretName: diagnosis-agent-gateway-key
+    secretKey: AGENTGATEWAY_API_KEY
+
+tools:
+  kubernetes:
+    enabled: true
+    # Release `diagnosis-agent-tools`. Reached directly, not through the
+    # gateway: it is this agent's own server, it holds no caller identity, and
+    # its limits are its flags and its Role.
+    url: http://diagnosis-agent-tools.kagent.svc.cluster.local:8084/mcp
+
+  # observability-mcp (Grafana's MCP server behind the gateway): the metrics
+  # and traces of the Sample App, for step 4 of the runbook. Three things make
+  # this work, and each was a way for it to fail:
+  #
+  #   1. The route accepts this agent. /mcp/observability asks for a Keycloak
+  #      token, and the agent has none to send: kagent 1.x cannot forward its
+  #      caller's token to a tool, only a fixed header from a Secret. So the
+  #      agent uses a route of its own, opened with its gateway key (release
+  #      observability-mcp-workload-access, which names this workload).
+  #   2. The address uses the gateway's OTHER DNS name: ending in .svc, not
+  #      .svc.cluster.local. Substrate attaches a credential per host name and
+  #      header, and the model route already owns `authorization` on the long
+  #      name. With the same name for both, the Agent does not compile:
+  #      "conflicting credentials for agentgateway-proxy.agentgateway-
+  #      system.svc.cluster.local header authorization".
+  #   3. Which tools the model is offered is listed in
+  #      components/diagnosis-agent/config/agent.yaml.
+  observability:
+    enabled: true
+    url: http://agentgateway-proxy.agentgateway-system.svc/workloads/diagnosis-agent/mcp/observability
+    # A Secret key holding the whole header value, "Bearer <the gateway key>":
+    # kagent sends it as is, without adding a prefix. mint-key.sh (release
+    # diagnosis-agent-model-access) writes it next to the key itself.
+    authorization:
+      secretName: diagnosis-agent-gateway-key
+      secretKey: AUTHORIZATION_HEADER
+
+
+# Why not as a kagent skill (`spec.skills`), checked on kagent 1.0.0-alpha7
+# with Agent Substrate 0.3.0-alpha3:
+#
+#   - A skill is fetched inside the sandbox by the Actor that builds the
+#     agent's golden snapshot, and that Actor has no egress policy at all. A
+#     git source failed there with "Could not resolve host: github.com", the
+#     Agent reported GoldenActorCrashed, and never became ready.
+#   - An OCI source must be an HTTPS registry with a certificate the runtime
+#     trusts (kagent's documentation; v1alpha3 has no switch for it). This
+#     cluster's registry speaks plain HTTP.
+#   - A skill also gives the agent seven more tools, among them `bash`,
+#     `write_file` and `edit_file` inside its sandbox. A read-only agent is
+#     better off without them.
+#
+# The runbook keeps the skill layout so that it can be published as one when
+# those change.

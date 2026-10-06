@@ -1,0 +1,60 @@
+# Traffic generator inside the cluster: steady searches and registrations
+# against the Sample App's web Service. Applied by `task traffic:deploy`.
+#
+# It lives in the sample-app namespace, next to what it calls, but is not part
+# of the sample-app Helm release and does not carry its part-of label.
+# Peak mode: `task traffic:peak-on`, back with `task traffic:peak-off`.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: traffic
+  namespace: sample-app
+  labels:
+    app.kubernetes.io/name: traffic
+    app.kubernetes.io/part-of: demo-local
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: traffic
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: traffic
+        app.kubernetes.io/part-of: demo-local
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 5
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: traffic
+          image: localhost:5002/traffic:1.0.0
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: TARGET_URL
+              value: http://web.sample-app.svc.cluster.local:8080
+            # Requests per second in steady mode.
+            - name: RATE
+              value: "2"
+            # steady or peak. Peak sends RATE x PEAK_MULTIPLIER.
+            - name: MODE
+              value: steady
+            - name: PEAK_MULTIPLIER
+              value: "5"
+          resources:
+            requests:
+              cpu: 10m
+              memory: 48Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]

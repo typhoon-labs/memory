@@ -1,0 +1,16 @@
+# Who may call the gateway's model route.
+#
+# Values for the release `model-route-auth`
+# (clusters/dev/platform/30-model-route/helmfile.yaml).
+#
+# Which models a caller may use is not decided here: the approved model IDs are
+# `modelProvider.models` in clusters/dev/platform/model-provider.yaml.
+target:
+  name: model
+
+# CEL expressions on the verified token; any one that is true allows the call.
+# Empty: every caller with a valid token for audience `agentgateway`, human or
+# machine. To limit the route to some roles, list them, for example:
+#   - '"developer" in jwt.roles'
+#   - '"alert-automation" in jwt.roles'
+allow: []

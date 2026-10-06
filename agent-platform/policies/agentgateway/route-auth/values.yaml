@@ -1,0 +1,38 @@
+# One AgentgatewayPolicy for one route: the caller must present a bearer token
+# from the trusted issuer with the expected audience. Install it in the route's
+# namespace, before or together with the route.
+#
+# Schema: Agentgateway 1.6, AgentgatewayPolicy `traffic.jwtAuthentication` and
+# `traffic.authorization`
+# (https://agentgateway.dev/docs/kubernetes/latest/documentation/security/jwt/setup/).
+#
+# After validation the gateway removes the Authorization header, so the backend
+# does not receive the caller's token. A route whose backend must act as the
+# caller sets `passthrough: true` below.
+
+# The route to protect.
+target:
+  group: gateway.networking.k8s.io
+  kind: HTTPRoute
+  name: ""
+
+# Whose tokens are trusted. The dev cluster's values are in
+# agent-deployments/access/identity.yaml.
+identity:
+  # Must equal the token's `iss` claim exactly.
+  issuer: ""
+  # The token's `aud` claim must contain this value.
+  audience: ""
+  # Where the gateway fetches the signing keys. An in-cluster address: the
+  # issuer URL is the browser's address and is not reachable from a pod.
+  jwksUrl: ""
+
+# Optional rules on the verified claims, as CEL expressions. The request is
+# allowed when any one expression is true. Empty means any caller with a valid
+# token. Example: '"incident-manager" in jwt.roles'
+allow: []
+
+# true: the backend receives the caller's validated token as
+# `Authorization: Bearer <token>`, so it can apply its own rules and call its
+# own next hop as the caller. false: the header is removed (the model route).
+passthrough: false

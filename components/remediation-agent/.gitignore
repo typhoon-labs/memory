@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Local environment. Never commit a key or a token.
+.env
+.env.local
+*.pem
+*.key
+
+# Local run: process IDs and logs
+.run/

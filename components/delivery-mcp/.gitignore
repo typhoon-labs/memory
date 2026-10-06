@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Local environment and state. Never commit a key or a token.
+.env
+.env.local
+*.db
+*.db-journal
+*.pem
+*.key
+
+# The kmcp CLI, downloaded by `task kmcp:install`. Not part of the source.
+.tools/
+
+# kmcp and MCP Inspector
+.mcpbuilder.yaml
+mcp-server-config.json
+
+# Local run: process IDs and logs
+.run/

@@ -1,0 +1,18 @@
+# What the dev cluster changes in the kagent profile
+# (agent-platform/profiles/kagent/kagent-values.yaml).
+
+# Traces from the controller and from every agent's runtime (one span per model
+# call and per tool call) to the cluster's collector
+# (platform/50-observability). OTLP over HTTP, because an agent's export
+# leaves its sandbox through Substrate's egress gateway, which is an HTTP
+# proxy; kagent adds the collector's host to each agent's egress allowlist by
+# itself. Prompts and answers are not put on the spans (otel.capture).
+otel:
+  exporter:
+    otlp:
+      endpoint: http://otel-collector.telemetry.svc.cluster.local:4318
+      protocol: http/protobuf
+  traces:
+    enabled: true
+  resourceAttributes:
+    deployment.environment: dev

@@ -1,0 +1,11 @@
+{{- /* One PrometheusRule per rule file. A rule file is a PrometheusRule's spec. */}}
+{{- range $path, $_ := .Files.Glob "alerts/*.rules.yaml" }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ base $path | trimSuffix ".rules.yaml" }}
+  namespace: {{ $.Release.Namespace }}
+spec:
+{{ $.Files.Get $path | indent 2 }}
+{{- end }}

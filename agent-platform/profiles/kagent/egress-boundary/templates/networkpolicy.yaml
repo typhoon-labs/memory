@@ -1,0 +1,25 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: actors-stay-in-cluster
+  namespace: {{ .Release.Namespace }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- toYaml .Values.egressGatewayPodLabels | nindent 6 }}
+  policyTypes:
+    - Egress
+  egress:
+    # Any pod in any namespace of this cluster: the gateway, tool servers,
+    # kagent, Substrate's own API and credential provider, and cluster DNS.
+    # A Service address counts as the pod behind it. Nodes, the Kubernetes API
+    # server and every address outside the cluster are not pods.
+    - to:
+        - namespaceSelector: {}
+    {{- with .Values.allowedCIDRs }}
+    - to:
+        {{- range . }}
+        - ipBlock:
+            cidr: {{ . | quote }}
+        {{- end }}
+    {{- end }}

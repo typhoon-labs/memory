@@ -1,0 +1,7 @@
+apiVersion: v2
+name: agent
+description: One agent or tool as a Deployment, a Service and a ServiceAccount, with the platform's conventions.
+type: application
+version: 0.1.0
+# The workload's own version is its image tag (values: image.tag).
+appVersion: "0.1.0"

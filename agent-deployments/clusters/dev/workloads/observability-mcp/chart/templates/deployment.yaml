@@ -1,0 +1,108 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "observability-mcp.name" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "observability-mcp.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "observability-mcp.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "observability-mcp.labels" . | nindent 8 }}
+    spec:
+      # The server does not call the Kubernetes API.
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        # The image's user is named, not numbered (`mcp-grafana`, uid 1000 in
+        # its Dockerfile), and the kubelet can only check a number.
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: mcp-grafana
+          image: "{{ .Values.image.repository }}:{{ required "image.tag is required" .Values.image.tag }}"
+          imagePullPolicy: IfNotPresent
+          args:
+            # The image's default transport is SSE.
+            - --transport=streamable-http
+            - --address=0.0.0.0:8000
+            # /healthz on its own port, for the kubelet's probes; only the MCP
+            # endpoint is on the Service.
+            - --healthz-address=0.0.0.0:8081
+            # No Host check. The gateway passes on the Host header its client
+            # sent, so the server sees whatever name the caller used for the
+            # gateway (localhost:18080, the gateway's Service name, ...), never
+            # its own. The check exists to stop a browser reaching the server
+            # directly; here every request must carry the server token below.
+            - "--allowed-hosts=*"
+            # Read-only: no tool that creates, changes or deletes is registered.
+            - --disable-write
+            {{- with .Values.toolCategories }}
+            - --enabled-tools={{ join "," . }}
+            {{- end }}
+            # On by default since 2.0: the demo sends nothing to Grafana Labs.
+            - --usage-stats=disabled
+          env:
+            - name: GRAFANA_URL
+              value: {{ required "grafanaUrl is required" .Values.grafanaUrl | quote }}
+            # Read from the mounted Secret on every request, so a token that
+            # the credential script replaces is used without a restart.
+            - name: GRAFANA_SERVICE_ACCOUNT_TOKEN_FILE
+              value: /etc/observability-mcp/grafana-token
+            # Callers must send this as a bearer token; only the gateway has it.
+            - name: MCP_GRAFANA_SERVER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.credentialsSecret }}
+                  key: Authorization
+          ports:
+            - name: mcp
+              containerPort: 8000
+              protocol: TCP
+            - name: health
+              containerPort: 8081
+              protocol: TCP
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            periodSeconds: 2
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            periodSeconds: 10
+            failureThreshold: 3
+          volumeMounts:
+            - name: credentials
+              mountPath: /etc/observability-mcp
+              readOnly: true
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: credentials
+          secret:
+            secretName: {{ .Values.credentialsSecret }}
+            items:
+              - key: grafana-token
+                path: grafana-token

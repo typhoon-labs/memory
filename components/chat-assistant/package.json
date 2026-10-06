@@ -1,0 +1,11 @@
+{
+  "name": "chat-assistant-workspace",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=22.13.0"
+  }
+}

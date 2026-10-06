@@ -1,0 +1,66 @@
+# remediation-agent tasks. Included by the root Taskfile as `remediation-agent:` (for example
+# `task remediation-agent:test`); also runs on its own from this directory.
+#
+#   task test         pytest, with stand-ins for delivery-mcp and the model (no model is called)
+#   task lint         ruff check and format check
+#   task run-local    run on :18191 (needs `task delivery-mcp:run-local` and the model endpoint)
+#   task stop-local   stop it
+#   task build        the image localhost:5002/remediation-agent:<version>
+#   task push         push it to the local registry
+#   task drive        drive one incident through delivery-mcp, this agent and comms-agent
+version: "3"
+
+# Top-level variables are shared by every included Taskfile, so each carries
+# this component's name. REGISTRY is the root Taskfile's; the default applies
+# when this file is run on its own.
+vars:
+  REMEDIATION_AGENT_VERSION: '{{.REMEDIATION_AGENT_VERSION | default "0.1.1"}}'
+  REMEDIATION_AGENT_IMAGE: '{{.REGISTRY | default "localhost:5002"}}/remediation-agent:{{.REMEDIATION_AGENT_VERSION}}'
+
+tasks:
+  sync:
+    desc: Install the locked dependencies into .venv
+    cmds:
+      - uv sync --frozen
+    sources: [pyproject.toml, uv.lock]
+    generates: [.venv/pyvenv.cfg]
+
+  test:
+    desc: Run the tests (stand-ins for delivery-mcp and the model; nothing is called outside this machine)
+    deps: [sync]
+    cmds:
+      - .venv/bin/python -m pytest -q {{.CLI_ARGS}}
+
+  lint:
+    desc: ruff check and format check
+    deps: [sync]
+    cmds:
+      - .venv/bin/ruff check src tests scripts
+      - .venv/bin/ruff format --check src tests scripts
+
+  run-local:
+    desc: "Run on :18191 against delivery-mcp on :18190 and the model endpoint (MODEL_BASE_URL, default http://localhost:7070)"
+    deps: [sync]
+    cmds:
+      - scripts/local.sh up
+
+  stop-local:
+    desc: Stop what run-local started
+    cmds:
+      - scripts/local.sh down
+
+  build:
+    desc: Build the image ({{.REMEDIATION_AGENT_IMAGE}})
+    cmds:
+      - docker build --build-arg VERSION={{.REMEDIATION_AGENT_VERSION}} -t {{.REMEDIATION_AGENT_IMAGE}} .
+
+  push:
+    desc: Push the image to the local registry
+    cmds:
+      - docker push {{.REMEDIATION_AGENT_IMAGE}}
+
+  drive:
+    desc: "Drive one incident end to end: delivery-mcp :18190, this agent :18191, comms-agent :18192 (two model calls)"
+    deps: [sync]
+    cmds:
+      - .venv/bin/python scripts/drive_incident.py {{.CLI_ARGS}}

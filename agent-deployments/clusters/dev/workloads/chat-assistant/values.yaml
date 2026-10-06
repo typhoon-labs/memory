@@ -1,0 +1,112 @@
+# What the dev cluster runs of chat-assistant (the chat agent, its A2A endpoint
+# with the A2UI extension, and the Chat UI in one image). Values for the chart
+# agent-platform/charts/agent. The variables are described in
+# components/chat-assistant/packages/server/src/config.ts.
+
+image:
+  repository: localhost:5002/chat-assistant
+  # The version that runs. 0.1.2 was the first that works behind the gateway's
+  # path-prefixed routes (agent card lookup, the gateway's tool refusal) and
+  # that gives a chat answer a deadline. 0.1.5 opens the incident before it
+  # diagnoses, shows the diagnosis as it stands on the card, keeps the role's
+  # buttons above the cause and evidence, and updates the card in place so
+  # that a button is never replaced while someone aims at it.
+  tag: 0.1.5
+
+port: 8080
+
+env:
+  DEPLOYMENT_ENVIRONMENT: dev
+
+  # Whose tokens are trusted: the same three values as
+  # agent-deployments/access/identity.yaml. The server verifies the caller's
+  # token on every request and forwards that same token on every call below.
+  OIDC_ISSUER: http://localhost:18081/realms/demo
+  OIDC_AUDIENCE: agentgateway
+  OIDC_JWKS_URL: http://keycloak.keycloak.svc.cluster.local:8080/realms/demo/protocol/openid-connect/certs
+
+  # Everything the assistant calls goes through the gateway.
+  # The model route; chat text is posted to <MODEL_BASE_URL>/v1/messages with
+  # the caller's token as `Authorization: Bearer`.
+  MODEL_BASE_URL: http://agentgateway-proxy.agentgateway-system.svc.cluster.local
+  MODEL_ID: claude-sonnet-5-5
+  # All the time one chat answer may take, tool calls included, with no retry.
+  # A model that is down is reported at once; a slow one after this many
+  # seconds. It has to cover a question that makes the chat agent ask
+  # diagnosis-agent (11 to 14 seconds) between two model calls. The incident
+  # card and its buttons do not use the model.
+  MODEL_TIMEOUT_SECONDS: "90"
+  # delivery-mcp through the gateway's MCP route (a URL with a path is used as given).
+  DELIVERY_MCP_URL: http://agentgateway-proxy.agentgateway-system.svc.cluster.local/mcp/delivery
+  # The other agents through their A2A routes. Routes and who may call them:
+  # agent-deployments/clusters/dev/domains/operations/.
+  REMEDIATION_AGENT_URL: http://agentgateway-proxy.agentgateway-system.svc.cluster.local/a2a/remediation-agent
+  COMMS_AGENT_URL: http://agentgateway-proxy.agentgateway-system.svc.cluster.local/a2a/comms-agent
+  # diagnosis-agent (kagent) through its A2A route; it speaks A2A 1.0. The
+  # alert hook asks it after opening the incident, and the chat agent can ask
+  # it with the signed-in user's token. Empty: the hook opens the incident,
+  # the card says no diagnosis could be made, and the developer names the
+  # version by hand.
+  DIAGNOSIS_AGENT_URL: http://agentgateway-proxy.agentgateway-system.svc.cluster.local/a2a/diagnosis-agent
+  # How long one diagnosis may take before the card says it failed.
+  DIAGNOSIS_TIMEOUT_SECONDS: "45"
+
+  # The address in the agent card as the agent itself serves it: its own
+  # Service, with no path. The gateway rewrites it for each client to the
+  # address that client used plus the route prefix, so a client of the gateway
+  # reads http://localhost:18080/a2a/chat-assistant. It must not already carry
+  # the route prefix: for an A2A 1.0 card (`supportedInterfaces`) the gateway
+  # keeps the path and puts the prefix in front, which gave
+  # /a2a/chat-assistant/a2a/chat-assistant.
+  A2A_PUBLIC_URL: http://chat-assistant.agents.svc.cluster.local:8080
+
+  # --- What the UI is told in /config.json ---
+  # The browser reaches the A2A endpoint through the gateway, which is another
+  # origin (http://localhost:18080) than the UI (http://localhost:18083).
+  # What the gateway route /a2a/chat-assistant has to do:
+  #   - forward to this Service's port 8080 with the prefix removed: the server
+  #     takes A2A JSON-RPC at `POST /` and serves the card at
+  #     `GET /.well-known/agent-card.json`;
+  #   - pass the caller's Authorization header on (backend.auth.passthrough);
+  #   - answer the CORS preflight (OPTIONS, which carries no token) itself, for
+  #     origin http://localhost:18083, methods GET and POST, request headers
+  #     Authorization, Content-Type, Accept, A2A-Version, A2A-Extensions and
+  #     X-A2A-Extensions; no credentials mode is used;
+  #   - stream: a POST may answer with `Content-Type: text/event-stream` and
+  #     must not be buffered, compressed or cut short (allow 5 minutes, the
+  #     length of an apply-and-verify).
+  # To take the gateway out of the browser's path instead, set UI_A2A_URL to ""
+  # (the UI then calls the origin it was loaded from, this Service).
+  UI_A2A_URL: http://localhost:18080/a2a/chat-assistant
+  # "1.0" or "0.3". Both are served on the same URL; 1.0 carries A2UI's array of
+  # messages natively.
+  UI_A2A_PROTOCOL_VERSION: "1.0"
+  UI_OIDC_CLIENT_ID: chat-ui
+  # The gateway owns CORS for its route, so the server sends no CORS headers.
+  # Name an origin here only if a browser calls this Service directly from
+  # another origin.
+  CORS_ALLOWED_ORIGINS: ""
+
+  # Traces: to the dev cluster's OpenTelemetry Collector
+  # (platform/50-observability), as OTLP over HTTP.
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector.telemetry.svc.cluster.local:4318
+  OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+
+service:
+  # The Chat UI on host port 18083. The same Service is the gateway's backend
+  # for the A2A route.
+  type: NodePort
+  nodePort: 30083
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: "1"
+    memory: 512Mi
+
+serviceAccount:
+  # The assistant calls nothing in the cluster's API; the account carries no rights.
+  create: true
+  name: chat-assistant

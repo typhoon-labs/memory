@@ -1,0 +1,236 @@
+# Demo tasks: publish, install, and the incident's scenarios. Included by the
+# root Taskfile as `demo:`. Run them from the repository root; they call other
+# included Taskfiles (`:sample-app:build`, `:deploy`), which exist only there.
+#
+#   task demo:up        from no cluster to a ready demo: every step below and the platform's, in order
+#   task demo:preflight the go or no-go list to read before a showing; each failing line says what to do
+#   task demo:publish   build and push every image, and push the Sample App chart
+#   task demo:install   apply the demo's releases, one at a time, in order
+#   task demo:policies  apply the controls: network boundaries, Kyverno, the gateway admission rules
+#   task demo:reset     back to a clean start: search-service 2.0.0, no incidents, no alert firing
+#   task demo:break     ship search-service 2.1.0, the release that starts the incident
+#   task demo:drive     drive the incident end to end through the gateway, with real tokens
+#   task demo:alert     fallback: deliver the alert by hand when Alertmanager does not
+#   task demo:routes    the gateway routes of the operations domain, and whether they are accepted
+#
+# After demo:break nothing else is needed: about 25 seconds later Alertmanager
+# posts the alert to the chat assistant's hook, the incident card appears in
+# the Chat UI, and diagnosis-agent fills it in about 15 seconds after that.
+#
+# A drill for a model that is down or slow, which must not stop the incident:
+#   task demo:model-fault -- down     (or `-- slow`), then
+#   task demo:reset && task demo:drive -- --expect-model down
+#   task demo:model-restore
+#
+# A first run on a new machine:   task demo:up   (the order, and why, is in demo/scenarios/up.sh)
+# Before each showing:            task demo:reset && task demo:preflight
+# The script to present from:     demo/run-of-show.md
+# In the Chat UI (localhost:18083): task demo:break, wait for the card, then its buttons
+# As a script, without the UI:    task demo:drive   (it does its own break, and waits for the alert)
+#
+# Backup material, for the question "what stops a team from going around the
+# gateway?" and for a dependency that is down. Each drill says in one line what
+# it is about to show, shows it, says what happened, and puts back what it
+# changed; each can be run again at once. Scripts: demo/backup/, and the
+# platform's denied-path checks in agent-platform/tests/.
+#   task demo:backup:refused-by-gateway   developer calls apply_change: the gateway does not offer it
+#   task demo:backup:refused-by-service   platform-engineer calls apply_change before approval: delivery-mcp refuses
+#   task demo:backup:bypass-tool          a pod calls delivery-mcp directly: blocked; through the gateway: works
+#   task demo:backup:bypass-model         a pod calls the model endpoint directly: blocked; gateway: 401, then works
+#   task demo:backup:policy-override      a gateway policy that weakens a platform rule: refused at admission
+#   task demo:backup:registry-down        Agentregistry scaled to zero: tools and agents still answer
+#   task demo:backup:telemetry-down       the collector scaled to zero: the Sample App and the gateway still answer
+#   task demo:backup:mcp-client           access without hosting: a developer's MCP client uses both tool servers
+#   task demo:backup:mcp-oauth-check      why a real MCP client cannot sign in by itself yet, step by step
+#
+# Every kubectl and helm command names the repo-local kubeconfig and the
+# context itself, as the root Taskfile's header requires. This file defines no
+# top-level variables.
+version: "3"
+
+tasks:
+  up:
+    desc: "From no cluster to a ready demo, every step in order, ending with the pre-flight (safe to re-run; `-- --from <n>` resumes, `-- --list` shows the steps)"
+    silent: true
+    cmds:
+      - '"{{.ROOT_DIR}}/demo/scenarios/up.sh" {{.CLI_ARGS}}'
+
+  preflight:
+    desc: "Go or no-go before a showing: model, pods, Sample App, incident, alert, sign-ins, Grafana, Langfuse, registry; each failing line says what to do (one small model call)"
+    silent: true
+    cmds:
+      - '"{{.ROOT_DIR}}/demo/scenarios/preflight.sh"'
+
+  publish:
+    desc: Build and push every image, and push the Sample App chart as an OCI chart (safe to re-run)
+    preconditions:
+      - sh: curl --silent --fail --max-time 5 --output /dev/null http://localhost:5002/v2/
+        msg: "The registry at localhost:5002 does not answer. Run `task up`."
+    cmds:
+      - task: :sample-app:build
+      - task: :sample-app:push
+      # Where delivery-mcp's Helm applier expects the chart:
+      # oci://agentgateway-demo-registry:5000/charts/sample-app from a pod,
+      # which is oci://localhost:5002/charts/sample-app from this machine.
+      - task: :sample-app:chart:push
+      - task: :traffic:build
+      - task: :traffic:push
+      - task: :delivery-mcp:build
+      - task: :delivery-mcp:push
+      - task: :remediation-agent:build
+      - task: :remediation-agent:push
+      - task: :comms-agent:build
+      - task: :comms-agent:push
+      - task: :chat-assistant:build
+      - task: :chat-assistant:push
+      - cmd: "{{.ROOT_DIR}}/demo/scenarios/registry-contents.sh"
+        silent: true
+
+  install:
+    desc: Apply the demo's releases one at a time (Sample App, traffic, delivery-mcp, the agents, the chat assistant, their gateway routes)
+    cmds:
+      - for: [sample-app, delivery-mcp-access, delivery-mcp, remediation-agent, comms-agent, chat-assistant]
+        task: :deploy
+        vars: { CLI_ARGS: "-l name={{.ITEM}}" }
+      - task: :traffic:deploy
+      # A route's policy before the route, so it is never served without one.
+      - for:
+          - delivery-mcp-route-auth
+          - delivery-mcp-route
+          - remediation-agent-route-auth
+          - remediation-agent-route
+          - comms-agent-route-auth
+          - comms-agent-route
+          - chat-assistant-route-auth
+          - chat-assistant-route
+          - chat-assistant-alert-hook-auth
+          - chat-assistant-alert-hook
+        task: :deploy
+        vars: { CLI_ARGS: "-l name={{.ITEM}}" }
+      - task: routes
+
+  policies:
+    desc: Apply the controls one at a time (network boundaries of agents and tools, Kyverno, the admission rules for gateway resources)
+    cmds:
+      # Kyverno before the rules that need its resource kinds.
+      - for: [agents-network-boundary, tools-network-boundary, kyverno, gateway-rules]
+        task: :deploy
+        vars: { CLI_ARGS: "-l name={{.ITEM}}" }
+
+  routes:
+    desc: Show the operations domain's gateway routes and whether the gateway accepted them
+    silent: true
+    cmds:
+      - kubectl --kubeconfig "{{.ROOT_DIR}}/local/kind/kubeconfig" --context kind-agentgateway-demo get httproute,agentgatewaybackend,agentgatewaypolicy -n tools
+      - kubectl --kubeconfig "{{.ROOT_DIR}}/local/kind/kubeconfig" --context kind-agentgateway-demo get httproute,agentgatewaybackend,agentgatewaypolicy -n agents
+
+  reset:
+    desc: "Back to a clean start: search-service 2.0.0 from the selection file, no incidents, no alert firing"
+    cmds:
+      # The selection file says 2.0.0; applying the release makes the cluster say it too.
+      - task: :deploy
+        vars: { CLI_ARGS: "-l name=sample-app" }
+      - cmd: "{{.ROOT_DIR}}/demo/scenarios/reset.sh"
+        silent: true
+
+  break:
+    desc: Ship search-service 2.1.0 as a release would; no tracked file changes, so the selection file keeps saying 2.0.0
+    silent: true
+    cmds:
+      - "{{.ROOT_DIR}}/demo/scenarios/break.sh"
+
+  alert:
+    desc: "Fallback, after demo:break: post the alert to the hook by hand as alert-automation, and record a diagnosis if none arrives"
+    silent: true
+    cmds:
+      - "{{.ROOT_DIR}}/demo/scenarios/alert.sh"
+
+  drive:
+    desc: "Drive the incident end to end through the gateway as each role, opened by the real alert; start from `task demo:reset`. Flags after --, such as `-- --alert manual`"
+    silent: true
+    preconditions:
+      - sh: python3 -c 'import sys; sys.exit(sys.version_info < (3, 10))'
+        msg: "demo:drive needs python3 3.10 or later on the PATH (standard library only)."
+    cmds:
+      - python3 "{{.ROOT_DIR}}/demo/scenarios/drive.py" {{.CLI_ARGS}}
+
+  model-fault:
+    desc: "Drill: cut the agents and the chat assistant off from the model, `-- down` (refused at once) or `-- slow` (never answers). Undo with demo:model-restore"
+    silent: true
+    cmds:
+      - '"{{.ROOT_DIR}}/demo/scenarios/model-fault.sh" {{.CLI_ARGS | default "down"}}'
+
+  model-restore:
+    desc: Undo demo:model-fault by applying the three releases again
+    cmds:
+      - for: [remediation-agent, comms-agent, chat-assistant]
+        task: :deploy
+        vars: { CLI_ARGS: "-l name={{.ITEM}}" }
+      - cmd: kubectl --kubeconfig "{{.ROOT_DIR}}/local/kind/kubeconfig" --context kind-agentgateway-demo -n agents get deployment remediation-agent comms-agent chat-assistant -o 'jsonpath={range .items[*]}{.metadata.name}{" MODEL_BASE_URL="}{.spec.template.spec.containers[0].env[?(@.name=="MODEL_BASE_URL")].value}{"\n"}{end}'
+        silent: true
+
+  # --- backup drills ----------------------------------------------------------
+  # Each runs one script that names the repo-local kubeconfig and the context
+  # itself. The MCP calls are made with python3, standard library only.
+
+  backup:refused-by-gateway:
+    desc: "Backup: developer calls apply_change; the gateway does not offer it (reads only)"
+    silent: true
+    preconditions: &backup-python
+      - sh: python3 -c 'import sys; sys.exit(sys.version_info < (3, 10))'
+        msg: "The backup drills need python3 3.10 or later on the PATH (standard library only)."
+    cmds:
+      - '"{{.ROOT_DIR}}/demo/backup/refused-by-gateway.sh"'
+
+  backup:refused-by-service:
+    desc: "Backup: platform-engineer calls apply_change on a proposed change before it is approved; delivery-mcp refuses (reads only; needs a proposed change)"
+    silent: true
+    preconditions: *backup-python
+    cmds:
+      - '"{{.ROOT_DIR}}/demo/backup/refused-by-service.sh"'
+
+  backup:bypass-tool:
+    desc: "Backup: a pod in agents calls delivery-mcp directly and is blocked; the same call through the gateway works (reads only)"
+    silent: true
+    cmds:
+      - '"{{.ROOT_DIR}}/agent-platform/tests/bypass-tool.sh"'
+
+  backup:bypass-model:
+    desc: "Backup: a pod calls the model endpoint on this machine directly and is blocked; the gateway says 401 without a token and answers with one (one small model call)"
+    silent: true
+    cmds:
+      - '"{{.ROOT_DIR}}/agent-platform/tests/bypass-model.sh"'
+
+  backup:policy-override:
+    desc: "Backup: a gateway policy that weakens a platform rule is refused at admission, and so are two ways around the route (nothing is left behind)"
+    silent: true
+    cmds:
+      - '"{{.ROOT_DIR}}/agent-platform/tests/policy-override.sh"'
+
+  backup:registry-down:
+    desc: "Backup: Agentregistry scaled to zero; a signed-in tool list and an agent call still work; restored"
+    silent: true
+    preconditions: *backup-python
+    cmds:
+      - '"{{.ROOT_DIR}}/demo/backup/registry-down.sh"'
+
+  backup:telemetry-down:
+    desc: "Backup: the telemetry collector scaled to zero; the Sample App and a gateway call still work; restored"
+    silent: true
+    preconditions: *backup-python
+    cmds:
+      - '"{{.ROOT_DIR}}/demo/backup/telemetry-down.sh"'
+
+  backup:mcp-client:
+    desc: "Backup: access without hosting; as developer, the tools at /mcp/delivery and /mcp/observability and one read call (reads only)"
+    silent: true
+    preconditions: *backup-python
+    cmds:
+      - '"{{.ROOT_DIR}}/demo/backup/mcp-client.sh"'
+
+  backup:mcp-oauth-check:
+    desc: "Backup: the steps a real MCP client takes to sign in by itself, and which of them this cluster answers (reads only)"
+    silent: true
+    preconditions: *backup-python
+    cmds:
+      - '"{{.ROOT_DIR}}/demo/backup/mcp-oauth-check.sh"'

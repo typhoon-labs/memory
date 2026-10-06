@@ -1,0 +1,56 @@
+# Agentregistry tasks. Included by the root Taskfile as `registry:`.
+#
+#   task registry:install     install or upgrade the registry (catalog only)
+#   task registry:arctl       download the arctl CLI into .bin/ (git-ignored)
+#   task registry:publish     publish the entries under catalog/ (safe to re-run)
+#   task registry:status      pods, memory, addresses, and what is published
+#   task registry:uninstall   remove the registry and its data
+#
+# The UI is http://localhost:18086. It has no login.
+#
+# Every kubectl, helm and helmfile command names the repo-local kubeconfig and
+# the context itself, as the root Taskfile requires. The scripts do the same.
+# This file defines no top-level variables.
+version: "3"
+
+tasks:
+  install:
+    desc: Install or upgrade Agentregistry (safe to re-run)
+    cmds:
+      - task: guard
+      - KUBECONFIG="{{.ROOT_DIR}}/local/kind/kubeconfig" helmfile --kubeconfig "{{.ROOT_DIR}}/local/kind/kubeconfig" --kube-context kind-agentgateway-demo --file "{{.TASKFILE_DIR}}/helmfile.yaml" sync
+      - kubectl --kubeconfig "{{.ROOT_DIR}}/local/kind/kubeconfig" --context kind-agentgateway-demo -n agentregistry rollout status deployment/agentregistry --timeout=180s
+      - task: status
+
+  arctl:
+    desc: Download the arctl CLI into .bin/ (git-ignored, checksum verified)
+    cmds:
+      - "{{.TASKFILE_DIR}}/get-arctl.sh"
+
+  publish:
+    desc: "Publish the catalog entries (safe to re-run); `-- --dry-run` only validates"
+    cmds:
+      - "{{.TASKFILE_DIR}}/publish.sh {{.CLI_ARGS}}"
+
+  status:
+    desc: Show Agentregistry pods, memory, addresses and the published entries
+    silent: true
+    cmds:
+      - "{{.TASKFILE_DIR}}/status.sh"
+
+  uninstall:
+    desc: Remove Agentregistry and its data; the entries are published again with `task registry:publish`
+    cmds:
+      - task: guard
+      # The chart's volume claim is part of the release, so the data goes with it.
+      - helm --kubeconfig "{{.ROOT_DIR}}/local/kind/kubeconfig" --kube-context kind-agentgateway-demo -n agentregistry uninstall agentregistry --ignore-not-found --wait --timeout 120s
+
+  guard:
+    internal: true
+    silent: true
+    preconditions:
+      # Reads the file by path, never the shell's KUBECONFIG.
+      - sh: test "$(kubectl --kubeconfig "{{.ROOT_DIR}}/local/kind/kubeconfig" config current-context 2>/dev/null)" = "kind-agentgateway-demo"
+        msg: |
+          {{.ROOT_DIR}}/local/kind/kubeconfig is missing or its context is not kind-agentgateway-demo.
+          Nothing was changed. Run `task up` to create the cluster and the kubeconfig.

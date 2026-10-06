@@ -1,0 +1,15 @@
+# Values for the release `gateway-telemetry` (chart ./gateway-telemetry), from
+# settings.yaml.
+#
+# The gateway records prompt and completion text only while the collector's
+# Langfuse pipeline runs: switched on, and its Secret exists. The same check,
+# explained, is in collector.yaml.gotmpl.
+{{- $langfuse := false }}
+{{- if .Values | get "langfuse.enabled" false }}
+{{- $langfuse = ne (exec "kubectl" (list "--context" "kind-agentgateway-demo" "--namespace" .Values.collector.namespace "get" "secret" .Values.langfuse.secret.name "--ignore-not-found" "--output" "name") | trim) "" }}
+{{- end }}
+collector:
+  service: {{ .Values.collector.service }}
+  namespace: {{ .Values.collector.namespace }}
+tracing:
+  llmContent: {{ $langfuse }}

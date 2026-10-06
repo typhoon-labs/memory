@@ -1,0 +1,5 @@
+apiVersion: v2
+name: observability-content
+description: The demo's Grafana dashboards, the Sample App alert rule and the route from Alertmanager to the alert hook
+type: application
+version: 0.1.0

@@ -1,0 +1,56 @@
+# Agentgateway: Gateway API CRDs, Agentgateway CRDs, the controller, and one
+# Gateway that every model, MCP and A2A route attaches to.
+#
+# Install steps and versions follow
+# https://agentgateway.dev/docs/kubernetes/latest/documentation/install/helm/
+# (Agentgateway 1.6.x supports Gateway API 1.4 to 1.6 and Kubernetes 1.32 to 1.37).
+commonLabels:
+  layer: trunk
+
+# Every helm call names our context, so this file cannot be applied to another
+# cluster: with any other kubeconfig the context does not exist and helm fails.
+helmDefaults:
+  kubeContext: kind-agentgateway-demo
+
+releases:
+  - name: agentgateway-crds
+    namespace: agentgateway-system
+    createNamespace: true
+    chart: oci://cr.agentgateway.dev/charts/agentgateway-crds
+    version: v1.6.0
+    hooks:
+      # The Gateway API CRDs are published as one manifest, not as a chart.
+      # Upstream installs them with a server-side apply before its own CRDs.
+      - events: ["presync"]
+        showlogs: true
+        command: kubectl
+        args:
+          # A hook does not get helmfile's kubeconfig flags. It inherits
+          # KUBECONFIG from the command line (see Taskfile.yml), and naming
+          # the context makes it fail on any kubeconfig but ours.
+          - --context
+          - kind-agentgateway-demo
+          - apply
+          - --server-side
+          - -f
+          - https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.6.0/standard-install.yaml
+
+  - name: agentgateway
+    namespace: agentgateway-system
+    chart: oci://cr.agentgateway.dev/charts/agentgateway
+    version: v1.6.0
+    needs:
+      - agentgateway-system/agentgateway-crds
+    # Metrics scraping and the ready-made Grafana dashboard, switched on only
+    # when the Prometheus Operator is installed. The file explains why.
+    values:
+      - telemetry.yaml.gotmpl
+    wait: true
+    timeout: 300
+
+  # The Gateway and its proxy settings. A local chart, version in gateway/Chart.yaml.
+  - name: agentgateway-proxy
+    namespace: agentgateway-system
+    chart: ./gateway
+    needs:
+      - agentgateway-system/agentgateway

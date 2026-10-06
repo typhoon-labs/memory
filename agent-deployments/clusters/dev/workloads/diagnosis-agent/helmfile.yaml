@@ -1,0 +1,80 @@
+# diagnosis-agent: read-only investigation of an alert, declared in kagent.
+# Picked up by ../../helmfile.yaml (workloads/*/helmfile.yaml). Needs kagent
+# (platform/40-kagent) and the model route (platform/30-model-route).
+#
+#   diagnosis-agent-access         sample-app            what its tools may read: a Role
+#   diagnosis-agent-tools          kagent                its own read-only Kubernetes tool server
+#   diagnosis-agent-model-access   agentgateway-system   its door to the model route, with a
+#                                                        key the gateway issued to it
+#   diagnosis-agent-route-auth     kagent                who may call it (route.yaml)
+#   diagnosis-agent                kagent                the agent itself, and its A2A route
+#
+# The agent is defined in components/diagnosis-agent/ (prompt, runbook, tool
+# list); this directory says where things are in this cluster.
+#
+# Callers:   DIAGNOSIS_AGENT_URL=http://agentgateway-proxy.agentgateway-system.svc.cluster.local/a2a/diagnosis-agent
+#            (from the host: http://localhost:18080/a2a/diagnosis-agent)
+#
+# Apply:     task diagnosis-agent:deploy      or one release: task deploy -- -l name=<release>
+commonLabels:
+  layer: workload
+
+# Not inherited from the root helmfile. With any other kubeconfig this context
+# does not exist, and helm fails before it changes anything.
+helmDefaults:
+  kubeContext: kind-agentgateway-demo
+
+releases:
+  # A Role and RoleBinding in `sample-app` for the tool server's
+  # ServiceAccount. The namespace is created if missing, so this does not
+  # depend on the Sample App having been applied first.
+  - name: diagnosis-agent-access
+    namespace: sample-app
+    createNamespace: true
+    chart: ./access
+
+  - name: diagnosis-agent-tools
+    namespace: kagent
+    chart: oci://ghcr.io/kagent-dev/tools/helm/kagent-tools
+    # The version the kagent 1.0.0-alpha7 chart itself pins.
+    version: 0.3.0
+    values:
+      - tools-values.yaml
+    wait: true
+    timeout: 180
+
+  - name: diagnosis-agent-model-access
+    namespace: agentgateway-system
+    chart: ../../../../../agent-platform/profiles/kagent/model-access
+    values:
+      - workload: diagnosis-agent
+    hooks:
+      # The key is generated in the cluster and written to no file. A hook
+      # runs in this file's directory; the script names the repo-local
+      # kubeconfig and the context itself.
+      - events: ["presync"]
+        showlogs: true
+        command: ../../../../../agent-platform/profiles/kagent/model-access/mint-key.sh
+        args: ["diagnosis-agent", "kagent"]
+
+  # The policy before the route, so the route is never served without it: a
+  # valid token is required, and kagent itself checks nothing.
+  - name: diagnosis-agent-route-auth
+    namespace: kagent
+    chart: ../../../../../agent-platform/policies/agentgateway/route-auth
+    values:
+      - ../../../../access/identity.yaml
+      - route.yaml
+
+  - name: diagnosis-agent
+    namespace: kagent
+    chart: ../../../../../agent-platform/profiles/kagent/agent
+    needs:
+      - kagent/diagnosis-agent-tools
+      - kagent/diagnosis-agent-route-auth
+      - agentgateway-system/diagnosis-agent-model-access
+    values:
+      # What the agent is, from its owners.
+      - ../../../../../components/diagnosis-agent/config/agent.yaml
+      # Where things are in this cluster, and the prompt and runbook files.
+      - values.yaml.gotmpl
