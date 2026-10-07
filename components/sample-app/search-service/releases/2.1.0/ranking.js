@@ -1,7 +1,7 @@
 // Ranking as released in 2.1.0: matches on a heavier field come first.
 //
 // DEMO: this release is the incident. It reads ranking weights from a
-// `ranking` section that the seed catalogue does not have, so every search
+// `ranking` section that the seed catalog does not have, so every search
 // throws a TypeError and answers HTTP 500. Do not fix it here: the fix the
 // demo shows is rolling the image tag back to 2.0.0.
 export const strategy = 'weighted';

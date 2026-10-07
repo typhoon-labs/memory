@@ -26,7 +26,7 @@ nodes:
   - role: control-plane
     # The v1.37.0 image published with kind v0.33.0, pinned by digest.
     image: kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5
-    # Host port -> NodePort, from agent-platform/docs/conventions.md.
+    # Host port -> NodePort, from docs/cluster.md.
     # Bound to 127.0.0.1 only, on ports reserved for this project.
     extraPortMappings:
       - { containerPort: 30080, hostPort: 18080, listenAddress: "127.0.0.1", protocol: TCP } # Agentgateway
@@ -36,6 +36,6 @@ nodes:
       - { containerPort: 30084, hostPort: 18084, listenAddress: "127.0.0.1", protocol: TCP } # Grafana
       - { containerPort: 30085, hostPort: 18085, listenAddress: "127.0.0.1", protocol: TCP } # Langfuse
       - { containerPort: 30086, hostPort: 18086, listenAddress: "127.0.0.1", protocol: TCP } # Agentregistry UI
-      - { containerPort: 30087, hostPort: 18087, listenAddress: "127.0.0.1", protocol: TCP } # Spare
+      - { containerPort: 30087, hostPort: 18087, listenAddress: "127.0.0.1", protocol: TCP } # kagent UI
       - { containerPort: 30088, hostPort: 18088, listenAddress: "127.0.0.1", protocol: TCP } # Spare
       - { containerPort: 30089, hostPort: 18089, listenAddress: "127.0.0.1", protocol: TCP } # Spare

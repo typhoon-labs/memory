@@ -11,3 +11,13 @@ kind = "0.33.0"
 helmfile = "1.8.1"
 task = "3.54.0"
 jq = "1.8.2"
+# The scripts that run on this machine (demo:drive, the backup drills) need
+# python3 3.10 or later, standard library only. 3.13 is what the Python
+# components' .python-version and images say.
+python = "3.13"
+# For a component's own tasks (test, run-local), not for `task up`: the images
+# are built inside Docker. Node is the version chat-assistant's Dockerfile
+# uses, and chat-assistant needs 22.13 or later; the Sample App's images are
+# built on Node 22. uv is the version the Python components' Dockerfiles use.
+node = "24.10.0"
+uv = "0.9.5"

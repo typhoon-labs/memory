@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+    <html xmlns="http://www.w3.org/1999/xhtml" lang="en-US"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8" /><title>Prompt caching for faster model inference - Amazon Bedrock</title><meta name="viewport" content="width=device-width,initial-scale=1" /><meta name="assets_root" content="/assets" /><meta name="target_state" content="prompt-caching" /><meta name="default_state" content="prompt-caching" /><link rel="icon" type="image/ico" href="/assets/images/favicon.ico" /><link rel="shortcut icon" type="image/ico" href="/assets/images/favicon.ico" /><link rel="canonical" href="https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html" /><meta name="description" content="Learn about how to use the prompt caching feature in Amazon Bedrock to get faster model responses and reduce inference costs." /><meta name="deployment_region" content="IAD" /><meta name="product" content="Amazon Bedrock" /><meta name="guide" content="User Guide" /><meta name="abstract" content="User Guide for the Amazon Bedrock service." /><meta name="guide-locale" content="en_us" /><meta name="tocs" content="toc-contents.json" /><link rel="canonical" href="https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html" /><link rel="alternate" href="https://docs.aws.amazon.com/id_id/bedrock/latest/userguide/prompt-caching.html" hreflang="id-id" /><link rel="alternate" href="https://docs.aws.amazon.com/id_id/bedrock/latest/userguide/prompt-caching.html" hreflang="id" /><link rel="alternate" href="https://docs.aws.amazon.com/de_de/bedrock/latest/userguide/prompt-caching.html" hreflang="de-de" /><link rel="alternate" href="https://docs.aws.amazon.com/de_de/bedrock/latest/userguide/prompt-caching.html" hreflang="de" /><link rel="alternate" href="https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html" hreflang="en-us" /><link rel="alternate" href="https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html" hreflang="en" /><link rel="alternate" href="https://docs.aws.amazon.com/es_es/bedrock/latest/userguide/prompt-caching.html" hreflang="es-es" /><link rel="alternate" href="https://docs.aws.amazon.com/es_es/bedrock/latest/userguide/prompt-caching.html" hreflang="es" /><link rel="alternate" href="https://docs.aws.amazon.com/fr_fr/bedrock/latest/userguide/prompt-caching.html" hreflang="fr-fr" /><link rel="alternate" href="https://docs.aws.amazon.com/fr_fr/bedrock/latest/userguide/prompt-caching.html" hreflang="fr" /><link rel="alternate" href="https://docs.aws.amazon.com/it_it/bedrock/latest/userguide/prompt-caching.html" hreflang="it-it" /><link rel="alternate" href="https://docs.aws.amazon.com/it_it/bedrock/latest/userguide/prompt-caching.html" hreflang="it" /><link rel="alternate" href="https://docs.aws.amazon.com/ja_jp/bedrock/latest/userguide/prompt-caching.html" hreflang="ja-jp" /><link rel="alternate" href="https://docs.aws.amazon.com/ja_jp/bedrock/latest/userguide/prompt-caching.html" hreflang="ja" /><link rel="alternate" href="https://docs.aws.amazon.com/ko_kr/bedrock/latest/userguide/prompt-caching.html" hreflang="ko-kr" /><link rel="alternate" href="https://docs.aws.amazon.com/ko_kr/bedrock/latest/userguide/prompt-caching.html" hreflang="ko" /><link rel="alternate" href="https://docs.aws.amazon.com/pt_br/bedrock/latest/userguide/prompt-caching.html" hreflang="pt-br" /><link rel="alternate" href="https://docs.aws.amazon.com/pt_br/bedrock/latest/userguide/prompt-caching.html" hreflang="pt" /><link rel="alternate" href="https://docs.aws.amazon.com/zh_cn/bedrock/latest/userguide/prompt-caching.html" hreflang="zh-cn" /><link rel="alternate" href="https://docs.aws.amazon.com/zh_tw/bedrock/latest/userguide/prompt-caching.html" hreflang="zh-tw" /><link rel="alternate" href="https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html" hreflang="x-default" /><meta name="feedback-folder" content="2d8c2a09-1dac-41bf-9893-c0333d272b2c" /><meta name="feedback-item" content="Bedrock" /><meta name="this_doc_product" content="Amazon Bedrock" /><meta name="this_doc_guide" content="User Guide" /><head xmlns="http://www.w3.org/1999/xhtml"> <script defer="" src="/assets/r/awsdocs-doc-page.2.0.0.js"></script><link href="/assets/r/awsdocs-doc-page.2.0.0.css" rel="stylesheet"/></head>
+<script defer="" id="awsc-panorama-bundle" type="text/javascript" src="https://prod.pa.cdn.uis.awsstatic.com/panorama-nav-init.js" data-config="{'appEntity':'aws-documentation','region':'us-east-1','service':'bedrock'}"></script><meta id="panorama-serviceSubSection" value="User Guide" /><meta id="panorama-serviceConsolePage" value="Prompt caching for faster model inference" /></head><body class="awsdocs awsui"><div class="awsdocs-container"><p><a href="prompt-caching.md">View a markdown version of this page</a></p><awsdocs-header></awsdocs-header><awsui-app-layout id="app-layout" class="awsui-util-no-gutters" ng-controller="ContentController as $ctrl" header-selector="awsdocs-header" navigation-hide="false" navigation-width="$ctrl.navWidth" navigation-open="$ctrl.navOpen" navigation-change="$ctrl.onNavChange($event)" tools-hide="$ctrl.hideTools" tools-width="$ctrl.toolsWidth" tools-open="$ctrl.toolsOpen" tools-change="$ctrl.onToolsChange($event)"><div id="guide-toc" dom-region="navigation"><awsdocs-toc></awsdocs-toc></div><div id="main-column" dom-region="content" tabindex="-1"><awsdocs-view class="awsdocs-view"><div id="awsdocs-content"><head><title>Prompt caching for faster model inference - Amazon Bedrock</title><meta name="pdf" content="/pdfs/bedrock/latest/userguide/bedrock-ug.pdf#prompt-caching" /><meta name="rss" content="bedrock-ug.rss" /><meta name="forums" content="https://repost.aws/tags/TAQeKlaPaNRQ2tWB6P7KrMag" /><meta name="feedback" content="https://docs.aws.amazon.com/forms/aws-doc-feedback?feedback_destination_id=2d8c2a09-1dac-41bf-9893-c0333d272b2c&amp;topic_url=https://docs.aws.amazon.com/en_us/bedrock/latest/userguide/prompt-caching.html" /><meta name="feedback-yes" content="feedbackyes.html?topic_url=https://docs.aws.amazon.com/en_us/bedrock/latest/userguide/prompt-caching.html" /><meta name="feedback-no" content="feedbackno.html?topic_url=https://docs.aws.amazon.com/en_us/bedrock/latest/userguide/prompt-caching.html" /><meta name="keywords" content="Amazon Bedrock,bedrock,cache,context,conversation,prefix,cachepoint" /><link rel="alternate" type="text/markdown" href="prompt-caching.md" title="Markdown version" /><script type="application/ld+json">
+{
+    "@context" : "https://schema.org",
+    "@type" : "BreadcrumbList",
+    "itemListElement" : [
+      {
+        "@type" : "ListItem",
+        "position" : 1,
+        "name" : "AWS",
+        "item" : "https://aws.amazon.com"
+      },
+      {
+        "@type" : "ListItem",
+        "position" : 2,
+        "name" : "Amazon Bedrock",
+        "item" : "https://docs.aws.amazon.com/bedrock/index.html"
+      },
+      {
+        "@type" : "ListItem",
+        "position" : 3,
+        "name" : "User Guide",
+        "item" : "https://docs.aws.amazon.com/bedrock/latest/userguide"
+      },
+      {
+        "@type" : "ListItem",
+        "position" : 4,
+        "name" : "Capacity and Performance",
+        "item" : "https://docs.aws.amazon.com/bedrock/latest/userguide/capacity-limits-cost-optimization.html"
+      },
+      {
+        "@type" : "ListItem",
+        "position" : 5,
+        "name" : "Prompt caching for faster model inference",
+        "item" : "https://docs.aws.amazon.com/bedrock/latest/userguide/capacity-limits-cost-optimization.html"
+      }
+    ]
+}
+</script></head><body><div id="main"><div style="display: none"><a href="/pdfs/bedrock/latest/userguide/bedrock-ug.pdf#prompt-caching" target="_blank" rel="noopener noreferrer" title="Open PDF"></a></div><div id="breadcrumbs" class="breadcrumb"><a href="/index.html">Documentation</a><a href="/bedrock/index.html">Amazon Bedrock</a><a href="what-is-bedrock.html">User Guide</a></div><div id="page-toc-src"><a href="#prompt-caching-overview">Types of prompt caching</a><a href="#prompt-caching-models">Supported models, Regions, and explicit caching limits</a><a href="#prompt-caching-simplified">Prompt caching for models from Anthropic</a><a href="#prompt-caching-openai">Prompt caching for models from OpenAI</a><a href="#prompt-caching-get-started">Getting started</a></div><div id="main-content" class="awsui-util-container"><div id="main-col-body"><awsdocs-language-banner data-service="$ctrl.pageService"></awsdocs-language-banner><h1 class="topictitle" id="prompt-caching">Prompt caching for faster model inference</h1><div class="awsdocs-page-header-container"><awsdocs-page-header></awsdocs-page-header><awsdocs-filter-selector id="awsdocs-filter-selector"></awsdocs-filter-selector></div><p>Prompt caching is an optional feature that you can use with supported models on Amazon Bedrock to
+        reduce inference response latency and input token costs. Amazon Bedrock supports two types of prompt
+        caching: <a href="#prompt-caching-implicit">Implicit Prompt Caching</a> and
+        <a href="#prompt-caching-explicit">Explicit Prompt Caching</a>. Support for each
+        type varies by model and API.</p><p>Prompt caching can help when you have workloads with long and repeated contexts that are 
+        frequently reused for multiple queries. For example, if you have a chatbot where users can 
+        upload documents and ask questions about them, it can be time consuming for the model to 
+        process the document every time the user provides input. With prompt caching, you can cache 
+        the document so that future queries containing the document don't need to reprocess it.</p>
+        <h2 id="prompt-caching-overview">Types of prompt caching</h2>
+        <p>The two types differ in how reusable prompt content is selected:</p>
+        <div class="table-container"><div class="table-contents"><table id="w637aac22c24b7b5"><thead>
+                    <tr>
+                        <th>Type</th>
+                        <th>How it works</th>
+                        <th>Request configuration</th>
+                    </tr>
+                </thead>
+                    <tr>
+                        <td tabindex="-1"><a href="#prompt-caching-implicit">Implicit Prompt
+                                Caching</a></td>
+                        <td tabindex="-1">Amazon Bedrock and the model automatically attempt to reuse eligible prompt
+                            prefixes.</td>
+                        <td tabindex="-1">No cache controls or breakpoints are required in your request.</td>
+                    </tr>
+                    <tr>
+                        <td tabindex="-1"><a href="#prompt-caching-explicit">Explicit Prompt
+                                Caching</a></td>
+                        <td tabindex="-1">You identify reusable prompt prefixes by adding model-specific cache
+                            controls or breakpoints.</td>
+                        <td tabindex="-1">Your request must include the cache controls supported by the model
+                            and API.</td>
+                    </tr>
+                </table></div></div>
+
+         
+            <h3 id="prompt-caching-implicit">Implicit Prompt Caching</h3>
+            <p>Implicit Prompt Caching automatically attempts to reuse eligible prompt prefixes
+                without requiring cache controls in your request. Keep static content at the
+                beginning of your prompt and dynamic content at the end to increase the likelihood
+                of an exact prefix match.</p>
+            <p>Implicit Prompt Caching is best effort. Repeating an identical prompt doesn't
+                guarantee a cache hit, and cache-hit rates can vary.</p>
+         
+
+         
+            <h3 id="prompt-caching-explicit">Explicit Prompt Caching</h3>
+            <p>Explicit Prompt Caching lets you identify reusable prompt prefixes using
+                model-specific cache controls or <em>cache
+                    checkpoints</em>. Cache checkpoints are markers that define the
+                contiguous subsection of your prompt that you want to cache. Prompt prefixes should
+                remain static between requests. Changes to a prompt prefix in subsequent requests
+                result in cache misses.</p>
+
+            <p>Cache checkpoints have a minimum and maximum number of tokens, depending on the
+                model. You can only create a cache checkpoint if your total prompt prefix meets the
+                minimum number of tokens. For example, Claude Opus 5 requires at
+                least 512 tokens per cache checkpoint, Claude Sonnet 5 requires at
+                least 1,024 tokens per cache checkpoint, and Claude Haiku 4.5 requires at least
+                4,096 tokens per cache checkpoint. The minimum applies cumulatively to the entire
+                prompt prefix before each checkpoint, including, where applicable, content in the
+                    <code class="code">tools</code>, <code class="code">system</code>, and <code class="code">messages</code> fields. There
+                is no minimum number of tokens required between cache checkpoints. For a model with
+                a 1,024-token minimum, you can define additional checkpoints fewer than 1,024 tokens
+                apart as long as the total prompt prefix before each checkpoint contains at least
+                1,024 tokens. If you add a cache checkpoint before the total prompt prefix meets the
+                minimum number of tokens, your inference still succeeds, but your prefix isn't
+                cached.</p>
+            <p>The cache has a Time To Live (TTL), which resets with each successful cache hit.
+                During this period, the context in the cache is preserved. If no cache hits occur
+                within the TTL window, your cache expires. Many models support a 5-minute TTL.
+                Check the model card for your model to see the exact TTL conditions.</p>
+            <p>Explicit Prompt Caching provides control over which prompt content is eligible
+                for caching. It doesn't guarantee that an eligible request results in a cache
+                hit.</p>
+         
+
+         
+            <h3 id="prompt-caching-billing">Billing for cached tokens</h3>
+            <p>For both Implicit Prompt Caching and Explicit Prompt Caching, tokens successfully
+                read from cache are reported as cached tokens and billed at the model's cache-read
+                rate. Tokens that aren't read from cache are billed at the standard input token
+                rate. Depending on the model, tokens written to cache can be billed at a rate that
+                is higher than the standard input token rate. For more information, see the
+                <a href="https://aws.amazon.com/bedrock/pricing/" rel="noopener noreferrer" target="_blank"><span>Amazon Bedrock pricing page</span><awsui-icon class="awsdocs-link-icon" name="external"></awsui-icon></a>.</p>
+         
+
+        <div class="awsdocs-note awsdocs-important"><div class="awsdocs-note-title"><awsui-icon name="status-warning" variant="error"></awsui-icon><h6>Important</h6></div><div class="awsdocs-note-text"><p>Support for prompt caching doesn't guarantee a cache hit for any request. Check
+                the cache usage fields in the model response to determine whether tokens were read
+                from or written to cache.</p></div></div>
+
+        <p>You can use prompt caching when you run inference in Amazon Bedrock with supported models.
+            Availability of each prompt caching type varies by model and API. Prompt caching is
+            available through the following Amazon Bedrock features:</p>
+        <div class="variablelist">
+             
+             
+             
+           
+             
+        <dl>
+                <dt><b><span class="term">Converse and ConverseStream APIs</span></b></dt>
+                <dd>
+                    <p>You can carry on a conversation with a supported model. For Explicit
+                        Prompt Caching, specify cache checkpoints in your prompts.</p>
+                </dd>
+            
+                <dt><b><span class="term">InvokeModel and InvokeModelWithResponseStream
+                    APIs</span></b></dt>
+                <dd>
+                    <p>You can submit single-prompt requests to supported models. For Explicit
+                        Prompt Caching, enable prompt caching and specify your cache
+                        checkpoints.</p>
+                </dd>
+            
+                <dt><b><span class="term">Prompt Caching with Cross-region Inference</span></b></dt>
+                <dd>
+                    <p>Prompt caching can be used in conjunction with cross region inference. Cross-region 
+                        inference automatically selects the optimal AWS Region within your geography to 
+                        serve your inference request, thereby maximizing available resources and model 
+                        availability. At times of high demand, these optimizations may lead to increased cache writes.</p>
+                </dd>
+            
+                <dt><b><span class="term">Amazon Bedrock Prompt management</span></b></dt>
+                <dd>
+                    <p>When you <a href="./prompt-management-create.html">create</a> or <a href="./prompt-management-modify.html">modify</a> a prompt, you can
+                        choose to enable prompt caching. Depending on the model, you can cache
+                        system prompts, system instructions, and messages (user and assistant). You
+                        can also choose to disable prompt caching.</p>
+                </dd>
+            </dl></div>
+        <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>Prompt caching is only supported for on-demand inference endpoints. It is not supported with the batch inference API.</p></div></div>
+        <p>For models that support Explicit Prompt Caching, the APIs provide granular control
+            over the prompt cache. You can set individual cache checkpoints within your prompts
+            and add checkpoints up to the maximum allowed for the model. For more information, see
+            <a href="#prompt-caching-models">Supported models, Regions, and explicit caching limits</a>.</p>
+
+     
+        <h2 id="prompt-caching-models">Supported models, Regions, and explicit caching limits</h2>
+        
+        <p>Prompt caching support varies by model and API. Model cards identify whether a model
+            supports Implicit Prompt Caching, Explicit Prompt Caching, or both. Prompt caching is
+            available in all AWS Regions where the supported models are available. To check model
+            availability by Region, see <a href="./models-region-compatibility.html">Regional availability by models</a>.</p>
+        
+        <p>The following table lists models that support Explicit Prompt Caching, along with
+            their token minimums, maximum number of cache checkpoints, and fields that allow cache
+            checkpoints.</p>
+        
+        <p>To see which prompt caching types a model supports, refer to
+            <a href="./model-cards.html">Models at a glance</a>, and then choose the model that
+            you're interested in.</p>
+        
+        <div class="table-container"><div class="table-contents disable-scroll"><table id="w637aac22c24b9b9"><thead>
+                <tr>
+                    <th>Model name</th>
+                    <th>Model ID</th>
+                    <th>Release Type</th>
+                    <th>Minimum number of tokens per cache checkpoint</th>
+                    <th>Maximum number of cache checkpoints per request</th>
+                    <th>Supported TTL</th>
+                    <th>Fields that accept prompt cache checkpoints</th>
+                </tr>
+            </thead>
+                <tr>
+                    <td tabindex="-1"><p>Claude Sonnet 5.5</p></td>
+                    <td tabindex="-1"><p>anthropic.claude-sonnet-5-5</p></td>
+                    <td tabindex="-1"><p>Generally Available</p></td>
+                    <td tabindex="-1"><p>512</p></td>
+                    <td tabindex="-1"><p>4</p></td>
+                    <td tabindex="-1"><p>5 minutes, 1 hour</p></td>
+                    <td tabindex="-1"><p>`system`, `messages`, and `tools`</p></td>
+                </tr>
+                <tr>
+                    <td tabindex="-1"><p>Claude Opus 5.5</p></td>
+                    <td tabindex="-1"><p>anthropic.claude-opus-5-5</p></td>
+                    <td tabindex="-1"><p>Generally Available</p></td>
+                    <td tabindex="-1"><p>512</p></td>
+                    <td tabindex="-1"><p>4</p></td>
+                    <td tabindex="-1"><p>5 minutes, 1 hour</p></td>
+                    <td tabindex="-1"><p>`system`, `messages`, and `tools`</p></td>
+                </tr>
+                <tr>
+                    <td tabindex="-1"><p>Claude Fable 5.1</p></td>
+                    <td tabindex="-1"><p>anthropic.claude-fable-5-1</p></td>
+                    <td tabindex="-1"><p>Generally Available</p></td>
+                    <td tabindex="-1"><p>512</p></td>
+                    <td tabindex="-1"><p>4</p></td>
+                    <td tabindex="-1"><p>5 minutes, 1 hour</p></td>
+                    <td tabindex="-1"><p>`system`, `messages`, and `tools`</p></td>
+                </tr>
+                <tr>
+                    <td tabindex="-1"><p>Claude Mythos 5.1</p></td>
+                    <td tabindex="-1"><p>anthropic.claude-mythos-5-1</p></td>
+                    <td tabindex="-1"><p>Gated</p></td>
+                    <td tabindex="-1"><p>512</p></td>
+                    <td tabindex="-1"><p>4</p></td>
+                    <td tabindex="-1"><p>5 minutes, 1 hour</p></td>
+                    <td tabindex="-1"><p>`system`, `messages`, and `tools`</p></td>
+                </tr>
+                <tr>
+                    <td tabindex="-1"><p>Claude Fable 5</p></td>
+                    <td tabindex="-1"><p>anthropic.claude-fable-5</p></td>
+                    <td tabindex="-1"><p>Generally Available</p></td>
+                    <td tabindex="-1"><p>512</p></td>
+                    <td tabindex="-1"><p>4</p></td>
+                    <td tabindex="-1"><p>5 minutes, 1 hour</p></td>
+                    <td tabindex="-1"><p>`system`, `messages`, and `tools`</p></td>
+                </tr>
+                <tr>
+                    <td tabindex="-1"><p>Claude Mythos 5</p></td>
+                    <td tabindex="-1"><p>anthropic.claude-mythos-5</p></td>
+                    <td tabindex="-1"><p>Gated</p></td>
+                    <td tabindex="-1"><p>512</p></td>
+                    <td tabindex="-1"><p>4</p></td>
+                    <td tabindex="-1"><p>5 minutes, 1 hour</p></td>
+                    <td tabindex="-1"><p>`system`, `messages`, and `tools`</p></td>
+                </tr>
+                <tr>
+                    <td tabindex="-1"><p>Claude Opus 5</p></td>
+                    <td tabindex="-1"><p>anthropic.claude-opus-5</p></td>
+                    <td tabindex="-1"><p>Generally Available</p></td>
+                    <td tabindex="-1"><p>512</p></td>
+                    <td tabindex="-1"><p>4</p></td>
+                    <td tabindex="-1"><p>5 minutes, 1 hour</p></td>
+                    <td tabindex="-1"><p>`system`, `messages`, and `tools`</p></td>
+                </tr>
+                <tr>
+                    <td tabindex="-1"><p>Claude Opus 4.8</p></td>
+                    <td tabindex="-1"><p>anthropic.claude-opus-4-8</p></td>
+                    <td tabindex="-1"><p>Generally Available</p></td>
+                    <td tabindex="-1"><p>1,024</p></td>
+                    <td tabindex="-1"><p>4</p></td>
+                    <td tabindex="-1"><p>5 minutes, 1 hour</p></td>
+                    <td tabindex="-1"><p>`system`, `messages`, and `tools`</p></td>
+                </tr>
+                <tr>
+                    <td tabindex="-1"><p>Claude Opus 4.7</p></td>
+                    <td tabindex="-1"><p>anthropic.claude-opus-4-7</p></td>
+                    <td tabindex="-1"><p>Generally Available</p></td>
+                    <td tabindex="-1"><p>4,096</p></td>
+                    <td tabindex="-1"><p>4</p></td>
+                    <td tabindex="-1"><p>5 minutes, 1 hour</p></td>
+                    <td tabindex="-1"><p>`system`, `messages`, and `tools`</p></td>
+                </tr>
+                <tr>
+                    <td tabindex="-1"><p>Claude Opus 4.6</p></td>
+                    <td tabindex="-1"><p>anthropic.claude-opus-4-6-v1</p></td>
+                    <td tabindex="-1"><p>Generally Available</p></td>
+                    <td tabindex="-1"><p>4,096</p></td>
+                    <td tabindex="-1"><p>4</p></td>
+                    <td tabindex="-1"><p>5 minutes, 1 hour</p></td>
+                    <td tabindex="-1"><p>`system`, `messages`, and `tools`</p></td>
+                </tr>
+                <tr>
+                    <td tabindex="-1"><p>Claude Opus 4.5</p></td>
+                    <td tabindex="-1"><p>anthropic.claude-opus-4-5-20251101-v1:0</p></td>
+                    <td tabindex="-1"><p>Generally Available</p></td>
+                    <td tabindex="-1"><p>4,096</p></td>
+                    <td tabindex="-1"><p>4</p></td>
+                    <td tabindex="-1"><p>5 minutes, 1 hour</p></td>
+                    <td tabindex="-1"><p>`system`, `messages`, and `tools`</p></td>
+                </tr>
+                <tr>
+                    <td tabindex="-1"><p>Claude Sonnet 5</p></td>
+                    <td tabindex="-1"><p>anthropic.claude-sonnet-5</p></td>
+                    <td tabindex="-1"><p>Generally Available</p></td>
+                    <td tabindex="-1"><p>1,024</p></td>
+                    <td tabindex="-1"><p>4</p></td>
+                    <td tabindex="-1"><p>5 minutes, 1 hour</p></td>
+                    <td tabindex="-1"><p>`system`, `messages`, and `tools`</p></td>
+                </tr>
+                <tr>
+                    <td tabindex="-1"><p>Claude Sonnet 4.6</p></td>
+                    <td tabindex="-1"><p>anthropic.claude-sonnet-4-6</p></td>
+                    <td tabindex="-1"><p>Generally Available</p></td>
+                    <td tabindex="-1"><p>1,024</p></td>
+                    <td tabindex="-1"><p>4</p></td>
+                    <td tabindex="-1"><p>5 minutes, 1 hour</p></td>
+                    <td tabindex="-1"><p>`system`, `messages`, and `tools`</p></td>
+                </tr>
+                <tr>
+                    <td tabindex="-1"><p>Claude Sonnet 4.5</p></td>
+                    <td tabindex="-1"><p>anthropic.claude-sonnet-4-5-20250929-v1:0</p></td>
+                    <td tabindex="-1"><p>Generally Available</p></td>
+                    <td tabindex="-1"><p>1,024</p></td>
+                    <td tabindex="-1"><p>4</p></td>
+                    <td tabindex="-1"><p>5 minutes, 1 hour</p></td>
+                    <td tabindex="-1"><p>`system`, `messages`, and `tools`</p></td>
+                </tr>
+                <tr>
+                    <td tabindex="-1"><p>Claude 3.7 Sonnet</p></td>
+                    <td tabindex="-1"><p>anthropic.claude-3-7-sonnet-20250219-v1:0</p></td>
+                    <td tabindex="-1"><p>Generally Available</p></td>
+                    <td tabindex="-1"><p>1,024</p></td>
+                    <td tabindex="-1"><p>4</p></td>
+                    <td tabindex="-1"><p>5 minutes</p></td>
+                    <td tabindex="-1"><p>`system`, `messages`, and `tools`</p></td>
+                </tr>
+                <tr>
+                    <td tabindex="-1"><p>Claude 3.5 Sonnet v2</p></td>
+                    <td tabindex="-1"><p>anthropic.claude-3-5-sonnet-20241022-v2:0</p></td>
+                    <td tabindex="-1"><p>Preview</p></td>
+                    <td tabindex="-1"><p>1,024</p></td>
+                    <td tabindex="-1"><p>4</p></td>
+                    <td tabindex="-1"><p>5 minutes</p></td>
+                    <td tabindex="-1"><p>`system`, `messages`, and `tools`</p></td>
+                </tr>
+                <tr>
+                    <td tabindex="-1"><p>Claude Haiku 4.5</p></td>
+                    <td tabindex="-1"><p>anthropic.claude-haiku-4-5-20251001-v1:0</p></td>
+                    <td tabindex="-1"><p>Generally Available</p></td>
+                    <td tabindex="-1"><p>4,096</p></td>
+                    <td tabindex="-1"><p>4</p></td>
+                    <td tabindex="-1"><p>5 minutes, 1 hour</p></td>
+                    <td tabindex="-1"><p>`system`, `messages`, and `tools`</p></td>
+                </tr>
+                <tr>
+                    <td tabindex="-1"><p>GPT-5.6 Sol</p></td>
+                    <td tabindex="-1"><p>openai.gpt-5.6-sol</p></td>
+                    <td tabindex="-1"><p>Generally Available</p></td>
+                    <td tabindex="-1"><p>1,024</p></td>
+                    <td tabindex="-1"><p>4</p></td>
+                    <td tabindex="-1"><p>30 minutes</p></td>
+                    <td tabindex="-1"><p><code class="code">prompt_cache_breakpoint</code> on <code class="code">input_text</code>, <code class="code">input_image</code>, and <code class="code">input_file</code> blocks (Responses API)</p></td>
+                </tr>
+                <tr>
+                    <td tabindex="-1"><p>GPT-5.6 Terra</p></td>
+                    <td tabindex="-1"><p>openai.gpt-5.6-terra</p></td>
+                    <td tabindex="-1"><p>Generally Available</p></td>
+                    <td tabindex="-1"><p>1,024</p></td>
+                    <td tabindex="-1"><p>4</p></td>
+                    <td tabindex="-1"><p>30 minutes</p></td>
+                    <td tabindex="-1"><p><code class="code">prompt_cache_breakpoint</code> on <code class="code">input_text</code>, <code class="code">input_image</code>, and <code class="code">input_file</code> blocks (Responses API)</p></td>
+                </tr>
+                <tr>
+                    <td tabindex="-1"><p>GPT-5.6 Luna</p></td>
+                    <td tabindex="-1"><p>openai.gpt-5.6-luna</p></td>
+                    <td tabindex="-1"><p>Generally Available</p></td>
+                    <td tabindex="-1"><p>1,024</p></td>
+                    <td tabindex="-1"><p>4</p></td>
+                    <td tabindex="-1"><p>30 minutes</p></td>
+                    <td tabindex="-1"><p><code class="code">prompt_cache_breakpoint</code> on <code class="code">input_text</code>, <code class="code">input_image</code>, and <code class="code">input_file</code> blocks (Responses API)</p></td>
+                </tr>
+            </table></div></div>
+        
+        <p>To use the 1-hour TTL option, confirm in the preceding table that the model supports
+            it. Check the model's model card for the latest model-specific TTL conditions. For
+            supported models, specify the <code class="code">ttl</code> field in your cache checkpoint. In the
+            Converse API, add <code class="code">"ttl": "1h"</code> to your <code class="code">cachePoint</code> object. In
+            the InvokeModel API for Claude models, add <code class="code">"ttl": "1h"</code> to your
+            <code class="code">cache_control</code> object. For models that support only the 5-minute TTL, omit
+            the <code class="code">ttl</code> field. Including the field for these models can result in a
+            <code class="code">ValidationException</code>. If no <code class="code">ttl</code> value is provided, the default
+            5-minute caching behavior applies. The 1-hour TTL is useful for longer-running sessions
+            or batch processing scenarios where you want to maintain the cache across extended
+            periods.</p>
+
+        <p>Amazon Nova offers Implicit Prompt Caching for all text prompts, including
+            <code class="code">User</code> and <code class="code">System</code> messages. This mechanism can provide latency
+            benefits when prompts begin with repetitive parts, without explicit configuration.
+            Amazon Nova models shown as supporting Explicit Prompt Caching in their model cards also let
+            you specify cache checkpoints for more control over cache eligibility.</p>
+     
+        <h2 id="prompt-caching-simplified">Prompt caching for models from Anthropic</h2>
+        <p>Anthropic models that support prompt caching on Amazon Bedrock support both Implicit Prompt
+            Caching and Explicit Prompt Caching. Implicit Prompt Caching automatically attempts to
+            reuse eligible prompt prefixes without requiring cache controls in your
+            request.</p>
+
+        <p>For Explicit Prompt Caching, Amazon Bedrock offers a simplified approach to cache management
+            that reduces the complexity of manually placing cache checkpoints. Instead of
+            requiring you to specify exact cache checkpoint locations, you can use automatic cache
+            management with a single breakpoint at the end of your static content.</p>
+        
+        <p>When you enable simplified cache management, the system automatically checks for cache hits at previous content block boundaries, looking back up to approximately 20 
+            content blocks from your specified breakpoint. This allows the model to find the longest matching prefix from your cache without requiring you to predict the optimal 
+            checkpoint locations. To use this, place a single cache checkpoint at the end of your static content, before any dynamic or variable content. The system will 
+            automatically find the best cache match.</p>
+        
+        <p>For more granular control, you can still use multiple cache checkpoints (up to 4 for Claude models) to specify exact cache boundaries. You should use multipled
+            cache checkpoints if you are caching sections that change at different frequencies or want more control over exactly what gets cached.</p>
+        
+        <div class="awsdocs-note awsdocs-important"><div class="awsdocs-note-title"><awsui-icon name="status-warning" variant="error"></awsui-icon><h6>Important</h6></div><div class="awsdocs-note-text"><p>The automatic prefix checking only looks back approximately 20 content blocks from your cache checkpoint. If your static content extends beyond this range, consider 
+                using multiple cache checkpoints or restructuring your prompt to place the most frequently reused content within this range.</p></div></div>
+
+         
+            <h3 id="prompt-caching-effective-use-anthropic">Best practices for using cache management in Anthropic Models</h3>
+            <p>If you have prompts that are used at a regular cadence (i.e., system prompts that are used more frequently than every 5 minutes), continue to use the 5-minute cache,
+                since this will continue to be refreshed at no additional charge.</p>
+
+            <p>The 1-hour cache is best used in the following scenarios:</p>
+
+            <div class="itemizedlist">
+                 
+                 
+                 
+            <ul class="itemizedlist"><li class="listitem">
+                    <p>When you have prompts that are likely used less frequently than 5 minutes, but more frequently than every hour. For example, when an agentic side-agent will
+                        take longer than 5 minutes, or when storing a long chat conversation with a user and you generally expect that user may not respond in the next 5 minutes.</p>
+                </li><li class="listitem">
+                    <p>When latency is important and your follow-up prompts may be sent beyond 5 minutes.</p>
+                </li><li class="listitem">
+                    <p>When you want to improve your rate limit use, since cache hits are not deducted against your rate limit.</p>
+                </li></ul></div>
+
+            <p>You can use both 1-hour and 5-minute cache controls in the same request, but with an important constraint: Cache entries with longer TTL must appear before
+                shorter TTLs (i.e., a 1-hour cache entry must appear before any 5-minute cache entries).</p>
+         
+     
+        <h2 id="prompt-caching-openai">Prompt caching for models from OpenAI</h2>
+
+        <p>OpenAI models on Amazon Bedrock support Implicit Prompt Caching through the Responses API.
+            GPT-5.6 models also support Explicit Prompt Caching. The Responses API is available on
+            both the <code class="code">bedrock-runtime</code> and <code class="code">bedrock-mantle</code> endpoints.</p>
+
+         
+            <h3 id="prompt-caching-openai-56">GPT-5.6 models</h3>
+
+            <p>GPT-5.6 Sol (<code class="code">openai.gpt-5.6-sol</code>), Terra
+                (<code class="code">openai.gpt-5.6-terra</code>), and Luna (<code class="code">openai.gpt-5.6-luna</code>)
+                support both Implicit Prompt Caching and Explicit Prompt Caching. Explicit prompt
+                cache breakpoints give you precise control over which portions of your prompt are
+                eligible for caching. This is especially valuable for agentic workflows where
+                system instructions, tool definitions, and reference files repeat across many calls
+                while only the latest input changes.</p>
+
+            <p>Key characteristics:</p>
+            <div class="itemizedlist">
+                 
+                 
+                 
+                 
+                 
+                 
+            <ul class="itemizedlist"><li class="listitem"><p><b>Explicit cache breakpoints</b> — Mark
+                    the exact end of a reusable prompt prefix by adding
+                    <code class="code">"prompt_cache_breakpoint": <span>{</span>"mode": "explicit"}</code> to a supported
+                    content block.</p></li><li class="listitem"><p><b>Cache modes</b> — Set
+                    <code class="code">prompt_cache_options.mode</code> to control breakpoint behavior:</p>
+                    <div class="itemizedlist">
+                         
+                         
+                    <ul class="itemizedlist"><li class="listitem"><p><code class="code">implicit</code> (default) — Places an automatic
+                            breakpoint on the latest message and also uses any explicit breakpoints
+                            you provide.</p></li><li class="listitem"><p><code class="code">explicit</code> — Disables the automatic breakpoint.
+                            Only explicit breakpoints are used for cache reads and writes. If no
+                            explicit breakpoints exist, the request does not use prompt caching or
+                            incur cache-write charges.</p></li></ul></div></li><li class="listitem"><p><b>Minimum prefix length</b> — 1,024
+                    tokens per breakpoint.</p></li><li class="listitem"><p><b>30-minute minimum TTL</b> — Cached
+                    prefixes remain available for reuse for at least 30 minutes, long enough to
+                    cover the burst of calls a single agent run generates. The TTL is set via
+                    <code class="code">prompt_cache_options.ttl</code> and defaults to
+                    <code class="code">30m</code>.</p></li><li class="listitem"><p><b>Cache write billing</b> — Tokens
+                    written to cache are billed at 1.25× the uncached input token rate. Cache
+                    reads are billed at a 90% discount compared to uncached input
+                    tokens.</p></li><li class="listitem"><p><b>Cached tokens do not count toward rate
+                    limits</b> — Cached input tokens read through prompt caching do not
+                    count against the input-tokens-per-minute quota.</p></li></ul></div>
+
+             
+                <h4 id="prompt-caching-openai-56-usage">Understanding the response</h4>
+                <p>The usage object in the response includes two cache-specific fields:</p>
+                <div class="itemizedlist">
+                     
+                     
+                <ul class="itemizedlist"><li class="listitem"><p><code class="code">cached_tokens</code> — Number of input tokens read from
+                        cache (billed at the cache-read discount rate).</p></li><li class="listitem"><p><code class="code">cache_write_tokens</code> — Number of input tokens
+                        written to cache (billed at 1.25× the uncached input token
+                        rate).</p></li></ul></div>
+                <p>When <code class="code">cached_tokens</code> is greater than zero and
+                    <code class="code">cache_write_tokens</code> is zero, your request fully matched an existing
+                    cache entry — no new writes occurred, and you received the maximum cost
+                    savings.</p>
+             
+
+             
+                <h4 id="prompt-caching-openai-56-best-practices">Best practices for using cache management in GPT 5.6 models</h4>
+                <div class="itemizedlist">
+                     
+                     
+                     
+                <ul class="itemizedlist"><li class="listitem"><p><b>Place breakpoints after stable
+                        content</b> — System instructions, tool definitions, and reference
+                        documents that don't change between calls should appear before the
+                        breakpoint. Content after the breakpoint can change freely without
+                        invalidating the cached prefix.</p></li><li class="listitem"><p><b>Use <code class="code">explicit</code> mode for
+                        agentic loops</b> — When you want full control over what gets
+                        cached and want to avoid automatic breakpoints consuming write
+                        slots.</p></li><li class="listitem"><p><b>Monitor
+                        <code class="code">cache_write_tokens</code></b> — Compare cache-write volume
+                        against subsequent cache reads to understand net cost impact and adjust
+                        breakpoint placement accordingly.</p></li></ul></div>
+             
+         
+
+         
+            <h3 id="prompt-caching-openai-pre56">GPT-5.5 and earlier models</h3>
+
+            <p>For OpenAI models prior to GPT-5.6 (such as <code class="code">openai.gpt-5.5</code> and
+                <code class="code">openai.gpt-5.4</code>), Implicit Prompt Caching is automatic. You don't need
+                to add any special parameters. The system automatically attempts to cache eligible
+                prompt prefixes of 1,024 tokens or longer. Cache writes have no additional fee on
+                these models.</p>
+
+            <p>Key characteristics:</p>
+            <div class="itemizedlist">
+                 
+                 
+                 
+                 
+            <ul class="itemizedlist"><li class="listitem"><p><b>Implicit Prompt Caching</b> — No code
+                    changes are required. The system attempts to cache prefixes automatically based
+                    on exact prefix matching.</p></li><li class="listitem"><p><b>Minimum prefix length</b> — 1,024
+                    tokens.</p></li><li class="listitem"><p><b>No cache write fee</b> — Only cache
+                    reads are billed at a discounted rate.</p></li><li class="listitem"><p><b>Cached tokens do not count toward rate
+                    limits</b> — Cached input tokens read through prompt caching do not
+                    count against the input-tokens-per-minute quota.</p></li></ul></div>
+
+             
+                <h4 id="prompt-caching-openai-pre56-best-practices">Best practices for using cache management in GPT-5.5 and earlier models</h4>
+                <div class="itemizedlist">
+                 
+                 
+                 
+                <ul class="itemizedlist"><li class="listitem"><p>Place static content (system prompts, tool definitions, reference
+                    documents) at the beginning of your prompt.</p></li><li class="listitem"><p>Put variable content (user-specific input) at the end.</p></li><li class="listitem"><p>Maintain a steady stream of requests with identical prefixes to
+                    minimize cache evictions.</p></li></ul></div>
+             
+         
+     
+        <h2 id="prompt-caching-get-started">Getting started</h2>
+        <p>The following sections show you a brief overview of how to use the prompt caching
+            feature for each method of interacting with models through Amazon Bedrock.</p>
+
+        <div class="collapsible"><awsui-expandable-section variant="container" header="Converse API" id="prompt-caching-converse" expanded="true"><p>The <a href="https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_Converse.html">Converse</a>
+                    API provides advanced and flexible options for implementing prompt caching
+                    in multi-turn conversations. For more information about the prompt requirements for each model, see
+                    the preceding section <a href="#prompt-caching-models">Supported models, Regions, and explicit caching limits</a>.</p><p><b>Example request</b></p><p>The following examples show a cache checkpoint set in the
+                    <code class="code">messages</code>, <code class="code">system</code>, or <code class="code">tools</code>
+                    fields of a request to the Converse API. You can place checkpoints in any of these
+                    locations for a given request. For example, if sending a request to the
+                    Claude 3.5 Sonnet v2 model, you could place two cache checkpoints in
+                    <code class="code">messages</code>, one cache checkpoint in <code class="code">system</code>,
+                    and one in <code class="code">tools</code>. For more detailed information and examples of
+                    structuring and sending Converse API requests, see
+                    <a href="./conversation-inference.html">Inference using Converse API</a>.</p><div class="awsdocs-note awsdocs-important"><div class="awsdocs-note-title"><awsui-icon name="status-warning" variant="error"></awsui-icon><h6>Important</h6></div><div class="awsdocs-note-text"><p>Cache checkpoints are processed in this order: <code class="code">tools</code> →
+                        <code class="code">system</code> → <code class="code">messages</code>. The minimum cache size is evaluated
+                        against the cumulative tokens across all three sections combined, not each section
+                        individually. Because the sections are chained, changing content in an earlier section
+                        invalidates the cache for later sections (for example, modifying <code class="code">tools</code>
+                        invalidates the <code class="code">system</code> and <code class="code">messages</code> caches). For best cache
+                        hit rates, place stable content (<code class="code">tools</code>, <code class="code">system</code>) before variable
+                        content (<code class="code">messages</code>), and place cache checkpoints after the stable content.</p></div></div><p>For models that support the 1-hour TTL, specify it as follows. For models
+                    that support only the 5-minute TTL, omit the <code class="code">ttl</code> field. Including
+                    the field for these models can result in a <code class="code">ValidationException</code>.
+                    If you omit the field, the default 5-minute caching behavior applies.</p><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="">"cachePoint" : <span>{</span>
+    "type": "default",
+    "ttl" : "1h"
+}
+</code></pre><awsdocs-tabs><dl style="display: none">
+                    <dt>messages checkpoints</dt><dd tab-id="messages-checkpoints">
+                            <p>In this example, the first <code class="code">image</code> field provides an image to the model,
+                                and the second <code class="code">text</code> field asks the model to analyze the image.
+                                As long as the number of tokens preceding the <code class="code">cachePoint</code>
+                                in the <code class="code">content</code> object meets the minimum token count for the model,
+                                a cache checkpoint is created.</p>
+                            <pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli (json)--><code class="json ">...
+"messages": [
+   <span>{</span>
+        "role": "user",
+        "content": [
+            <span>{</span>
+                "image": <span>{</span>
+                    "bytes": "asfb14tscve..."
+                }
+            },
+            <span>{</span>
+                "text": "What's in this image?"
+            },
+            <span>{</span>
+                "cachePoint": <span>{</span>
+                    "type": "default"
+                }
+            }
+      ]
+  }
+]
+...</code></pre>
+                        </dd>
+                    <dt>system checkpoints</dt><dd tab-id="system-checkpoints">
+                            <p>In this example, you provide your system prompt in the
+                                <code class="code">text</code> field. Additionally, you can add a
+                                <code class="code">cachePoint</code> field to cache the system prompt.</p>
+                            <pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli (json)--><code class="json ">...
+  "system": [ 
+    <span>{</span>
+        "text": "You are an app that creates play lists for a radio station that plays rock and pop music. Only return song names and the artist. "
+    },
+    <span>{</span>
+        "cachePoint": <span>{</span>
+            "type": "default"
+        }
+    }
+  ],
+...</code></pre>
+                        </dd>
+                    <dt>tools checkpoints</dt><dd tab-id="tools-checkpoints">
+                            <p>In this example, you provide your tool definition in the
+                                <code class="code">toolSpec</code> field. (Alternatively, you can call a tool that
+                                you've previously defined. For more information, see <a href="./tool-use.html">Use a tool to complete an Amazon Bedrock model response</a>.) Afterward, you can add
+                                a <code class="code">cachePoint</code> field to cache the tool.</p>
+                            <pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli (json)--><code class="json ">...
+toolConfig=<span>{</span>
+    "tools": [
+        <span>{</span>
+            "toolSpec": <span>{</span>
+                "name": "top_song",
+                "description": "Get the most popular song played on a radio station.",
+                "inputSchema": <span>{</span>
+                    "json": <span>{</span>
+                        "type": "object",
+                        "properties": <span>{</span>
+                            "sign": <span>{</span>
+                                "type": "string",
+                                "description": "The call sign for the radio station for which you want the most popular song. Example calls signs are WZPZ and WKRP."
+                            }
+                        },
+                        "required": [
+                            "sign"
+                        ]
+                    }
+                }
+            }
+        },
+        <span>{</span>
+                "cachePoint": <span>{</span>
+                    "type": "default"
+                }
+        }
+    ]
+}
+...</code></pre>
+                        </dd>
+                </dl></awsdocs-tabs><p>The model response from the Converse API includes three new fields that are specific to prompt
+                    caching. The <code class="code">cacheReadInputTokens</code> and
+                        <code class="code">cacheWriteInputTokens</code> values tell you how many tokens were
+                    read from the cache and how many tokens were written to the cache because of
+                    your previous request. The <code class="code">cacheDetails</code> values tell you the ttl
+                    used for the number of token written to cache. These are values that you're charged for by Amazon Bedrock,
+                    at a rate that's lower than the cost of full model inference.</p><div class="awsdocs-note awsdocs-important"><div class="awsdocs-note-title"><awsui-icon name="status-warning" variant="error"></awsui-icon><h6>Important</h6></div><div class="awsdocs-note-text"><p>When prompt caching is enabled, the <code class="code">inputTokens</code> field represents only the non-cached input tokens (tokens that were not read from or written to the cache). To calculate the total input tokens sent in a request, use the following formula:</p><p><code class="code">total input tokens = inputTokens + cacheReadInputTokens + cacheWriteInputTokens</code></p></div></div></awsui-expandable-section><awsui-expandable-section variant="container" header="InvokeModel API" id="prompt-caching-invoke" expanded="false"><p>Prompt caching is enabled by default when you call the <a href="https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_InvokeModel.html">InvokeModel</a> API. 
+                     
+                    You can set cache checkpoints at any point in
+                    your request body, similar to the previous example for the Converse API.</p><awsdocs-tabs><dl style="display: none">
+                    <dt>Anthropic Claude</dt><dd tab-id="anthropic-claude">
+                            <p>The following example shows how to structure the body of your InvokeModel
+                                request for the Anthropic Claude 3.5 Sonnet v2 model. Note that the exact format and fields of the
+                                body for InvokeModel requests may vary depending on the model you choose. To see the
+                                format and content of the request and response bodies for different models, see
+                                <a href="./model-parameters.html">Inference request parameters and response fields for foundation models</a>.</p>
+                            <p>For models that support the 1-hour TTL, specify it as follows. For
+                                models that support only the 5-minute TTL, omit the
+                                <code class="code">ttl</code> field. Including the field for these models can
+                                result in a <code class="code">ValidationException</code>. If you omit the field,
+                                the default 5-minute caching behavior applies.</p>
+                            <pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="">"cache_control" : <span>{</span>
+    "type": "ephemeral",
+    "ttl" : "1h"
+}
+</code></pre>
+                            
+                <pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli (json)--><code class="json ">body=<span>{</span>
+        "anthropic_version": "bedrock-2023-05-31",
+        "system":"Reply concisely",
+        "messages": [
+            <span>{</span>
+            "role": "user",
+            "content": [
+                <span>{</span>
+                    "type": "text",
+                    "text": "Describe the best way to learn programming."
+                },
+                <span>{</span>
+                    "type": "text",
+                    "text": "Add additional context here for the prompt that meets the minimum token requirement for your chosen model.",
+                    "cache_control": <span>{</span>
+                        "type": "ephemeral"
+                    }
+                }
+            ]
+            }
+        ],
+        "max_tokens": 2048,
+        "temperature": 0.5,
+        "top_p": 0.8,
+        "stop_sequences": [
+            "stop"
+        ],
+        "top_k": 250
+}</code></pre>
+                        </dd>
+                    <dt>Amazon Nova</dt><dd tab-id="amazon-nova">
+                            <p>The following example shows how to structure the body of your InvokeModel
+                                request for the Amazon Nova model. Note that the exact format and fields of the
+                                body for InvokeModel requests may vary depending on the model you choose. To see the
+                                format and content of the request and response bodies for different models, see
+                                <a href="./model-parameters.html">Inference request parameters and response fields for foundation models</a>.</p>
+                            
+                            <pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli (JSON)--><code class="JSON "><span>{</span>
+    "system": [<span>{</span>
+        "text": "Reply Concisely"
+    }],
+    "messages": [<span>{</span>
+        "role": "user",
+        "content": [<span>{</span>
+            "text": "Describe the best way to learn programming"
+        },
+        <span>{</span>
+            "text": "Add additional context here for the prompt that meets the minimum token requirement for your chosen model.",
+            "cachePoint": <span>{</span>
+                "type": "default"
+            }
+        }]
+    }],
+    "inferenceConfig": <span>{</span>
+        "maxTokens": 300,
+        "topP": 0.1,
+        "topK": 20,
+        "temperature": 0.3
+    }
+}</code></pre>
+                        </dd>
+                </dl></awsdocs-tabs><p>For more information about sending an InvokeModel request, see
+                    <a href="./inference-invoke.html">Submit a single prompt with InvokeModel</a>.</p></awsui-expandable-section><awsui-expandable-section variant="container" header="Responses API" id="prompt-caching-responses" expanded="false"><p>For OpenAI models, you use the Responses API — available on both the
+                    <code class="code">bedrock-runtime</code> and <code class="code">bedrock-mantle</code> endpoints —
+                    with prompt caching parameters specific to the model generation. For GPT-5.6
+                    models, you control caching with explicit breakpoints. For GPT-5.5 and earlier,
+                    caching is automatic.</p><p><b>GPT-5.6 example with explicit cache breakpoints</b></p><p>The following example targets <code class="code">bedrock-runtime</code> and sends a
+                    Responses API request to the
+                    <code class="code">global.openai.gpt-5.6-sol</code> system inference profile using explicit
+                    cache breakpoints. The system instruction is cached and reused across
+                    subsequent requests.</p><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli (json)--><code class="json "><span>{</span>
+    "model": "global.openai.gpt-5.6-sol",
+    "prompt_cache_key": "my-app:system-prompt-v1",
+    "prompt_cache_options": <span>{</span>
+        "mode": "explicit"
+    },
+    "input": [
+        <span>{</span>
+            "type": "message",
+            "role": "developer",
+            "content": [
+                <span>{</span>
+                    "type": "input_text",
+                    "text": "You are a technical support agent. Use the company knowledge base to answer questions. Follow these guidelines: 1. Always cite the relevant documentation section. 2. If unsure, escalate to a human agent. 3. Be concise but thorough...",
+                    "prompt_cache_breakpoint": <span>{</span>
+                        "mode": "explicit"
+                    }
+                }
+            ]
+        },
+        <span>{</span>
+            "type": "message",
+            "role": "user",
+            "content": [
+                <span>{</span>
+                    "type": "input_text",
+                    "text": "How do I configure SSO for my organization?"
+                }
+            ]
+        }
+    ]
+}</code></pre><p><b>GPT-5.5 example with automatic caching</b></p><p>The following GPT-5.5 example targets <code class="code">bedrock-mantle</code>. For GPT-5.5
+                    and earlier models, prompt caching is automatic. No breakpoints or cache keys
+                    are needed — just ensure your prompt prefix exceeds 1,024 tokens.</p><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli (json)--><code class="json "><span>{</span>
+    "model": "openai.gpt-5.5",
+    "input": [
+        <span>{</span>
+            "type": "message",
+            "role": "developer",
+            "content": [
+                <span>{</span>
+                    "type": "input_text",
+                    "text": "You are a technical support agent. Use the company knowledge base to answer questions..."
+                }
+            ]
+        },
+        <span>{</span>
+            "type": "message",
+            "role": "user",
+            "content": [
+                <span>{</span>
+                    "type": "input_text",
+                    "text": "How do I configure SSO for my organization?"
+                }
+            ]
+        }
+    ]
+}</code></pre><p><b>Response</b></p><p>The response includes cache usage metrics in the <code class="code">usage</code> object:</p><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli (json)--><code class="json "><span>{</span>
+    "id": "resp_abc123",
+    "output": [...],
+    "usage": <span>{</span>
+        "input_tokens": 2048,
+        "output_tokens": 256,
+        "total_tokens": 2304,
+        "input_tokens_details": <span>{</span>
+            "cached_tokens": 1920,
+            "cache_write_tokens": 0
+        }
+    }
+}</code></pre><p>In this response, 1,920 tokens were served from cache and no new tokens were
+                    written, indicating a full cache hit with maximum cost savings.</p></awsui-expandable-section><awsui-expandable-section variant="container" header="Playground" id="prompt-caching-playground" expanded="false"><p>In a chat playground in the Amazon Bedrock console, you can turn on the prompt caching
+                    option, and Amazon Bedrock automatically creates cache checkpoints for you.</p><p>Follow the instructions in <a href="./playgrounds.html">Generate responses in the console using playgrounds</a> to get started with prompting in an Amazon Bedrock
+                    playground. For supported models, prompt caching is automatically turned on
+                    in the playground. However, if it's not, then do the following to turn on prompt caching:</p><div class="procedure"><ol><li>
+                        <p>Open the <b>Configurations</b> menu.</p>
+                    </li><li>
+                        <p>Turn on the <b>Prompt caching</b> toggle.</p>
+                    </li><li>
+                        <p>Run your prompts.</p>
+                    </li></ol></div><p>After your combined input and model responses reach the minimum required
+                    number of tokens for a checkpoint (which varies by model), Amazon Bedrock automatically
+                    creates the first cache checkpoint for you. As you continue chatting, Amazon Bedrock can
+                    create additional checkpoints, up to the maximum number of checkpoints allowed
+                    for the model. The minimum is evaluated against the cumulative number of tokens
+                    before each checkpoint, not the number of tokens added since the previous
+                    checkpoint. You can view your cache checkpoints at any time by choosing
+                        <b>View cache checkpoints</b> next to the <b>Prompt
+                        caching</b> toggle, as shown in the following screenshot.</p><div class="mediaobject">
+                     
+                        <img src="/images/bedrock/latest/userguide/images/prompt-caching/bedrock-prompt-caching-ui-toggle.png" class="aws-docs-img-whiteBg aws-docs-img-padding" alt="UI toggle for prompt caching in an Amazon Bedrock text playground." style="max-width:100%" />
+                     
+                     
+                </div><p>You can view how many tokens are being read from and written to the cache due
+                    to each interaction with the model by viewing the <b>Caching metrics</b>
+                    pop-up (<span class="inlinemediaobject">
+                         
+                            <img src="/images/bedrock/latest/userguide/images/prompt-caching/bedrock-prompt-caching-metrics-icon.png" class="aws-docs-img-whiteBg aws-docs-img-xs-padding" alt="The metrics icon shown in model responses when prompt caching is enabled." />
+                         
+                         
+                    </span>) in the playground responses.</p><div class="mediaobject">
+                     
+                        <img src="/images/bedrock/latest/userguide/images/prompt-caching/bedrock-prompt-caching-metrics.png" class="aws-docs-img-whiteBg aws-docs-img-padding" alt="Caching metrics box that shows the number of tokens read from and written to the cache." style="max-width:100%" />
+                     
+                     
+                </div><p>If you turn off the prompt caching toggle while in the middle of a
+                    conversation, you can continue chatting with the model.</p></awsui-expandable-section></div>
+
+    <awsdocs-copyright class="copyright-print"></awsdocs-copyright><awsdocs-thumb-feedback right-edge="{{$ctrl.thumbFeedbackRightEdge}}"></awsdocs-thumb-feedback></div><noscript><div><div><div><div id="js_error_message"><p><img src="https://d1ge0kk1l5kms0.cloudfront.net/images/G/01/webservices/console/warning.png" alt="Warning" /> <strong>Javascript is disabled or is unavailable in your browser.</strong></p><p>To use the Amazon Web Services Documentation, Javascript must be enabled. Please refer to your browser's Help pages for instructions.</p></div></div></div></div></noscript><div id="main-col-footer" class="awsui-util-font-size-0"><div id="doc-conventions"><a target="_top" href="/general/latest/gr/docconventions.html">Document Conventions</a></div><div class="prev-next"><div id="previous" class="prev-link" accesskey="p" href="./quotas-increase.html">Request a quota increase</div><div id="next" class="next-link" accesskey="n" href="./scaling-throughput-best-practices.html">Best practices</div></div></div><awsdocs-page-utilities></awsdocs-page-utilities></div><div id="quick-feedback-yes" style="display: none;"><div class="title">Did this page help you? - Yes</div><div class="content"><p>Thanks for letting us know we're doing a good job!</p><p>If you've got a moment, please tell us what we did right so we can do more of it.</p><p><awsui-button id="fblink" rel="noopener noreferrer" target="_blank" text="Feedback" click="linkClick($event)" href="https://docs.aws.amazon.com/forms/aws-doc-feedback?feedback_destination_id=2d8c2a09-1dac-41bf-9893-c0333d272b2c&amp;topic_url=https://docs.aws.amazon.com/en_us/bedrock/latest/userguide/prompt-caching.html"></awsui-button></p></div></div><div id="quick-feedback-no" style="display: none;"><div class="title">Did this page help you? - No</div><div class="content"><p>Thanks for letting us know this page needs work. We're sorry we let you down.</p><p>If you've got a moment, please tell us how we can make the documentation better.</p><p><awsui-button id="fblink" rel="noopener noreferrer" target="_blank" text="Feedback" click="linkClick($event)" href="https://docs.aws.amazon.com/forms/aws-doc-feedback?feedback_destination_id=2d8c2a09-1dac-41bf-9893-c0333d272b2c&amp;topic_url=https://docs.aws.amazon.com/en_us/bedrock/latest/userguide/prompt-caching.html"></awsui-button></p></div></div></div></body></div></awsdocs-view><div class="page-loading-indicator" id="page-loading-indicator"><awsui-spinner size="large"></awsui-spinner></div></div><div id="tools-panel" dom-region="tools"><awsdocs-tools-panel id="awsdocs-tools-panel"></awsdocs-tools-panel></div></awsui-app-layout><awsdocs-cookie-banner class="doc-cookie-banner"></awsdocs-cookie-banner></div></body></html>

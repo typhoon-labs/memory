@@ -199,7 +199,7 @@ async def test_search_check_reads_the_search_service_response_shape():
         "count": 1,
         "indexed": 500,
         "results": [{"id": "R-1"}],
-        "title": "Catalogue",
+        "title": "Catalog",
         "version": "2.0.0",
     }
     outcome = await verifier(search([httpx.Response(200, json=body)], [])).verify("s")

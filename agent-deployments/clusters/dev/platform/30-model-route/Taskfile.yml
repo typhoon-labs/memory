@@ -1,0 +1,20 @@
+# The model provider. Included by the root Taskfile as `model:`.
+#
+#   task model              which provider the gateway uses now
+#   task model -- bedrock   switch to Amazon Bedrock, with the AWS credentials
+#                           exported in this shell
+#   task model -- local     back to the model endpoint on this machine
+#
+# scripts/provider.sh says what `bedrock` reads from the environment and what
+# it writes to the cluster. The script names the repo-local kubeconfig and the
+# context itself, as the root Taskfile requires. This file defines no
+# top-level variables.
+version: "3"
+
+tasks:
+  default:
+    desc: "Which model provider the gateway uses; `-- bedrock` switches to Amazon Bedrock with the AWS credentials exported in this shell, `-- local` goes back (one small model call)"
+    silent: true
+    cmds:
+      - task: :tools-check
+      - '"{{.TASKFILE_DIR}}/scripts/provider.sh" {{.CLI_ARGS}}'

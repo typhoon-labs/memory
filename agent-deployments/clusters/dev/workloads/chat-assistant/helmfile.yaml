@@ -1,12 +1,12 @@
 # chat-assistant: the chat agent, its A2A endpoint (A2UI v0.9.1) and the Chat UI.
 # Picked up by ../../helmfile.yaml (workloads/*/helmfile.yaml).
 #
-# The image must be in the registry first: `task demo:publish`, or
+# The image must be in the registry first: `task publish`, or
 # `task chat-assistant:build chat-assistant:push` for this one alone.
 # The gateway routes to it are not part of this file: they are the releases
 # `chat-assistant-route` (/a2a/chat-assistant, with CORS for the UI's origin and
 # long streams) and `chat-assistant-alert-hook` (/hooks/alert) in
-# ../../platform/80-routes/helmfile.yaml, and who may call them is in
+# ../../domains/operations/helmfile.yaml, and who may call them is in
 # ../../domains/operations/chat-assistant.yaml and chat-assistant-alert-hook.yaml.
 helmDefaults:
   kubeContext: kind-agentgateway-demo

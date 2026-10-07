@@ -69,11 +69,17 @@ async function token(subject: string): Promise<string> {
 
 const connect = async (who: string) => A2aSession.connect(url, await token(who), version);
 
+const MARK: Record<string, string> = { done: '✓', current: '●', failed: '✕', pending: '○' };
+/** A step as one phrase: its mark and name, then who and when, then its note. */
+function stepLine(step: Record<string, any>): string {
+  const who = [step.owner, step.time].filter(Boolean).join(' ');
+  return `${MARK[step.state] ?? '?'} ${step.label}${who ? ` (${who})` : ''}${step.note ? `: ${step.note}` : ''}`;
+}
+
 function showCard(who: string, s: A2aSession) {
-  const fact = (id: string) => s.text(`fact-${id}-value`);
-  console.log(`   [${who}] "${s.text('title')}" ${fact('incident')} ${fact('service')} severity=${fact('severity')} status=${fact('status')} running=${fact('version')}`);
-  console.log(`   [${who}] ${s.text('change')} | ${s.text('change-status')}`);
-  console.log(`   [${who}] progress: ${[0, 1, 2, 3, 4].map((i) => s.text(`progress-${i}`)).join('  ')}`);
+  console.log(`   [${who}] "${s.text('title')}" ${s.text('incident-id')} status=${s.text('status')} severity=${s.text('severity')} ${s.text('service')}`);
+  console.log(`   [${who}] ${s.text('change-heading')} | ${s.text('change-id')}`);
+  console.log(`   [${who}] steps: ${['propose', 'approve', 'apply', 'verify', 'resolve'].map((key) => stepLine(s.step(key))).join('  ')}`);
   for (const b of s.buttons()) {
     console.log(`   [${who}] button ${b.id}: "${b.label}" ${b.disabledBecause ? `(disabled: ${b.disabledBecause})` : '(enabled)'}`);
   }
@@ -131,13 +137,13 @@ for (const [who, s] of [['developer', developer], ['incident-manager', manager],
 const ids = (s: A2aSession) => s.buttons().map((b) => b.id).join(',');
 check('developer has only Propose', ids(developer) === 'propose', ids(developer));
 check('incident-manager has Approve, Reject and the status draft', ids(manager) === 'approve,reject,draft,post', ids(manager));
-check('platform-engineer has Apply and Restart', ids(engineer) === 'apply,restart', ids(engineer));
-check('Apply is disabled until approved', !!engineer.buttons().find((b) => b.id === 'apply')?.disabledBecause);
-if (developer.text('fact-status-value') !== 'open' || developer.text('change-status') !== 'Change status: none') {
+check('platform-engineer has Restart and Apply', ids(engineer) === 'restart,apply', ids(engineer));
+check('Apply is disabled while there is no change to apply', !!engineer.buttons().find((b) => b.id === 'apply')?.disabledBecause);
+if (developer.text('status') !== 'Open' || developer.step('propose').state !== 'pending') {
   console.log('\nThis walk needs a fresh incident. Restart the server (stub state is in memory) and run again.');
   process.exit(2);
 }
-const incidentId = developer.text('fact-incident-value');
+const incidentId = developer.text('incident-id');
 
 step('Refusals');
 let r = await developer.action('approve_change', { incident_id: incidentId, change_id: 'CHG-0001' });
@@ -152,27 +158,29 @@ await outsider.sync();
 r = await outsider.click('propose');
 showReply('developer-other-team clicks Propose', r);
 check('refused by the service: team_owns_service', r.metadata.refusal?.layer === 'service' && r.metadata.refusal?.rule === 'team_owns_service');
-check('the refusal is on the card', outsider.text('notice') === r.text);
+check('the refusal is on the card, beside Propose', outsider.notice().slot === 'propose' && outsider.notice().text === 'Your team does not own this service.', JSON.stringify(outsider.notice()));
 
 step('developer proposes');
 r = await developer.click('propose');
 showReply('developer', r);
-check('proposed', r.state === 'COMPLETED' && developer.text('change-status') === 'Change status: proposed');
+check('proposed', r.state === 'COMPLETED' && developer.step('propose').state === 'done', stepLine(developer.step('propose')));
 await manager.sync();
 const changeId = String(manager.component('approve')?.action.event.context.change_id ?? '');
-check("the incident-manager's poll shows the proposal", manager.text('change-status') === 'Change status: proposed' && !!changeId, changeId);
+check("the incident-manager's poll shows the proposal, waiting for them", manager.step('propose').state === 'done' && manager.step('approve').turn === true && !!changeId, changeId);
 
-step('platform-engineer tries to apply before approval');
+step('platform-engineer clicks Apply before approval');
 await engineer.sync();
-r = await engineer.action('apply_change', { incident_id: incidentId, change_id: changeId });
-showReply('platform-engineer sends apply_change', r);
-check('refused by the service, naming its rule', r.metadata.refusal?.layer === 'service' && !!r.metadata.refusal?.rule, r.metadata.refusal?.rule);
+check('Apply is enabled for a proposed change', !engineer.buttons().find((b) => b.id === 'apply')?.disabledBecause);
+r = await engineer.click('apply');
+showReply('platform-engineer clicks Apply', r);
+check('refused by the service, in words', r.state === 'REJECTED' && r.metadata.refusal?.layer === 'service' && r.metadata.refusal?.rule === 'change_is_approved', r.metadata.refusal?.rule);
+check('the refusal is on the card, beside Apply, and nothing moved', engineer.notice().slot === 'apply' && engineer.notice().title === 'Refused by the service' && engineer.step('approve').state === 'pending', JSON.stringify(engineer.notice()));
 
 step('incident-manager rejects, then the developer proposes again');
 manager.type('reject-reason', 'Please confirm 2.0.0 is still retained');
 r = await manager.click('reject');
 showReply('incident-manager', r);
-check('rejected with the reason', manager.text('change').includes('Reason: Please confirm 2.0.0 is still retained'));
+check('rejected with the reason', manager.step('approve').label === 'Rejected' && manager.step('approve').note === 'Please confirm 2.0.0 is still retained', stepLine(manager.step('approve')));
 await developer.sync();
 r = await developer.click('propose');
 showReply('developer', r);
@@ -184,26 +192,30 @@ r = await manager.click('draft');
 showReply('incident-manager (comms-agent)', r);
 const draft = String(manager.model().draft?.text ?? '');
 console.log(`   draft: ${draft}`);
-check('a draft came back and nothing was posted', r.state === 'COMPLETED' && draft.length > 0 && !manager.text('timeline').includes('Status update by'));
+check('a draft came back and nothing was posted', r.state === 'COMPLETED' && draft.length > 0 && !manager.timeline().includes('Status update by'));
 r = await manager.click('post');
 showReply('incident-manager', r);
-check('posted', r.state === 'COMPLETED' && manager.text('timeline').includes('Status update by'));
+check('posted', r.state === 'COMPLETED' && manager.timeline().includes('Status update by'));
 r = await manager.click('approve');
 showReply('incident-manager', r);
-check('approved', r.state === 'COMPLETED' && manager.text('change-status') === 'Change status: approved');
+check('approved', r.state === 'COMPLETED' && manager.step('approve').state === 'done', stepLine(manager.step('approve')));
 
 step('platform-engineer restarts, then applies (remediation-agent; the card streams while it works)');
 await engineer.sync();
-check('Apply is now enabled', !engineer.buttons().find((b) => b.id === 'apply')?.disabledBecause);
+check('the earlier refusal is gone from the card', engineer.notice().slot === '', JSON.stringify(engineer.notice()));
 r = await engineer.click('restart');
 showReply('platform-engineer', r);
 check('restarted', r.state === 'COMPLETED');
 r = await engineer.click('apply');
 showReply('platform-engineer', r);
-const statuses = r.a2ui
+// Each card pushed while it worked, as the step it had reached: the one running, or the last one done.
+const reached = r.a2ui
   .filter((m) => m.updateComponents)
-  .map((m) => m.updateComponents.components.find((c: any) => c.id === 'change-status')?.text.replace('Change status: ', ''));
-console.log(`   card pushed during the stream: ${statuses.join(' > ')}`);
+  .map((m) => {
+    const steps = (m.updateComponents.components as any[]).filter((c) => c.component === 'Step');
+    return (steps.find((c) => c.state === 'current') ?? steps.filter((c) => c.state === 'done').at(-1))?.label;
+  });
+console.log(`   card pushed during the stream: ${reached.join(' > ')}`);
 check('applied and verified', r.state === 'COMPLETED');
 check('the stream showed progress before the end', r.events.filter((e) => e === 'statusUpdate').length > 1, r.events.join(' > '));
 
@@ -211,7 +223,7 @@ step('Everyone sees the result');
 for (const [who, s] of [['developer', developer], ['incident-manager', manager], ['platform-engineer', engineer]] as const) {
   await s.sync();
   showCard(who, s);
-  check(`${who} sees resolved`, s.text('fact-status-value') === 'resolved' && s.text('progress-4').includes('Resolved'));
+  check(`${who} sees resolved`, s.text('status') === 'Resolved' && s.step('resolve').state === 'done');
 }
 
 if (withChat) {

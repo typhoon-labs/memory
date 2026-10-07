@@ -4,7 +4,7 @@
 #   from a pod      http://agentgateway-proxy.agentgateway-system.svc.cluster.local/mcp/delivery
 #   from the host   http://localhost:18080/mcp/delivery
 #
-# Values for two releases in ../../platform/80-routes/helmfile.yaml:
+# Values for two releases in the helmfile.yaml next to this file:
 # `delivery-mcp-route` (route, backend, tools) and `delivery-mcp-route-auth`
 # (allow, passthrough). Apply a change with
 # `task deploy -- -l name=delivery-mcp-route` or `-l name=delivery-mcp-route-auth`.
@@ -28,9 +28,10 @@ allow: []
 passthrough: true
 
 # Tool -> the roles that may see it in tools/list and call it. "*" is any
-# signed-in caller. This mirrors the tool table in
-# agent-platform/docs/conventions.md; a tool that is not listed here is hidden
-# from everyone, so a new tool needs a line before anyone can call it.
+# signed-in caller. This is the gateway's half of the tool table in
+# docs/contracts.md; the service checks the same roles again. A tool that is
+# not listed here is hidden from everyone, so a new tool needs a line before
+# anyone can call it.
 tools:
   list_incidents: ["*"]
   get_incident: ["*"]

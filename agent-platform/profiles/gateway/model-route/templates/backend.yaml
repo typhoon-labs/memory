@@ -25,6 +25,11 @@ spec:
       {{- else }}
       bedrock:
         region: {{ required "modelProvider.bedrock.region" $p.bedrock.region | quote }}
+        {{- with $p.bedrock.endpointPreference }}
+        # Which of Bedrock's two API surfaces serves the models. Unset, the
+        # gateway decides per model from its catalog (RuntimePreferred).
+        endpointPreference: {{ . }}
+        {{- end }}
       {{- end }}
   policies:
     {{- if eq $p.active "local" }}

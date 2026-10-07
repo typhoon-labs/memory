@@ -1,6 +1,6 @@
 // Matching: every word of the query must be the start of a word in the
 // record ("re ci" finds red circles). An empty query matches the whole
-// catalogue. The order of the matches is decided by ranking.js.
+// catalog. The order of the matches is decided by ranking.js.
 import { rank } from './ranking.js';
 
 const words = (text) => String(text).toLowerCase().split(/\s+/).filter(Boolean);

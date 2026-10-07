@@ -5,9 +5,11 @@
  *     holding `[{version, action: {name, surfaceId, sourceComponentId, context}}]`)
  *       -> handled by code (../actions.ts), as a task that ends completed,
  *          rejected (a refusal) or failed;
- *   - a sync request (our own data part, `application/vnd.chat-assistant.sync+json`)
- *       -> answered with a plain message carrying whatever A2UI messages bring
- *          the caller's card up to date;
+ *   - a sync request (our own data part, `application/vnd.chat-assistant.sync+json`,
+ *     `{request: "sync"}`, with `incident` when the viewer has picked one from
+ *     the list)
+ *       -> answered with a plain message carrying the list of incidents and
+ *          whatever A2UI messages bring the caller's card up to date;
  *   - text
  *       -> the Mastra chat agent, streamed as artifact updates.
  *
@@ -18,18 +20,21 @@ import { AgentEvent, type AgentExecutor, type ExecutionEventBus, type RequestCon
 import { SpanStatusCode, trace } from '@opentelemetry/api';
 import { performAction, type ActionOutcome } from '../actions.js';
 import type { Identity } from '../auth.js';
-import { ACTIONS, buildIncidentCard, surfaceIdFor, type CardSurface } from '../card/incident-card.js';
+import { ACTIONS, NOTICE_SLOT, NO_NOTICE, buildIncidentCard, surfaceIdFor, type CardSurface, type Notice } from '../card/incident-card.js';
+import { buildIncidentList, type IncidentListEntry } from '../card/incident-list.js';
 import { applyToClientView, clientSurfacesFrom, syncMessages, type ClientSurfaces } from '../card/sync.js';
 import type { Chat } from '../chat/agent.js';
 import type { DiagnosisTracker } from '../diagnosis-status.js';
-import { currentIncidents } from '../downstream/index.js';
-import { Refusal, refusalText, type Downstreams } from '../downstream/types.js';
+import { incidentsFor } from '../downstream/index.js';
+import { Refusal, refusalText, refusalWords, type Downstreams } from '../downstream/types.js';
 import {
   A2UI_EXTENSION_URI,
+  INCIDENT_CATALOG_ID,
   SYNC_MIME_TYPE,
   a2uiMessagesOf,
   a2uiPart,
   agentMessage,
+  clientCatalogs,
   dataPart,
   isA2uiPart,
   partMimeType,
@@ -67,6 +72,46 @@ function findAction(parts: Part[]): A2uiAction | undefined {
     }
   }
   return undefined;
+}
+
+/** The incident a sync request names: the one the viewer picked from the list. Without one, the current incident is shown. */
+function pickedIncident(parts: Part[]): string | undefined {
+  for (const part of parts) {
+    if (part.content?.$case !== 'data' || partMimeType(part) !== SYNC_MIME_TYPE) continue;
+    const picked = (part.content.value as { incident?: unknown } | null)?.incident;
+    if (typeof picked === 'string' && picked) return picked;
+  }
+  return undefined;
+}
+
+/**
+ * The incident an action is about: the one its context names, as every button
+ * on the card does, or else the one whose card the client says it was sent from.
+ */
+function incidentOf(action: A2uiAction, held: ClientSurfaces): string | undefined {
+  const named = action.context.incident_id;
+  if (typeof named === 'string' && named) return named;
+  const meta = (held[action.surfaceId] as { meta?: { incidentId?: unknown } } | undefined)?.meta;
+  return typeof meta?.incidentId === 'string' && meta.incidentId ? meta.incidentId : undefined;
+}
+
+/**
+ * Whether the client can draw the card. A2UI: the agent picks a catalog the
+ * client supports, and sends no UI if there is none. A client that states no
+ * capabilities has expressed no preference and is sent the card.
+ */
+function drawsTheCard(message: Message): boolean {
+  return clientCatalogs(message.metadata)?.includes(INCIDENT_CATALOG_ID) ?? true;
+}
+
+/** What a refused or failed action leaves beside the button that was pressed; nothing when it went through. */
+function noticeFor(action: A2uiAction, outcome: ActionOutcome): Notice {
+  if (outcome.ok) return NO_NOTICE;
+  const slot = NOTICE_SLOT[action.name] ?? '';
+  const { refusal } = outcome;
+  return refusal
+    ? { slot, tone: refusal.layer, title: refusal.title, text: refusal.reason, rule: refusal.rule ?? '' }
+    : { slot, tone: 'failed', title: 'Failed', text: outcome.text, rule: '' };
 }
 
 /** An HTTP status buried in an error chain (the model provider's errors carry `statusCode`). */
@@ -143,23 +188,47 @@ export class ChatAssistantExecutor implements AgentExecutor {
     bus.finished();
   }
 
-  /** The cards this caller should see now, each read with get_incident as the caller. */
-  private async cards(identity: Identity): Promise<CardSurface[]> {
-    const incidents = await currentIncidents(this.downstreams, identity.token);
-    return incidents.map((incident) =>
+  /**
+   * What this caller's page shows now, read as the caller: the list of
+   * incidents, and the card of one of them. That is the incident `picked`, if
+   * it exists, and otherwise the current one; with no incident there is no card.
+   */
+  private async page(identity: Identity, picked?: string): Promise<{ cards: CardSurface[]; incidents: IncidentListEntry[]; shown?: string }> {
+    const { all, shown } = await incidentsFor(this.downstreams, identity.token, picked);
+    return {
       // Until the record carries a diagnosis, show where the alert hook's diagnosis stands.
-      buildIncidentCard(incident, identity, incident.suspected_cause ? undefined : this.diagnoses?.get(incident.id)),
-    );
+      cards: shown ? [buildIncidentCard(shown, identity, shown.suspected_cause ? undefined : this.diagnoses?.get(shown.id))] : [],
+      incidents: buildIncidentList(all),
+      shown: shown?.id,
+    };
   }
 
   private async runSync(rc: RequestContext, bus: ExecutionEventBus, identity: Identity, message: Message) {
     const viewer = { user: identity.user, roles: identity.roles, team: identity.team };
+    if (!drawsTheCard(message)) {
+      bus.publish(
+        AgentEvent.message(
+          agentMessage({
+            contextId: rc.contextId,
+            parts: [
+              dataPart({ viewer, surfaces: [], error: true }, SYNC_MIME_TYPE),
+              textPart(`This client cannot draw the incident card: it does not support the catalog ${INCIDENT_CATALOG_ID}.`),
+            ],
+            metadata: { error: true },
+          }),
+        ),
+      );
+      return;
+    }
     try {
-      const desired = await this.cards(identity);
+      const { cards: desired, incidents, shown } = await this.page(identity, pickedIncident(message.parts));
       const a2ui = syncMessages(desired, clientSurfacesFrom(message.metadata));
       const state = {
         viewer,
         surfaces: desired.map((s) => ({ surfaceId: s.surfaceId, incidentId: s.incidentId, version: s.version })),
+        // For the list beside the card: every incident, and which one the card shows.
+        incidents,
+        shown,
       };
       bus.publish(
         AgentEvent.message(
@@ -216,7 +285,10 @@ export class ChatAssistantExecutor implements AgentExecutor {
 
   private async runAction(rc: RequestContext, bus: ExecutionEventBus, identity: Identity, action: A2uiAction, message: Message) {
     this.startTask(rc, bus);
+    const draws = drawsTheCard(message);
     let view: ClientSurfaces = clientSurfacesFrom(message.metadata);
+    // The card stays on the incident the button belongs to, whichever incident is current.
+    const viewing = incidentOf(action, view);
 
     // While a slow action runs (apply and verify), push the card as it changes.
     // A quick action finishes before the first tick and is not held up by it.
@@ -230,8 +302,8 @@ export class ChatAssistantExecutor implements AgentExecutor {
         clearTimeout(timer);
         if (finished) break;
         try {
-          const desired = await this.cards(identity);
-          const a2ui = syncMessages(desired, view);
+          const { cards: desired } = await this.page(identity, viewing);
+          const a2ui = draws ? syncMessages(desired, view) : [];
           if (a2ui.length && !finished) {
             this.status(rc, bus, TaskState.TASK_STATE_WORKING, [a2uiPart(a2ui)]);
             view = applyToClientView(view, desired);
@@ -253,11 +325,11 @@ export class ChatAssistantExecutor implements AgentExecutor {
 
     const parts: Part[] = [textPart(outcome.text)];
     try {
-      const desired = await this.cards(identity);
+      const { cards: desired } = await this.page(identity, viewing);
       const target = desired.find((s) => s.surfaceId === action.surfaceId)?.surfaceId ?? surfaceIdFor(outcome.incidentId ?? '');
-      const a2ui = syncMessages(desired, view, {
+      const a2ui = !draws ? [] : syncMessages(desired, view, {
         [target]: {
-          notice: outcome.text,
+          notice: noticeFor(action, outcome),
           // A new draft fills the field; a posted update or a completed rejection clears its field.
           draft: outcome.draft ?? (outcome.ok && action.name === ACTIONS.post ? '' : undefined),
           rejectReason: outcome.ok && action.name === ACTIONS.reject ? '' : undefined,
@@ -330,7 +402,7 @@ export class ChatAssistantExecutor implements AgentExecutor {
       if (status === 401 || status === 403) {
         const refusal = { layer: 'gateway' as const, status, detail: 'the model call was not allowed for you' };
         this.status(rc, bus, TaskState.TASK_STATE_REJECTED, [textPart(refusalText(refusal))], {
-          refusal: { layer: refusal.layer, status, message: refusal.detail },
+          refusal: { layer: refusal.layer, status, message: refusal.detail, ...refusalWords(refusal) },
         });
       } else {
         this.status(rc, bus, TaskState.TASK_STATE_FAILED, [

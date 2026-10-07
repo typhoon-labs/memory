@@ -1,0 +1,109 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="700" viewBox="0 0 1280 700" role="img" aria-labelledby="t d" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif">
+<title id="t">Configuration authority: one writer per object</title>
+<desc id="d">Five stages from left to right, each with one owner: component source repository, artifact stores, environment configuration, the Helm release applied by the delivery pipeline, and controllers. Catalog metadata, the AWS infrastructure repository and downstream business authorization sit beside the flow. The registry CLI, ad-hoc kubectl and the runner pod identity are not writers of production objects.</desc>
+<defs>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0.8 L10,5 L0,9.2 z" fill="#52514e"/></marker>
+<marker id="ahd" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0.8 L10,5 L0,9.2 z" fill="#d03b3b"/></marker>
+</defs>
+<rect x="0.5" y="0.5" width="1279" height="699" rx="14" fill="#fcfcfb" stroke="#e4e3df"/>
+<text x="32.0" y="46.0" font-size="19" font-weight="700" fill="#0b0b0b" text-anchor="start">Configuration authority: one writer per object</text>
+<text x="32.0" y="68.0" font-size="12.5" font-weight="400" fill="#52514e" text-anchor="start">A release moves left to right. Each stage has one owner, and no later stage rewrites what an earlier one owns.</text>
+<rect x="32.0" y="96" width="198.4" height="182" rx="8" fill="#ffffff" stroke="#52514e" stroke-width="1.6"/>
+<text x="44.0" y="115.0" font-size="9.5" font-weight="700" fill="#6f6e69" text-anchor="start" letter-spacing="0.5">COMPONENT TEAM</text>
+<text x="44.0" y="135.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Component source</text>
+<text x="44.0" y="151.2" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">repository</text>
+<text x="44.0" y="169.0" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Behavior, tool contracts,</text>
+<text x="44.0" y="184.6" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">prompts, skills and scenarios.</text>
+<path d="M44.0,202.3 L218.4,202.3" stroke="#e4e3df" stroke-width="1.2"/>
+<text x="44.0" y="220.3" font-size="9.5" font-weight="700" fill="#6f6e69" text-anchor="start" letter-spacing="0.5">RULE</text>
+<text x="44.0" y="236.3" font-size="11.5" font-weight="400" fill="#0b0b0b" text-anchor="start">CI cannot expand deployment</text>
+<text x="44.0" y="251.9" font-size="11.5" font-weight="400" fill="#0b0b0b" text-anchor="start">permissions implicitly.</text>
+<rect x="286.4" y="96" width="198.4" height="182" rx="8" fill="#ffffff" stroke="#52514e" stroke-width="1.6"/>
+<text x="298.4" y="115.0" font-size="9.5" font-weight="700" fill="#6f6e69" text-anchor="start" letter-spacing="0.5">PUBLISHER CI</text>
+<text x="298.4" y="135.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Artifact stores</text>
+<text x="298.4" y="152.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Released bytes in ECR, S3 or</text>
+<text x="298.4" y="168.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">the GitLab package registry.</text>
+<path d="M298.4,186.0 L472.8,186.0" stroke="#e4e3df" stroke-width="1.2"/>
+<text x="298.4" y="204.0" font-size="9.5" font-weight="700" fill="#6f6e69" text-anchor="start" letter-spacing="0.5">RULE</text>
+<text x="298.4" y="220.0" font-size="11.5" font-weight="400" fill="#0b0b0b" text-anchor="start">A released reference resolves to</text>
+<text x="298.4" y="235.7" font-size="11.5" font-weight="400" fill="#0b0b0b" text-anchor="start">immutable content.</text>
+<rect x="540.8" y="96" width="198.4" height="182" rx="8" fill="#ffffff" stroke="#52514e" stroke-width="1.6"/>
+<text x="552.8" y="115.0" font-size="9.5" font-weight="700" fill="#6f6e69" text-anchor="start" letter-spacing="0.5">ENVIRONMENT OWNERS</text>
+<text x="552.8" y="135.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Environment configuration</text>
+<text x="552.8" y="152.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Production version, placement</text>
+<text x="552.8" y="168.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">and bindings, changed by a</text>
+<text x="552.8" y="184.0" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">selection MR.</text>
+<path d="M552.8,201.7 L727.2,201.7" stroke="#e4e3df" stroke-width="1.2"/>
+<text x="552.8" y="219.7" font-size="9.5" font-weight="700" fill="#6f6e69" text-anchor="start" letter-spacing="0.5">RULE</text>
+<text x="552.8" y="235.7" font-size="11.5" font-weight="400" fill="#0b0b0b" text-anchor="start">The registry or a CLI does not</text>
+<text x="552.8" y="251.3" font-size="11.5" font-weight="400" fill="#0b0b0b" text-anchor="start">change these objects.</text>
+<rect x="795.2" y="96" width="198.4" height="182" rx="8" fill="#ffffff" stroke="#52514e" stroke-width="1.6"/>
+<text x="807.2" y="115.0" font-size="9.5" font-weight="700" fill="#6f6e69" text-anchor="start" letter-spacing="0.5">DELIVERY PIPELINE</text>
+<text x="807.2" y="135.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Helm release</text>
+<text x="807.2" y="152.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Declared Kubernetes resources,</text>
+<text x="807.2" y="168.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">applied through Helmfile.</text>
+<path d="M807.2,186.0 L981.6,186.0" stroke="#e4e3df" stroke-width="1.2"/>
+<text x="807.2" y="204.0" font-size="9.5" font-weight="700" fill="#6f6e69" text-anchor="start" letter-spacing="0.5">RULE</text>
+<text x="807.2" y="220.0" font-size="11.5" font-weight="400" fill="#0b0b0b" text-anchor="start">No overlapping Terraform or CLI</text>
+<text x="807.2" y="235.7" font-size="11.5" font-weight="400" fill="#0b0b0b" text-anchor="start">writer.</text>
+<rect x="1049.6" y="96" width="198.4" height="182" rx="8" fill="#ffffff" stroke="#52514e" stroke-width="1.6"/>
+<text x="1061.6" y="115.0" font-size="9.5" font-weight="700" fill="#6f6e69" text-anchor="start" letter-spacing="0.5">CONTROLLERS</text>
+<text x="1061.6" y="135.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Generated resources</text>
+<text x="1061.6" y="152.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Children and status produced by</text>
+<text x="1061.6" y="168.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Agentgateway and kagent</text>
+<text x="1061.6" y="184.0" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">controllers.</text>
+<path d="M1061.6,201.7 L1236.0,201.7" stroke="#e4e3df" stroke-width="1.2"/>
+<text x="1061.6" y="219.7" font-size="9.5" font-weight="700" fill="#6f6e69" text-anchor="start" letter-spacing="0.5">RULE</text>
+<text x="1061.6" y="235.7" font-size="11.5" font-weight="400" fill="#0b0b0b" text-anchor="start">The pipeline does not patch</text>
+<text x="1061.6" y="251.3" font-size="11.5" font-weight="400" fill="#0b0b0b" text-anchor="start">controller-owned fields.</text>
+<path d="M235.4,187.0 L281.4,187.0" fill="none" stroke="#52514e" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#ah)"/>
+<text x="258.4" y="178.0" font-size="11" font-weight="400" fill="#52514e" text-anchor="middle">publish</text>
+<path d="M489.8,187.0 L535.8,187.0" fill="none" stroke="#52514e" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#ah)"/>
+<text x="512.8" y="178.0" font-size="11" font-weight="400" fill="#52514e" text-anchor="middle">select</text>
+<path d="M744.2,187.0 L790.2,187.0" fill="none" stroke="#52514e" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#ah)"/>
+<text x="767.2" y="178.0" font-size="11" font-weight="400" fill="#52514e" text-anchor="middle">apply</text>
+<path d="M998.6,187.0 L1044.6,187.0" fill="none" stroke="#52514e" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#ah)"/>
+<text x="1021.6" y="178.0" font-size="11" font-weight="400" fill="#52514e" text-anchor="middle">reconcile</text>
+<rect x="32.0" y="336" width="386.6666666666667" height="122" rx="8" fill="#ffffff" stroke="#52514e" stroke-width="1.6"/>
+<text x="44.0" y="355.0" font-size="9.5" font-weight="700" fill="#6f6e69" text-anchor="start" letter-spacing="0.5">PUBLICATION WORKFLOW</text>
+<text x="44.0" y="375.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Catalog metadata</text>
+<text x="44.0" y="392.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Agentregistry entries advertise approved usage and endpoints, after</text>
+<text x="44.0" y="408.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">deployment verification. Metadata is not production deployment</text>
+<text x="44.0" y="424.0" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">state.</text>
+<rect x="446.6666666666667" y="336" width="386.6666666666667" height="122" rx="8" fill="#ffffff" stroke="#52514e" stroke-width="1.6"/>
+<text x="458.7" y="355.0" font-size="9.5" font-weight="700" fill="#6f6e69" text-anchor="start" letter-spacing="0.5">PLATFORM TEAM</text>
+<text x="458.7" y="375.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">AWS infrastructure repository</text>
+<text x="458.7" y="392.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Existing Terraform, OpenTofu and Terragrunt units own IAM, S3,</text>
+<text x="458.7" y="408.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">DNS and added cluster infrastructure. One state owner per resource;</text>
+<text x="458.7" y="424.0" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">outputs supply narrow bindings, never secret values.</text>
+<rect x="861.3333333333334" y="336" width="386.6666666666667" height="122" rx="8" fill="#ffffff" stroke="#52514e" stroke-width="1.6"/>
+<text x="873.3" y="355.0" font-size="9.5" font-weight="700" fill="#6f6e69" text-anchor="start" letter-spacing="0.5">DOWNSTREAM SERVICE</text>
+<text x="873.3" y="375.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Business authorization</text>
+<text x="873.3" y="392.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Tenant ownership, limits and idempotency are decided by the</text>
+<text x="873.3" y="408.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">service that owns the data. Gateway permission cannot override it.</text>
+<path d="M385.6,282.0 L385.6,332.0" fill="none" stroke="#52514e" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#ah)"/>
+<text x="394.6" y="311.0" font-size="11" font-weight="400" fill="#52514e" text-anchor="start" style="paint-order:stroke;stroke:#fcfcfb;stroke-width:4px;stroke-linejoin:round">advertise</text>
+<path d="M640.0,332.0 L640.0,282.0" fill="none" stroke="#52514e" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#ah)"/>
+<text x="649.0" y="311.0" font-size="11" font-weight="400" fill="#52514e" text-anchor="start" style="paint-order:stroke;stroke:#fcfcfb;stroke-width:4px;stroke-linejoin:round">bindings</text>
+<rect x="32" y="486" width="1216" height="150" rx="12" fill="#f3f2ee" stroke="#d3d2cc" stroke-width="1"/>
+<text x="46.0" y="507.0" font-size="10.5" font-weight="700" fill="#52514e" text-anchor="start" letter-spacing="0.6">NOT WRITERS OF PRODUCTION OBJECTS</text>
+<rect x="46.0" y="520" width="386.7" height="100" rx="8" fill="#ffffff" stroke="#d03b3b" stroke-width="1.4" stroke-dasharray="5 4"/>
+<circle cx="68.0" cy="544" r="8.5" fill="#ffffff" stroke="#d03b3b" stroke-width="1.6"/>
+<path d="M64.4,540.4 L71.6,547.6 M71.6,540.4 L64.4,547.6" stroke="#d03b3b" stroke-width="1.9" stroke-linecap="round"/>
+<text x="86.0" y="542.0" font-size="13" font-weight="700" fill="#0b0b0b" text-anchor="start">Registry CLI or registry deployment integration</text>
+<text x="86.0" y="560.5" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Adopting it as production authority would mean removing the</text>
+<text x="86.0" y="576.1" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">conflicting Helm ownership. A dedicated sandbox may use it.</text>
+<rect x="446.7" y="520" width="386.7" height="100" rx="8" fill="#ffffff" stroke="#d03b3b" stroke-width="1.4" stroke-dasharray="5 4"/>
+<circle cx="468.6666666666667" cy="544" r="8.5" fill="#ffffff" stroke="#d03b3b" stroke-width="1.6"/>
+<path d="M465.06666666666666,540.4 L472.2666666666667,547.6 M472.2666666666667,540.4 L465.06666666666666,547.6" stroke="#d03b3b" stroke-width="1.9" stroke-linecap="round"/>
+<text x="486.7" y="542.0" font-size="13" font-weight="700" fill="#0b0b0b" text-anchor="start">Ad-hoc kubectl</text>
+<text x="486.7" y="560.5" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Emergency change only: a named operator, an audit record</text>
+<text x="486.7" y="576.1" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">and immediate reconciliation into configuration.</text>
+<rect x="847.3" y="520" width="386.7" height="100" rx="8" fill="#ffffff" stroke="#d03b3b" stroke-width="1.4" stroke-dasharray="5 4"/>
+<circle cx="869.3333333333334" cy="544" r="8.5" fill="#ffffff" stroke="#d03b3b" stroke-width="1.6"/>
+<path d="M865.7333333333333,540.4 L872.9333333333334,547.6 M872.9333333333334,540.4 L865.7333333333333,547.6" stroke="#d03b3b" stroke-width="1.9" stroke-linecap="round"/>
+<text x="887.3" y="542.0" font-size="13" font-weight="700" fill="#0b0b0b" text-anchor="start">Runner pod service account or node role</text>
+<text x="887.3" y="560.5" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Deployment rights sit on ID-token roles and protected runners,</text>
+<text x="887.3" y="576.1" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">not on the runner itself.</text>
+<text x="32.0" y="664.0" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Source: configuration authority in the repository structure note. One owner controls each object or field, including controller-generated resources.</text>
+</svg>

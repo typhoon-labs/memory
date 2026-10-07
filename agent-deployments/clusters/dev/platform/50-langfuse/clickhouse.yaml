@@ -1,0 +1,199 @@
+# ClickHouse for Langfuse: one plain server, installed by the same release.
+#
+# Why not the chart's own ClickHouse: from chart 2.0 on, `clickhouse.deploy:
+# true` renders ClickHouseCluster and KeeperCluster resources for the
+# ClickHouse operator. That needs cert-manager and the operator installed
+# cluster-wide first, and always a Keeper next to the server. For one demo
+# project that is three extra components, two extra namespaces and
+# cluster-scoped CRDs and webhooks.
+#
+# The chart documents the alternative used here: `clickhouse.deploy: false`
+# with a host, and `cluster.enabled: false` for a single, non-replicated
+# server (CLICKHOUSE_CLUSTER_ENABLED=false, the same mode as Langfuse's Docker
+# Compose setup). The server itself is the three manifests under
+# `extraManifests`, so it is still created and removed with the release.
+#
+# The password is the Secret langfuse-clickhouse, created by scripts/init-secrets.sh.
+
+clickhouse:
+  deploy: false
+  host: langfuse-clickhouse
+  cluster:
+    enabled: false
+  auth:
+    username: langfuse
+    existingSecret: langfuse-clickhouse
+    existingSecretKey: password
+
+extraManifests:
+  - apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: langfuse-clickhouse-config
+      labels:
+        app.kubernetes.io/name: langfuse-clickhouse
+        app.kubernetes.io/part-of: langfuse
+    data:
+      # Merged over the image's config.xml. Two aims: a small idle footprint,
+      # and no table that grows while nobody is looking.
+      demo.xml: |
+        <clickhouse>
+          <logger>
+            <level>warning</level>
+            <console>1</console>
+          </logger>
+          <!-- Default is 5 GiB. -->
+          <mark_cache_size>268435456</mark_cache_size>
+          <!-- Share of the container's memory limit the server may use. -->
+          <max_server_memory_usage_to_ram_ratio>0.8</max_server_memory_usage_to_ram_ratio>
+          <!-- The server's own diagnostic tables. On an idle server they are
+               most of the writes and most of the disk growth. The query log
+               stays, limited to three days: Langfuse's worker reads it. -->
+          <query_log>
+            <ttl>event_date + INTERVAL 3 DAY DELETE</ttl>
+          </query_log>
+          <trace_log remove="1"/>
+          <text_log remove="1"/>
+          <metric_log remove="1"/>
+          <histogram_metric_log remove="1"/>
+          <background_schedule_pool_log remove="1"/>
+          <asynchronous_metric_log remove="1"/>
+          <query_thread_log remove="1"/>
+          <query_views_log remove="1"/>
+          <query_metric_log remove="1"/>
+          <part_log remove="1"/>
+          <processors_profile_log remove="1"/>
+          <opentelemetry_span_log remove="1"/>
+          <asynchronous_insert_log remove="1"/>
+          <session_log remove="1"/>
+          <latency_log remove="1"/>
+          <error_log remove="1"/>
+          <backup_log remove="1"/>
+          <blob_storage_log remove="1"/>
+          <crash_log remove="1"/>
+        </clickhouse>
+
+  - apiVersion: v1
+    kind: Service
+    metadata:
+      name: langfuse-clickhouse
+      labels:
+        app.kubernetes.io/name: langfuse-clickhouse
+        app.kubernetes.io/part-of: langfuse
+    spec:
+      selector:
+        app.kubernetes.io/name: langfuse-clickhouse
+      ports:
+        - name: http
+          port: 8123
+          targetPort: http
+        - name: native
+          port: 9000
+          targetPort: native
+
+  - apiVersion: apps/v1
+    kind: StatefulSet
+    metadata:
+      name: langfuse-clickhouse
+      labels:
+        app.kubernetes.io/name: langfuse-clickhouse
+        app.kubernetes.io/part-of: langfuse
+    spec:
+      serviceName: langfuse-clickhouse
+      replicas: 1
+      selector:
+        matchLabels:
+          app.kubernetes.io/name: langfuse-clickhouse
+      # Removing the release removes the data.
+      persistentVolumeClaimRetentionPolicy:
+        whenDeleted: Delete
+        whenScaled: Retain
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: langfuse-clickhouse
+            app.kubernetes.io/part-of: langfuse
+        spec:
+          automountServiceAccountToken: false
+          securityContext:
+            # The image's `clickhouse` user.
+            runAsUser: 101
+            runAsGroup: 101
+            fsGroup: 101
+          containers:
+            - name: clickhouse
+              # The server version the chart pins for Langfuse 4 (minimum 25.12).
+              image: clickhouse/clickhouse-server:26.4
+              imagePullPolicy: IfNotPresent
+              env:
+                # The image's entrypoint creates this user at every start.
+                - name: CLICKHOUSE_DB
+                  value: default
+                - name: CLICKHOUSE_USER
+                  value: langfuse
+                - name: CLICKHOUSE_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: langfuse-clickhouse
+                      key: password
+              ports:
+                - name: http
+                  containerPort: 8123
+                - name: native
+                  containerPort: 9000
+              startupProbe:
+                httpGet:
+                  path: /ping
+                  port: http
+                periodSeconds: 3
+                failureThreshold: 40
+              readinessProbe:
+                httpGet:
+                  path: /ping
+                  port: http
+                periodSeconds: 10
+              livenessProbe:
+                httpGet:
+                  path: /ping
+                  port: http
+                periodSeconds: 20
+                failureThreshold: 5
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 512Mi
+                # The server refuses every query once its resident memory
+                # passes 0.8 of this limit (demo.xml above), while Langfuse
+                # goes on accepting spans. With 2Gi that happened on
+                # 2026-10-06, 2.5 hours after a start: it had held 0.6 to
+                # 0.7 GiB through a dozen incidents, then grew by 1.2 GiB in
+                # 30 minutes without load. What grew was not found. 4Gi
+                # leaves room for it: three incidents and the pages of the
+                # show take a new server from 0.25 to 0.5 GiB. If reads fail
+                # again, `task demo:preflight` says so and
+                # `task langfuse:restart-clickhouse` ends it.
+                limits:
+                  memory: 4Gi
+              volumeMounts:
+                - name: data
+                  mountPath: /var/lib/clickhouse
+                - name: logs
+                  mountPath: /var/log/clickhouse-server
+                - name: config
+                  mountPath: /etc/clickhouse-server/config.d/demo.xml
+                  subPath: demo.xml
+          volumes:
+            - name: config
+              configMap:
+                name: langfuse-clickhouse-config
+            - name: logs
+              emptyDir:
+                sizeLimit: 256Mi
+      volumeClaimTemplates:
+        - metadata:
+            name: data
+          spec:
+            accessModes: ["ReadWriteOnce"]
+            resources:
+              requests:
+                storage: 3Gi

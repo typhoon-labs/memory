@@ -1,0 +1,32 @@
+# Catalog entry for diagnosis-agent. Facts from docs/contracts.md,
+# components/diagnosis-agent/ and agent-deployments/clusters/dev/workloads/diagnosis-agent/.
+#
+# No `source.image`: the agent is a prompt, a runbook and a list of tools that
+# kagent runs; it has no image of its own, and nothing here is to be deployed
+# from the registry.
+apiVersion: ar.dev/v1alpha1
+kind: Agent
+metadata:
+  name: diagnosis-agent
+  labels:
+    built-with: kagent
+    runs-in: kagent
+    version: 1.0.0-alpha7
+spec:
+  title: Diagnosis agent
+  description: >-
+    Read-only diagnosis of a Sample App service after an alert. Called with a
+    text naming the service and the alert, it reads the cluster state of
+    namespace sample-app (its own read-only Kubernetes tool server) and the
+    service's metrics and traces (observability-mcp), and answers in about 15
+    seconds with the suspected cause, the evidence and the version to return
+    to, as text ending in one JSON block. It changes nothing and has no tool
+    that could. Declared in kagent 1.x, with a gateway key of its own for the
+    model and for observability-mcp. A2A 1.0 over JSON-RPC. Gateway route
+    /a2a/diagnosis-agent, for any signed-in caller, the alert automation
+    included.
+  source:
+    protocol: A2A
+  mcpServers:
+    - kind: MCPServer
+      name: observability-mcp

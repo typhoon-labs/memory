@@ -3,7 +3,7 @@
  * diagnosis-agent (`STUB_DOWNSTREAMS=1`), so the chat assistant and its UI can
  * be shown on their own.
  *
- * They obey the rules in agent-platform/docs/conventions.md, in two layers,
+ * They obey the rules in docs/contracts.md, in two layers,
  * as the real platform does:
  *   - "gateway": which role may call which tool (a refusal looks like HTTP 403);
  *   - "service": the rule the service enforces itself, returned as
@@ -246,6 +246,8 @@ export function createStubDownstreams(options: StubOptions): Downstreams {
       };
       changes.set(change.change_id, change);
       incident.changes.push(change.change_id);
+      // As delivery-mcp does: an open incident is being mitigated once a change is proposed.
+      if (incident.status === 'open') incident.status = 'mitigating';
       return { ...change };
     },
 

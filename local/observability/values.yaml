@@ -6,7 +6,7 @@
 #   the scrape of the Sample App (below)
 #
 # Released as `observability-content` in namespace `telemetry` by
-# agent-deployments/clusters/dev/platform/50-observability/helmfile.yaml. The
+# agent-deployments/clusters/dev/platform/40-observability/helmfile.yaml. The
 # values that depend on the cluster are set there, in settings.yaml.
 
 alert:

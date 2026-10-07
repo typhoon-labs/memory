@@ -1,0 +1,51 @@
+{{- $backend := required "backend.name is required" .Values.backend.name -}}
+{{- $namespace := required "backend.namespace is required" .Values.backend.namespace -}}
+{{- $path := required "route.path is required" .Values.route.path -}}
+{{- range $workload := .Values.workloads }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ $backend }}-{{ $workload }}
+  namespace: {{ $.Release.Namespace }}
+spec:
+  parentRefs:
+    - name: {{ $.Values.gateway.name }}
+      namespace: {{ $.Values.gateway.namespace }}
+      sectionName: {{ $.Values.gateway.listener }}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /workloads/{{ $workload }}{{ $path }}
+      backendRefs:
+        - group: agentgateway.dev
+          kind: AgentgatewayBackend
+          name: {{ $backend }}
+          namespace: {{ $namespace }}
+---
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: {{ $backend }}-{{ $workload }}-auth
+  namespace: {{ $.Release.Namespace }}
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: {{ $backend }}-{{ $workload }}
+  traffic:
+    apiKeyAuthentication:
+      # Strict: no known key, no MCP session (401). The key is read from
+      # `Authorization: Bearer <key>`.
+      mode: Strict
+      configMapSelector:
+        matchLabels:
+          agentgateway-demo/workload-key: {{ $workload }}
+    # A known key is not enough: it must be this workload's.
+    authorization:
+      action: Allow
+      policy:
+        matchExpressions:
+          - {{ printf "apiKey.workload == %q" $workload | quote }}
+{{- end }}

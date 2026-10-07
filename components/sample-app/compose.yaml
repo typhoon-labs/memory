@@ -1,7 +1,7 @@
 # The three services on this machine, without Kubernetes. Used by
 # `task run-local` and `task stop-local`; images come from `task build`.
 #
-# Local dev ports are the ones in agent-platform/docs/conventions.md.
+# Local dev ports are the ones in docs/contracts.md.
 # SEARCH_VERSION picks the search-service image, as searchService.image.tag
 # does in the cluster.
 name: sample-app-local
@@ -27,7 +27,7 @@ x-telemetry: &telemetry
 services:
   web:
     <<: *service
-    image: ${REGISTRY:-localhost:5002}/web:${WEB_VERSION:-1.0.0}
+    image: ${REGISTRY:-localhost:5002}/web:${WEB_VERSION:-1.2.1}
     ports: ["127.0.0.1:18182:8080"]
     environment:
       <<: *telemetry

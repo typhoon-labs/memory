@@ -10,7 +10,7 @@ service:
     # The UI and the API: http://localhost:18086
     http: 30086
     # The registry's own MCP endpoint. A NodePort Service needs a port for it;
-    # this one is fixed outside 30080-30089, which the conventions reserve.
+    # this one is fixed outside 30080-30089, which docs/cluster.md reserves.
     # It has no host port mapping.
     mcp: 31313
 

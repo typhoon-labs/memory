@@ -19,8 +19,8 @@ set -o nounset
 
 here="$(cd "$(dirname "$0")" && pwd)"
 repo="$(cd "${here}/../../.." && pwd)"
-# Always the repo-local kubeconfig and our context, whatever the caller exported.
-k() { kubectl --kubeconfig "${repo}/local/kind/kubeconfig" --context kind-agentgateway-demo "$@"; }
+# The kubeconfig, the context and `k` come from scripts/lib/cluster.sh.
+. "${repo}/scripts/lib/cluster.sh"
 
 grafana_url="${GRAFANA_URL:-http://localhost:18084}"
 account="observability-mcp"

@@ -10,8 +10,20 @@ image:
   # that gives a chat answer a deadline. 0.1.5 opens the incident before it
   # diagnoses, shows the diagnosis as it stands on the card, keeps the role's
   # buttons above the cause and evidence, and updates the card in place so
-  # that a button is never replaced while someone aims at it.
-  tag: 0.1.5
+  # that a button is never replaced while someone aims at it. 0.1.6 lets a
+  # platform-engineer press Apply on a change that is proposed but not
+  # approved, and shows delivery-mcp's refusal in plain words. 0.1.7 redraws
+  # the page with Tailwind CSS and shadcn/ui: a disabled button says why
+  # beside it, the outcome of an action is shown below the buttons so that
+  # they do not move, and incident-manager is violet, which leaves amber to
+  # a refusal by the service. 0.1.8 draws the card as the change's five
+  # steps, with each role's controls on its own step, using a catalog of the
+  # app's own beside A2UI's basic one; the page is white with the chat beside
+  # the incident, and status and severity take the color of what they say.
+  # 0.1.9 lists the incidents beside the card, so that an earlier one can be
+  # put back on it; the list and the chat each have a button on their edge
+  # that closes them, and the window scrolls the incident.
+  tag: 0.1.9
 
 port: 8080
 
@@ -19,7 +31,7 @@ env:
   DEPLOYMENT_ENVIRONMENT: dev
 
   # Whose tokens are trusted: the same three values as
-  # agent-deployments/access/identity.yaml. The server verifies the caller's
+  # agent-deployments/clusters/dev/identity.yaml. The server verifies the caller's
   # token on every request and forwards that same token on every call below.
   OIDC_ISSUER: http://localhost:18081/realms/demo
   OIDC_AUDIENCE: agentgateway
@@ -70,8 +82,9 @@ env:
   #   - pass the caller's Authorization header on (backend.auth.passthrough);
   #   - answer the CORS preflight (OPTIONS, which carries no token) itself, for
   #     origin http://localhost:18083, methods GET and POST, request headers
-  #     Authorization, Content-Type, Accept, A2A-Version, A2A-Extensions and
-  #     X-A2A-Extensions; no credentials mode is used;
+  #     Authorization, Content-Type, Accept, A2A-Version, A2A-Extensions,
+  #     X-A2A-Extensions, traceparent and tracestate; no credentials mode is
+  #     used;
   #   - stream: a POST may answer with `Content-Type: text/event-stream` and
   #     must not be buffered, compressed or cut short (allow 5 minutes, the
   #     length of an apply-and-verify).
@@ -88,7 +101,7 @@ env:
   CORS_ALLOWED_ORIGINS: ""
 
   # Traces: to the dev cluster's OpenTelemetry Collector
-  # (platform/50-observability), as OTLP over HTTP.
+  # (platform/40-observability), as OTLP over HTTP.
   OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector.telemetry.svc.cluster.local:4318
   OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
 

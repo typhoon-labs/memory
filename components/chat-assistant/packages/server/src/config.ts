@@ -1,5 +1,5 @@
 /**
- * Every binding comes from the environment (see agent-platform/docs/conventions.md).
+ * Every binding comes from the environment (see docs/contracts.md).
  * Nothing here is a secret: the server holds no credentials of its own and only
  * ever forwards the caller's bearer token.
  */

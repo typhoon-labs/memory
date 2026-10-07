@@ -5,7 +5,7 @@ separation-of-duties rules itself, against the caller's verified token,
 whatever a gateway or a UI allowed before the call reached it.
 
 The tools, roles and rules are the contract in
-[`agent-platform/docs/conventions.md`](../../agent-platform/docs/conventions.md).
+[`docs/contracts.md`](../../docs/contracts.md).
 
 ## What it serves
 
@@ -15,10 +15,11 @@ The tools, roles and rules are the contract in
 | `GET /healthz` | Liveness. No token. |
 
 The token's signature (keys from `OIDC_JWKS_URL`, RS256), issuer, audience and
-expiry are checked on every request. A token with no `exp` is refused. The
-user is `preferred_username`; roles are the top-level `roles` array; the team
-is `team`. A claim of the wrong type counts as absent. Nothing is read from
-arguments or other headers.
+expiry are checked on every request, and `nbf` when the token carries one. A
+token with no `exp` is refused. The user is `preferred_username` (without one:
+`client_id`, `azp` or `sub`, the first that is there); roles are the top-level
+`roles` array; the team is `team`. A claim of the wrong type counts as absent.
+Nothing is read from arguments or other headers.
 
 ## Results and refusals
 
@@ -31,10 +32,11 @@ text. Anything else returns the same four keys, with `isError: true`:
 
 | `error` | `rule` | When |
 |---|---|---|
+| `forbidden` | `authenticated_caller` | The token verifies and names nobody |
 | `forbidden` | `role_required` | The caller lacks the role the tool needs |
 | `forbidden` | `one_open_incident_per_service` | `open_incident` on a service with an unresolved incident |
 | `forbidden` | `team_owns_service` | `propose_change` by a developer whose team does not own the service |
-| `forbidden` | `target_is_retained_earlier_version` | The target is not in `RETAINED_VERSIONS`, or is not earlier than what runs |
+| `forbidden` | `target_is_retained_earlier_version` | The target is not in `RETAINED_VERSIONS`, or is not earlier than what runs, or the service has no version this service can select (only `search-service` has) |
 | `forbidden` | `approver_is_not_proposer` | `approve_change` by the person who proposed the change |
 | `forbidden` | `change_is_approved` | `apply_change` on a change that is proposed or rejected |
 | `not_found` | `incident_exists`, `change_exists` | No such incident or change |
@@ -63,15 +65,20 @@ Two appliers implement one interface (`src/delivery/applier.py`):
 
 - `fake` keeps the selection in memory. For tests and local runs.
 - `helm` runs `helm upgrade sample-app <chart> --namespace sample-app
-  --reuse-values --set-string searchService.image.tag=<version>`. No `--wait`,
+  --reuse-values --set-string searchService.image.tag=<version>
+  --description "delivery-mcp operation <id>: ..." --timeout <seconds>s`, and
+  `--version` and `--plain-http` when `HELM_CHART_VERSION` and
+  `HELM_PLAIN_HTTP` are set, as they are in the dev cluster. No `--wait`,
   `--force` or `--install`: the release stays the only writer of the
   Deployment, and the rights it needs are small
-  (`agent-deployments/clusters/dev/workloads/delivery-mcp/access/`).
+  (`agent-deployments/clusters/dev/workloads/delivery-mcp/rbac/`).
   `--set-string` rather than `--set`, so a tag such as `2.10` is not read as a
   number.
 
 Verification is a real `GET` of `VERIFY_SEARCH_URL`, retried until
-`VERIFY_TIMEOUT_SECONDS`. It passes on 200 with at least one result.
+`VERIFY_TIMEOUT_SECONDS`. It passes on 200 with at least one result. With the
+fake applier and no `VERIFY_SEARCH_URL` nothing is requested, and the change
+is marked `applied` with a detail that says so.
 
 ## Environment
 
@@ -90,6 +97,7 @@ Verification is a real `GET` of `VERIFY_SEARCH_URL`, retried until
 | `HELM_CHART_VERSION` | | Chart version for an OCI reference |
 | `HELM_PLAIN_HTTP` | `false` | `true` for an OCI registry served over HTTP |
 | `HELM_RELEASE`, `HELM_NAMESPACE` | `sample-app`, `sample-app` | |
+| `HELM_BIN` | `helm` | The Helm binary to run |
 | `HELM_TIMEOUT_SECONDS` | `120` | |
 | `VERIFY_SEARCH_URL` | required with `helm` | The search request that proves the change |
 | `VERIFY_RESULTS_FIELD` | `results` | The list in the response |
@@ -99,6 +107,7 @@ Verification is a real `GET` of `VERIFY_SEARCH_URL`, retried until
 | `MCP_STATELESS_HTTP` | `true` | |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | | Traces are exported only when set |
 | `OTEL_EXPORTER_OTLP_PROTOCOL` | `grpc` | `grpc` or `http/protobuf` |
+| `OTEL_SERVICE_NAME` | `delivery-mcp` | `service.name` |
 | `LOG_LEVEL` | `INFO` | |
 
 With `helm`, the service does not start without `HELM_CHART_REF` and
@@ -109,16 +118,23 @@ target, user, roles, team, outcome and rule.
 
 ## Run and test
 
+From this directory. From the repository root the same tasks carry the
+component's name, `task delivery-mcp:test`; a bare `task token` there is the
+root's, and asks Keycloak.
+
 ```sh
 task test          # every tool: a permitted and a refused case per rule
+task lint          # ruff check and format check
 task run-local     # :18190, with a test issuer on :18199 and a stub search on :18198
-task token -- platform-engineer
+task token -- platform-engineer   # a token from the test issuer
 task stop-local
+task build         # the image localhost:5002/delivery-mcp:<version>
+task push          # push it to the local registry
 ```
 
 The test issuer (`scripts/test_issuer.py`) generates its signing key when it
 starts and keeps it in memory. It mints tokens for the identities in the
-conventions and for `test-two-roles`, which exists in no realm.
+contracts and for `test-two-roles`, which exists in no realm.
 
 ## kmcp
 
@@ -126,12 +142,13 @@ The project was scaffolded with `kmcp init python` (kmcp 0.4.0) and keeps that
 layout: `kmcp.yaml`, `src/main.py`, `src/core/`, one tool per file in
 `src/tools/`. `task kmcp:install` downloads the CLI into `.tools/`, which is
 git-ignored. `task kmcp:manifest` renders the `MCPServer` resource into
-`deploy/mcpserver.yaml`.
+`deploy/mcpserver.yaml`, which is git-ignored too: it is generated, and nothing
+here applies it.
 
 The dev cluster does not use that resource: it deploys this image with the
-shared chart (`agent-platform/charts/agent`). `deploy/mcpserver.yaml` has not
+shared chart (`agent-platform/charts/agent`). The rendered resource has not
 been applied to a kmcp controller, and it would also need the ServiceAccount
-that the Role in `access/` is bound to.
+that the Role in the workload's `rbac/` chart is bound to.
 
 Changed from the scaffold: FastMCP 3.4.8 instead of 3.0.0, Python 3.13, HTTP
 only (stdio cannot carry a bearer token), and `.env` is read from this

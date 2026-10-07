@@ -5,7 +5,7 @@
 import { SignJWT, generateKeyPair } from 'jose';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { A2aSession } from '../scripts/lib/a2a-session.js';
-import { A2UI_EXTENSION_URI, A2UI_MIME_TYPE, BASIC_CATALOG_ID } from '../src/a2a/wire.js';
+import { A2UI_EXTENSION_URI, A2UI_MIME_TYPE, INCIDENT_CATALOG_ID } from '../src/a2a/wire.js';
 import { newProcessor } from './support/a2ui.js';
 import { alertmanagerPayload, startTestServer, type TestServer } from './support/server.js';
 
@@ -77,7 +77,7 @@ describe('agent card and wire format', () => {
     const v1: any = await (await fetch(`${server.url}/.well-known/agent-card.json`, { headers: { 'A2A-Version': '1.0' } })).json();
     expect(v1.capabilities.streaming).toBe(true);
     expect(v1.capabilities.extensions).toEqual([
-      expect.objectContaining({ uri: A2UI_EXTENSION_URI, params: { supportedCatalogIds: [BASIC_CATALOG_ID], acceptsInlineCatalogs: false } }),
+      expect.objectContaining({ uri: A2UI_EXTENSION_URI, params: { supportedCatalogIds: [INCIDENT_CATALOG_ID], acceptsInlineCatalogs: false } }),
     ]);
     expect(v1.supportedInterfaces.map((i: any) => `${i.protocolBinding} ${i.protocolVersion}`)).toEqual(['JSONRPC 1.0', 'JSONRPC 0.3']);
     expect(v1.securitySchemes.oidc.openIdConnectSecurityScheme.openIdConnectUrl).toContain('/.well-known/openid-configuration');
@@ -102,7 +102,7 @@ describe('agent card and wire format', () => {
       'updateComponents+version',
       'updateDataModel+version',
     ]);
-    expect(part.data[0]).toMatchObject({ version: 'v0.9.1', createSurface: { catalogId: BASIC_CATALOG_ID, sendDataModel: true } });
+    expect(part.data[0]).toMatchObject({ version: 'v0.9.1', createSurface: { catalogId: INCIDENT_CATALOG_ID, sendDataModel: true } });
     expect(body.result.message.extensions).toEqual([A2UI_EXTENSION_URI]);
     // The official A2UI processor accepts exactly what came over the wire.
     expect(() => newProcessor().apply(part.data)).not.toThrow();
@@ -132,10 +132,20 @@ describe('the incident, handled by three roles over A2A', () => {
     }
     expect(developer.buttons().map((b) => b.label)).toEqual(['Propose rollback to 2.0.0']);
     expect(manager.buttons().map((b) => b.id)).toEqual(['approve', 'reject', 'draft', 'post']);
-    expect(engineer.buttons().map((b) => b.id)).toEqual(['apply', 'restart']);
+    // In the order they are on the card: Restart is beside the title, Apply on its step.
+    expect(engineer.buttons().map((b) => b.id)).toEqual(['restart', 'apply']);
     expect(enabled(engineer)).toEqual(['restart']);
     // A second sync with nothing changed sends no A2UI at all.
     expect((await developer.sync()).a2ui).toEqual([]);
+  });
+
+  test('a client that cannot draw the incident catalog is sent no card, and told why', async () => {
+    const basicOnly = await as('developer');
+    basicOnly.catalogs = ['https://a2ui.org/specification/v0_9/catalogs/basic/catalog.json'];
+    const reply = await basicOnly.sync();
+    expect(reply.a2ui).toEqual([]);
+    expect(reply.text).toBe(`This client cannot draw the incident card: it does not support the catalog ${INCIDENT_CATALOG_ID}.`);
+    expect(basicOnly.surfaces.size).toBe(0);
   });
 
   test('refusals name their layer: the gateway, or the service and its rule', async () => {
@@ -146,25 +156,27 @@ describe('the incident, handled by three roles over A2A', () => {
     expect(gateway.state).toBe('REJECTED');
     expect(gateway.text).toMatch(/^Refused by the gateway \(HTTP 403\)/);
     expect(gateway.metadata.refusal).toMatchObject({ layer: 'gateway', status: 403 });
-    expect(developer.text('notice')).toBe(gateway.text);
+    // The refusal is kept for the controls of that action. This viewer's card has none, so the chat pane alone shows it.
+    expect(developer.notice()).toMatchObject({ slot: 'approve', tone: 'gateway', title: 'Refused by the gateway (HTTP 403)', rule: '' });
+    expect(gateway.metadata.refusal.title).toBe('Refused by the gateway (HTTP 403)');
 
     // A developer from another team proposes: allowed by the gateway, refused by the service's own rule.
     const outsider = await as('developer-other-team');
     await outsider.sync();
     const service = await outsider.click('propose');
     expect(service.state).toBe('REJECTED');
-    expect(service.text).toMatch(/^Refused by the service: team_owns_service - /);
+    expect(service.text).toBe('Refused by the service: your team does not own this service (rule team_owns_service).');
     expect(service.metadata.refusal).toMatchObject({ layer: 'service', rule: 'team_owns_service' });
-    expect(outsider.text('notice')).toBe(service.text);
+    expect(outsider.notice()).toEqual({ slot: 'propose', tone: 'service', title: 'Refused by the service', text: 'Your team does not own this service.', rule: 'team_owns_service' });
+    expect(service.metadata.refusal).toMatchObject({ title: 'Refused by the service', reason: 'Your team does not own this service.' });
   });
 
   test('propose, approve, apply: each step shows up for the other roles, through applying and verifying to resolved', async () => {
     const [developer, manager, engineer] = await Promise.all([as('developer'), as('incident-manager'), as('platform-engineer')]);
     await Promise.all([developer.sync(), manager.sync(), engineer.sync()]);
 
-    // An engineer cannot apply before approval, even by sending the action directly.
-    const early = await engineer.action('apply_change', { incident_id: 'INC-0001', change_id: 'CHG-0001' });
-    expect(early.state).not.toBe('COMPLETED');
+    // With no change yet there is nothing to apply: the button is disabled.
+    expect(engineer.buttons().find((b) => b.id === 'apply')?.disabledBecause).toBe('There is no change to apply yet');
 
     const proposed = await developer.click('propose');
     expect(proposed.state).toBe('COMPLETED');
@@ -176,17 +188,41 @@ describe('the incident, handled by three roles over A2A', () => {
     const polled = await manager.sync();
     expect(polled.a2ui.map((m) => Object.keys(m).find((k) => k !== 'version'))).toEqual(['updateComponents', 'updateDataModel', 'updateDataModel']);
     expect(enabled(manager)).toEqual(['approve', 'draft']);
-    expect(manager.text('change-status')).toBe('Change status: proposed');
+    expect(manager.steps()).toEqual(['done:Proposed', 'pending:Approve', 'pending:Apply', 'pending:Verify', 'pending:Resolved']);
+    expect(manager.step('propose')).toMatchObject({ owner: 'developer', time: expect.stringMatching(/^\d\d:\d\d$/) });
+    expect(manager.step('approve')).toMatchObject({ note: 'Waiting for you', open: true, turn: true });
+    expect(manager.text('status')).toBe('Mitigating');
 
-    // The engineer sees it too, but Apply stays disabled until approval.
+    // The engineer sees it too, and may press Apply before anyone has approved: the card does not
+    // decide. The click goes the same way as a real apply, and the service refuses it by its own rule.
     await engineer.sync();
-    expect(engineer.buttons().find((b) => b.id === 'apply')?.disabledBecause).toBe('Waiting for an incident-manager to approve');
-    const refused = await engineer.action('apply_change', { incident_id: 'INC-0001', change_id: 'CHG-0001' });
+    expect(enabled(engineer)).toEqual(['apply', 'restart']);
+    const refused = await engineer.click('apply');
     expect(refused.state).toBe('REJECTED');
+    expect(refused.text).toBe('Refused by the service: this change has not been approved yet (rule change_is_approved).');
     expect(refused.metadata.refusal).toMatchObject({ layer: 'service', rule: 'change_is_approved' });
+    // On the card, beside the Apply button: who refused, why, and the rule's name.
+    expect(engineer.notice()).toEqual({ slot: 'apply', tone: 'service', title: 'Refused by the service', text: 'This change has not been approved yet.', rule: 'change_is_approved' });
+    expect(engineer.component('apply-notice')).toMatchObject({ component: 'Notice', slot: 'apply' });
+    // Nothing moved, and the card is as usable as before.
+    expect(engineer.steps()).toEqual(['done:Proposed', 'pending:Approve', 'pending:Apply', 'pending:Verify', 'pending:Resolved']);
+    expect(engineer.step('apply')).toMatchObject({ note: 'Not approved yet', open: true, turn: true });
+    expect(enabled(engineer)).toEqual(['apply', 'restart']);
+    // The other roles' cards are not touched by it: their next poll brings nothing.
+    expect((await manager.sync()).a2ui).toEqual([]);
+    expect((await developer.sync()).a2ui).toEqual([]);
+    expect(manager.notice().slot).toBe('');
+
+    // A second early click simply refuses again.
+    const again = await engineer.click('apply');
+    expect(again.state).toBe('REJECTED');
+    expect(again.metadata.refusal).toMatchObject({ layer: 'service', rule: 'change_is_approved' });
 
     expect((await manager.click('approve')).state).toBe('COMPLETED');
+    // Approval supersedes the refusal: the engineer's next poll clears it.
     await engineer.sync();
+    expect(engineer.notice().slot).toBe('');
+    expect(engineer.step('apply')).toMatchObject({ note: 'Ready for you to apply', open: true, turn: true });
     expect(enabled(engineer)).toEqual(['apply', 'restart']);
 
     // Apply goes through remediation-agent and streams the card while it works.
@@ -194,15 +230,16 @@ describe('the incident, handled by three roles over A2A', () => {
     expect(applied.state).toBe('COMPLETED');
     expect(applied.text).toContain('a real search request succeeded');
     expect(applied.events.filter((e) => e === 'statusUpdate').length).toBeGreaterThan(1);
-    expect(engineer.text('fact-status-value')).toBe('resolved');
-    expect(engineer.text('fact-version-value')).toBe('2.0.0');
-    expect(engineer.text('timeline')).toContain('Rollback to 2.0.0 verified');
-    expect(engineer.text('progress-4')).toBe('✓ Resolved');
+    expect(engineer.text('status')).toBe('Resolved');
+    expect(engineer.text('service')).toBe('search-service, running 2.0.0');
+    expect(engineer.timeline()).toContain('Rollback to 2.0.0 verified');
+    expect(engineer.steps()).toEqual(['done:Proposed', 'done:Approved', 'done:Applied', 'done:Verified', 'done:Resolved']);
+    expect(engineer.step('apply')).toMatchObject({ open: false, turn: false });
     expect(enabled(engineer)).toEqual([]);
 
     await Promise.all([developer.sync(), manager.sync()]);
-    expect(developer.text('fact-status-value')).toBe('resolved');
-    expect(manager.text('change')).toContain('applied by platform-engineer');
+    expect(developer.text('status')).toBe('Resolved');
+    expect(manager.step('apply')).toMatchObject({ owner: 'platform-engineer', state: 'done', time: expect.stringMatching(/^\d\d:\d\d$/) });
   }, 20_000);
 });
 
@@ -225,7 +262,7 @@ describe('incident-manager: reject and status update', () => {
     manager.type('reject-reason', 'Try a restart first');
     const rejected = await manager.click('reject');
     expect(rejected.state).toBe('COMPLETED');
-    expect(manager.text('change')).toContain('Reason: Try a restart first');
+    expect(manager.step('approve')).toMatchObject({ label: 'Rejected', state: 'failed', owner: 'incident-manager', note: 'Try a restart first' });
     expect(manager.surfaces.get('incident-INC-0001')!.model.reject.reason).toBe('');
 
     // The developer can propose again after a rejection.
@@ -246,8 +283,8 @@ describe('incident-manager: reject and status update', () => {
 
     const posted = await manager.click('post');
     expect(posted.state).toBe('COMPLETED');
-    expect(manager.text('timeline')).toContain('Status update by incident-manager:');
-    expect(manager.text('timeline')).toContain('(edited)');
+    expect(manager.timeline()).toContain('Status update by incident-manager:');
+    expect(manager.timeline()).toContain('(edited)');
     expect(manager.surfaces.get('incident-INC-0001')!.model.draft.text).toBe('');
 
     // A developer asking comms-agent for a draft is refused at the gateway.
@@ -263,7 +300,7 @@ describe('incident-manager: reject and status update', () => {
       expect((await twoHats.click('propose')).state).toBe('COMPLETED');
       const own = await twoHats.click('approve');
       expect(own.state).toBe('REJECTED');
-      expect(own.text).toMatch(/^Refused by the service: approver_is_not_proposer - /);
+      expect(own.text).toBe('Refused by the service: the person who proposed a change cannot approve it (rule approver_is_not_proposer).');
     } finally {
       await fresh.close();
     }
@@ -278,10 +315,110 @@ describe('incident-manager: reject and status update', () => {
       expect(developer.buttons().map((b) => b.label)).toEqual(['Propose rollback to 2.0.0']);
       const proposed = await developer.click('propose');
       expect(proposed.state).toBe('COMPLETED');
-      expect(developer.text('change-status')).toBe('Change status: proposed');
+      expect(developer.steps()[0]).toBe('done:Proposed');
     } finally {
       await fresh.close();
     }
+  });
+});
+
+describe('more than one incident: the list beside the card, and the card of the one picked', () => {
+  let s: TestServer;
+  beforeAll(async () => {
+    s = await startTestServer({ seed: true });
+  });
+  afterAll(() => s.close());
+
+  const page = A2aSession.pageOf;
+  const surfaces = (session: A2aSession) => [...session.surfaces.keys()];
+  const kinds = (a2ui: Record<string, unknown>[]) => a2ui.map((m) => Object.keys(m).find((k) => k !== 'version'));
+
+  test('the sync reply lists every incident, newest first, and says which one the card shows', async () => {
+    const developer = await A2aSession.connect(s.url, await s.token('developer'));
+    const first = page(await developer.sync());
+    expect(first.shown).toBe('INC-0001');
+    expect(first.incidents).toEqual([
+      { id: 'INC-0001', service: 'search-service', summary: 'Search requests are failing', status: 'open', resolved: '', note: 'Rollback not proposed yet' },
+    ]);
+
+    // The incident is handled to the end. It stays on the card: it is the most recent.
+    const manager = await A2aSession.connect(s.url, await s.token('incident-manager'));
+    const engineer = await A2aSession.connect(s.url, await s.token('platform-engineer'));
+    await developer.click('propose');
+    expect(page(await developer.sync()).incidents[0]).toMatchObject({ status: 'mitigating', note: 'Rollback to 2.0.0 proposed' });
+    await manager.sync();
+    await manager.click('approve');
+    await engineer.sync();
+    expect((await engineer.click('apply')).state).toBe('COMPLETED');
+    const resolved = page(await developer.sync());
+    expect(resolved.shown).toBe('INC-0001');
+    expect(resolved.incidents).toEqual([
+      expect.objectContaining({ id: 'INC-0001', status: 'resolved', resolved: expect.stringMatching(/^\d\d:\d\d$/), note: 'Rolled back to 2.0.0' }),
+    ]);
+
+    // The alert fires again: a second incident. A viewer who has picked nothing is shown the new one,
+    // and the card of the resolved one is taken away, not left beside it.
+    const alert = await fetch(`${s.url}/hooks/alert`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${await s.token('alert-automation')}` },
+      body: JSON.stringify(alertmanagerPayload()),
+    });
+    expect(await alert.json()).toMatchObject({ results: [{ outcome: 'opened', incident_id: 'INC-0002' }] });
+    await s.alertsSettled();
+    const second = await developer.sync();
+    expect(kinds(second.a2ui)).toEqual(['deleteSurface', 'createSurface', 'updateComponents', 'updateDataModel']);
+    expect(surfaces(developer)).toEqual(['incident-INC-0002']);
+    expect(developer.text('status')).toBe('Open');
+    expect(page(second).shown).toBe('INC-0002');
+    expect(page(second).incidents.map((i: any) => [i.id, i.status])).toEqual([
+      ['INC-0002', 'open'],
+      ['INC-0001', 'resolved'],
+    ]);
+  }, 20_000);
+
+  test('a sync that names an incident is answered with that incident\'s card, and the list is the same', async () => {
+    const developer = await A2aSession.connect(s.url, await s.token('developer'));
+    await developer.sync();
+    expect(surfaces(developer)).toEqual(['incident-INC-0002']);
+
+    const picked = await developer.sync('INC-0001');
+    expect(kinds(picked.a2ui)).toEqual(['deleteSurface', 'createSurface', 'updateComponents', 'updateDataModel']);
+    expect(surfaces(developer)).toEqual(['incident-INC-0001']);
+    expect(developer.text('incident-id')).toBe('INC-0001');
+    expect(developer.text('status')).toBe('Resolved');
+    expect(page(picked).shown).toBe('INC-0001');
+    expect(page(picked).incidents.map((i: any) => i.id)).toEqual(['INC-0002', 'INC-0001']);
+    // Asked for again with nothing changed: no A2UI at all, like any poll.
+    expect((await developer.sync('INC-0001')).a2ui).toEqual([]);
+
+    // Back to the current one, by naming it or by naming none.
+    await developer.sync('INC-0002');
+    expect(surfaces(developer)).toEqual(['incident-INC-0002']);
+    await developer.sync('INC-0001');
+    expect(page(await developer.sync()).shown).toBe('INC-0002');
+    expect(surfaces(developer)).toEqual(['incident-INC-0002']);
+  });
+
+  test('an incident that does not exist is not an error: the current one is shown', async () => {
+    const developer = await A2aSession.connect(s.url, await s.token('developer'));
+    const reply = await developer.sync('INC-9999');
+    expect(page(reply).shown).toBe('INC-0002');
+    expect(page(reply).error).toBeUndefined();
+    expect(surfaces(developer)).toEqual(['incident-INC-0002']);
+  });
+
+  test('a button pressed on a picked incident acts on it and leaves its card in place, whichever incident is current', async () => {
+    const manager = await A2aSession.connect(s.url, await s.token('incident-manager'));
+    await manager.sync('INC-0001');
+    manager.type('draft-text', 'INC-0001 is closed: search is back on 2.0.0.');
+    const posted = await manager.click('post');
+    expect(posted.state).toBe('COMPLETED');
+    expect(surfaces(manager)).toEqual(['incident-INC-0001']);
+    expect(manager.timeline()).toContain('Status update by incident-manager: INC-0001 is closed');
+    // The current incident was not touched.
+    await manager.sync();
+    expect(surfaces(manager)).toEqual(['incident-INC-0002']);
+    expect(manager.timeline()).not.toContain('INC-0001 is closed');
   });
 });
 
@@ -453,8 +590,8 @@ describe('alert hook', () => {
       expect(developer.buttons()).toEqual([
         { id: 'propose', label: 'Propose rollback to 2.0.0', action: 'propose_rollback', disabledBecause: undefined },
       ]);
-      expect(developer.text('timeline')).toContain('Incident opened by service-account-alert-automation');
-      expect(developer.text('timeline')).toContain('Diagnosis recorded: roll back to 2.0.0');
+      expect(developer.timeline()).toContain('Incident opened by service-account-alert-automation');
+      expect(developer.timeline()).toContain('Diagnosis recorded: roll back to 2.0.0');
 
       // And once more after the diagnosis is recorded.
       expect(await (await post(s, 'alert-automation', alertmanagerPayload())).json()).toEqual({
@@ -533,7 +670,7 @@ describe('alert hook', () => {
       expect(developer.text('cause')).toBe('Diagnosis failed: diagnosis-agent: DIAGNOSIS_AGENT_URL is not set. No version is recommended.');
       developer.type('propose-version', '2.0.0');
       expect((await developer.click('propose')).state).toBe('COMPLETED');
-      expect(developer.text('change-status')).toBe('Change status: proposed');
+      expect(developer.steps()[0]).toBe('done:Proposed');
     } finally {
       await s.close();
     }

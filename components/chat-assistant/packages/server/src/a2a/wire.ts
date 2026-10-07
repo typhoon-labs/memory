@@ -10,8 +10,17 @@ export const A2UI_MIME_TYPE = 'application/a2ui+json';
 /** Older A2UI agents used this spelling; accepted on input only. */
 export const A2UI_MIME_TYPE_DEPRECATED = 'application/json+a2ui';
 export const A2UI_VERSION = 'v0.9.1';
-export const BASIC_CATALOG_ID = 'https://a2ui.org/specification/v0_9/catalogs/basic/catalog.json';
-/** Our own request for the current card, sent by the UI on load and on each poll. */
+/**
+ * The catalog the card is drawn with: A2UI's basic catalog and four components
+ * of this app's own. The id is a name, not an address; the catalog's definition
+ * is packages/ui/src/incident-catalog.ts, which holds the same string.
+ */
+export const INCIDENT_CATALOG_ID = 'agentgateway-demo:chat-assistant/incident-catalog/v1';
+/**
+ * Our own request for the page as it should be now, sent by the UI on load and on each poll:
+ * `{request: "sync"}`, with `incident: "<id>"` when the viewer has picked an incident from the
+ * list. The reply carries the same type: the viewer, the list of incidents and which one is shown.
+ */
 export const SYNC_MIME_TYPE = 'application/vnd.chat-assistant.sync+json';
 
 export type A2uiMessage = { version: string } & Record<string, unknown>;
@@ -67,6 +76,18 @@ export function userMessage(parts: Part[], metadata?: Record<string, unknown>, c
     extensions: [],
     referenceTaskIds: [],
   };
+}
+
+/**
+ * The catalogs a client says it can draw, from `a2uiClientCapabilities` in the
+ * message's metadata (under the protocol version, as v0.9.1 writes it, or
+ * directly). Undefined when the client says nothing.
+ */
+export function clientCatalogs(metadata: Record<string, unknown> | undefined): string[] | undefined {
+  const stated = metadata?.a2uiClientCapabilities as Record<string, unknown> | undefined;
+  if (!stated || typeof stated !== 'object') return undefined;
+  const ids = ((stated[A2UI_VERSION] ?? stated) as { supportedCatalogIds?: unknown }).supportedCatalogIds;
+  return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : undefined;
 }
 
 export function partMimeType(part: Part): string {

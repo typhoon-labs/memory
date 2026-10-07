@@ -1,0 +1,27 @@
+# Catalog entry for comms-agent. Facts from docs/contracts.md
+# and agent-deployments/clusters/dev/workloads/comms-agent/.
+#
+# No `source.image`, so that the registry's UI offers no Deploy button: see
+# components/chat-assistant/catalog.yaml.
+apiVersion: ar.dev/v1alpha1
+kind: Agent
+metadata:
+  name: comms-agent
+  labels:
+    built-with: strands
+    runs-in: agents
+    version: 0.1.1
+spec:
+  title: Comms agent
+  description: >-
+    Drafts a status update of at most 80 words for an incident. Called with
+    {"action": "draft_status_update", "incident_id": "..."}, it reads the
+    incident from delivery-mcp with the caller's own token and returns a draft.
+    It never posts: posting is the incident manager's own act
+    (post_status_update). A2A 0.3 over JSON-RPC. Gateway route
+    /a2a/comms-agent, for role incident-manager only.
+  source:
+    protocol: A2A
+  mcpServers:
+    - kind: MCPServer
+      name: delivery-mcp

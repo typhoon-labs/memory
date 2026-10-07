@@ -2,7 +2,7 @@
   "name": "sample-app",
   "private": true,
   "type": "module",
-  "description": "Sample App: web, search-service and registration-service. No runtime dependencies.",
+  "description": "Sample App: web, search-service and registration-service. The services have no runtime dependencies; the pages (web/ui) are built with Vite.",
   "engines": {
     "node": ">=22"
   },

@@ -1,0 +1,103 @@
+# Langfuse tasks. Included by the root Taskfile as `langfuse:`.
+#
+#   task langfuse:install     create the credentials, then install or upgrade
+#   task langfuse:status      pods, memory per pod, addresses, Secrets
+#   task langfuse:login       the demo login for http://localhost:18085
+#   task langfuse:check       send one test trace from inside the cluster and
+#                             read it back; wrong credentials must be refused
+#   task langfuse:secrets     only the credentials (safe to re-run, never rotates)
+#   task langfuse:prices      register the model prices of model-prices.json, so
+#                             that a trace shows what its model calls cost
+#   task langfuse:restart-clickhouse   restart ClickHouse when it refuses queries
+#                             (over its memory limit); data and keys are kept
+#   task langfuse:uninstall   remove Langfuse and its data, keep the keys
+#
+# Every kubectl, helm and helmfile command names the repo-local kubeconfig and
+# the context itself, as the root Taskfile requires. The scripts do the same.
+# This file defines no top-level variables.
+version: "3"
+
+tasks:
+  install:
+    desc: Install or upgrade Langfuse (safe to re-run; keys and login are kept)
+    cmds:
+      - task: guard
+      # The release's presync hook runs scripts/init-secrets.sh first.
+      - KUBECONFIG="{{.ROOT_DIR}}/local/kind/kubeconfig" helmfile --kubeconfig "{{.ROOT_DIR}}/local/kind/kubeconfig" --kube-context kind-agentgateway-demo --file "{{.TASKFILE_DIR}}/helmfile.yaml" sync
+      - kubectl --kubeconfig "{{.ROOT_DIR}}/local/kind/kubeconfig" --context kind-agentgateway-demo -n langfuse rollout status deployment/langfuse-web --timeout=300s
+      - kubectl --kubeconfig "{{.ROOT_DIR}}/local/kind/kubeconfig" --context kind-agentgateway-demo -n langfuse rollout status deployment/langfuse-worker --timeout=300s
+      - task: status
+
+  secrets:
+    desc: Create the Langfuse credentials in the cluster if they are missing
+    cmds:
+      - task: guard
+      - "{{.TASKFILE_DIR}}/scripts/init-secrets.sh"
+
+  status:
+    desc: Show Langfuse pods, memory per pod and addresses
+    silent: true
+    cmds:
+      - "{{.TASKFILE_DIR}}/scripts/status.sh"
+
+  login:
+    desc: Print the demo login for the Langfuse UI
+    silent: true
+    cmds:
+      - task: guard
+      - |
+        field() {
+          kubectl --kubeconfig "{{.ROOT_DIR}}/local/kind/kubeconfig" --context kind-agentgateway-demo \
+            -n langfuse get secret langfuse-init -o "jsonpath={.data.$1}" | base64 -d
+        }
+        echo "URL       http://localhost:18085"
+        echo "Email     $(field LANGFUSE_INIT_USER_EMAIL)"
+        echo "Password  $(field LANGFUSE_INIT_USER_PASSWORD)"
+        echo "Project   $(field LANGFUSE_INIT_ORG_NAME) / $(field LANGFUSE_INIT_PROJECT_NAME)"
+
+  prices:
+    desc: Register the model prices of model-prices.json in Langfuse (safe to re-run); each price names its source
+    silent: true
+    cmds:
+      - task: guard
+      - "{{.TASKFILE_DIR}}/scripts/prices.sh"
+
+  check:
+    desc: Send a test trace from inside the cluster and confirm it arrived
+    silent: true
+    cmds:
+      - task: guard
+      - "{{.TASKFILE_DIR}}/scripts/check.sh"
+
+  restart-clickhouse:
+    desc: Restart Langfuse's ClickHouse, for when queries are refused over its memory limit (data is kept; about 10 seconds)
+    cmds:
+      - task: guard
+      - kubectl --kubeconfig "{{.ROOT_DIR}}/local/kind/kubeconfig" --context kind-agentgateway-demo -n langfuse rollout restart statefulset/langfuse-clickhouse
+      - kubectl --kubeconfig "{{.ROOT_DIR}}/local/kind/kubeconfig" --context kind-agentgateway-demo -n langfuse rollout status statefulset/langfuse-clickhouse --timeout=180s
+      # Web and worker reconnect by themselves; this only shows that a query answers again.
+      - cmd: "{{.TASKFILE_DIR}}/scripts/status.sh"
+        silent: true
+
+  uninstall:
+    desc: Remove Langfuse and its data; the project keys and the login are kept for a reinstall
+    cmds:
+      - task: guard
+      - helm --kubeconfig "{{.ROOT_DIR}}/local/kind/kubeconfig" --kube-context kind-agentgateway-demo -n langfuse uninstall langfuse --ignore-not-found --wait --timeout 180s
+      # The chart keeps the Secrets it generated. With the data gone they are
+      # of no use, and a reinstall generates new ones. langfuse-init,
+      # langfuse-clickhouse and telemetry/langfuse-ingest stay, so the
+      # collector's header stays valid.
+      - kubectl --kubeconfig "{{.ROOT_DIR}}/local/kind/kubeconfig" --context kind-agentgateway-demo -n langfuse delete secret langfuse-app langfuse-postgresql-auth langfuse-redis-auth langfuse-s3-auth langfuse-s3-sftp-secret --ignore-not-found
+      # The volumes go with the release; this removes any that did not.
+      - kubectl --kubeconfig "{{.ROOT_DIR}}/local/kind/kubeconfig" --context kind-agentgateway-demo -n langfuse delete pvc --all --ignore-not-found --timeout=120s
+
+  guard:
+    internal: true
+    silent: true
+    preconditions:
+      # Reads the file by path, never the shell's KUBECONFIG.
+      - sh: test "$(kubectl --kubeconfig "{{.ROOT_DIR}}/local/kind/kubeconfig" config current-context 2>/dev/null)" = "kind-agentgateway-demo"
+        msg: |
+          {{.ROOT_DIR}}/local/kind/kubeconfig is missing or its context is not kind-agentgateway-demo.
+          Nothing was changed. Run `task up:trunk` to create the cluster and the kubeconfig.

@@ -1,0 +1,161 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="1020" viewBox="0 0 1280 1020" role="img" aria-labelledby="t d" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif">
+<title id="t">Deployment topology for one environment</title>
+<desc id="d">Illustrative layout of one environment. External systems at the top. Inside one AWS account, an existing EKS cluster holds platform namespaces for Agentgateway and the optional Agentregistry, candidate runtime namespaces for kagent and Agent Substrate, domain and workload namespaces, existing cluster services and node pools. AWS services used by the platform are ECR, S3, workload IAM, secret delivery and egress to model providers.</desc>
+<defs>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0.8 L10,5 L0,9.2 z" fill="#52514e"/></marker>
+<marker id="ahd" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0.8 L10,5 L0,9.2 z" fill="#d03b3b"/></marker>
+</defs>
+<rect x="0.5" y="0.5" width="1279" height="1019" rx="14" fill="#fcfcfb" stroke="#e4e3df"/>
+<text x="32.0" y="46.0" font-size="19" font-weight="700" fill="#0b0b0b" text-anchor="start">Deployment topology for one environment</text>
+<text x="32.0" y="68.0" font-size="12.5" font-weight="400" fill="#52514e" text-anchor="start">Illustrative. Namespace names, the number of gateways and whether environments share a cluster are not yet inventoried.</text>
+<rect x="32.0" y="88" width="232.0" height="62" rx="8" fill="#ffffff" stroke="#52514e" stroke-width="1.6"/>
+<text x="44.0" y="110.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Developer clients</text>
+<text x="44.0" y="127.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">IDEs and CLI agents</text>
+<rect x="278.0" y="88" width="232.0" height="62" rx="8" fill="#ebeae6" stroke="#8f8e88" stroke-width="1.6"/>
+<text x="290.0" y="110.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Okta</text>
+<text x="290.0" y="127.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Tokens for users and machines</text>
+<rect x="524.0" y="88" width="232.0" height="62" rx="8" fill="#ebeae6" stroke="#8f8e88" stroke-width="1.6"/>
+<text x="536.0" y="110.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">GitLab.com</text>
+<text x="536.0" y="127.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Source, merge requests, pipelines</text>
+<rect x="770.0" y="88" width="232.0" height="62" rx="8" fill="#ffffff" stroke="#52514e" stroke-width="1.6"/>
+<text x="782.0" y="110.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Model providers</text>
+<text x="782.0" y="127.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Reached only through the gateway</text>
+<rect x="1016.0" y="88" width="232.0" height="62" rx="8" fill="#ebeae6" stroke="#8f8e88" stroke-width="1.6"/>
+<text x="1028.0" y="110.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">New Relic or Dynatrace</text>
+<text x="1028.0" y="127.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Operational telemetry backend</text>
+<rect x="32" y="170" width="1216" height="756" rx="12" fill="#f3f2ee" stroke="#d3d2cc" stroke-width="1"/>
+<text x="46.0" y="191.0" font-size="10.5" font-weight="700" fill="#52514e" text-anchor="start" letter-spacing="0.6">AWS ACCOUNT FOR ONE ENVIRONMENT (DEV, STAGE OR PROD)</text>
+<rect x="48" y="202" width="900" height="708" rx="12" fill="#faf9f6" stroke="#d3d2cc" stroke-width="1"/>
+<text x="62.0" y="223.0" font-size="10.5" font-weight="700" fill="#52514e" text-anchor="start" letter-spacing="0.6">EKS CLUSTER</text>
+<text x="934.0" y="223.0" font-size="10.5" font-weight="400" fill="#6f6e69" text-anchor="end">existing; versions and capacity to inventory</text>
+<rect x="64" y="234" width="868" height="130" rx="12" fill="#f1f0ec" stroke="#d3d2cc" stroke-width="1"/>
+<text x="78.0" y="255.0" font-size="10.5" font-weight="700" fill="#52514e" text-anchor="start" letter-spacing="0.6">PLATFORM NAMESPACES</text>
+<rect x="78.0" y="264" width="201.0" height="86" rx="8" fill="#e4effc" stroke="#2a78d6" stroke-width="1.6"/>
+<text x="90.0" y="286.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Agentgateway controller</text>
+<text x="90.0" y="303.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Control plane; serves</text>
+<text x="90.0" y="319.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">configuration to proxies over xDS</text>
+<rect x="291.0" y="264" width="201.0" height="86" rx="8" fill="#e4effc" stroke="#2a78d6" stroke-width="1.6"/>
+<text x="303.0" y="286.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Agentgateway proxies</text>
+<text x="303.0" y="303.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">One Deployment per Gateway;</text>
+<text x="303.0" y="319.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">replicas across zones</text>
+<rect x="504.0" y="264" width="201.0" height="86" rx="8" fill="#e4effc" stroke="#2a78d6" stroke-width="1.6"/>
+<rect x="633.6" y="273" width="59.4" height="17" rx="8.5" fill="#ffffff" stroke="#2a78d6" stroke-width="1"/>
+<text x="663.3" y="285.0" font-size="10" font-weight="600" fill="#52514e" text-anchor="middle">if budgets</text>
+<text x="516.0" y="286.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Rate-limit server</text>
+<text x="516.0" y="303.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Shared token budgets</text>
+<rect x="717.0" y="264" width="201.0" height="86" rx="8" fill="#e2f5ed" stroke="#1baf7a" stroke-width="1.6" stroke-dasharray="7 4"/>
+<rect x="855.2" y="273" width="50.8" height="17" rx="8.5" fill="#ffffff" stroke="#1baf7a" stroke-width="1"/>
+<text x="880.6" y="285.0" font-size="10" font-weight="600" fill="#52514e" text-anchor="middle">optional</text>
+<text x="729.0" y="286.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Agentregistry</text>
+<text x="729.0" y="303.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Catalog service with its own</text>
+<text x="729.0" y="319.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">database</text>
+<rect x="64" y="376" width="868" height="130" rx="12" fill="#f1f0ec" stroke="#d3d2cc" stroke-width="1"/>
+<text x="78.0" y="397.0" font-size="10.5" font-weight="700" fill="#52514e" text-anchor="start" letter-spacing="0.6">CANDIDATE RUNTIME NAMESPACES</text>
+<text x="918.0" y="397.0" font-size="10.5" font-weight="400" fill="#6f6e69" text-anchor="end">only if kagent is adopted</text>
+<rect x="78.0" y="406" width="272.0" height="86" rx="8" fill="#fdeae1" stroke="#eb6834" stroke-width="1.6" stroke-dasharray="2.5 3"/>
+<rect x="298.9" y="415" width="39.1" height="17" rx="8.5" fill="#ffffff" stroke="#eb6834" stroke-width="1"/>
+<text x="318.4" y="427.0" font-size="10" font-weight="600" fill="#52514e" text-anchor="middle">alpha</text>
+<text x="90.0" y="428.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">kagent controller</text>
+<text x="90.0" y="445.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Compiles each Agent into an immutable</text>
+<text x="90.0" y="461.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">revision; tracks sessions in PostgreSQL</text>
+<rect x="362.0" y="406" width="272.0" height="86" rx="8" fill="#fdeae1" stroke="#eb6834" stroke-width="1.6" stroke-dasharray="2.5 3"/>
+<text x="374.0" y="428.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Substrate control plane</text>
+<text x="374.0" y="445.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">ate-api-server Deployment and atelet</text>
+<text x="374.0" y="461.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">DaemonSet</text>
+<rect x="646.0" y="406" width="272.0" height="86" rx="8" fill="#fdeae1" stroke="#eb6834" stroke-width="1.6" stroke-dasharray="2.5 3"/>
+<text x="658.0" y="428.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Worker pool</text>
+<text x="658.0" y="445.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">gVisor workers, one actor at a time, sized for</text>
+<text x="658.0" y="461.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">concurrent turns</text>
+<rect x="64" y="518" width="868" height="130" rx="12" fill="#f1f0ec" stroke="#d3d2cc" stroke-width="1"/>
+<text x="78.0" y="539.0" font-size="10.5" font-weight="700" fill="#52514e" text-anchor="start" letter-spacing="0.6">DOMAIN AND WORKLOAD NAMESPACES</text>
+<text x="918.0" y="539.0" font-size="10.5" font-weight="400" fill="#6f6e69" text-anchor="end">names are examples from the notes</text>
+<rect x="78.0" y="548" width="201.0" height="86" rx="8" fill="#e4effc" stroke="#2a78d6" stroke-width="1.6"/>
+<text x="90.0" y="570.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">payments-mcp</text>
+<text x="90.0" y="587.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Hosted MCP server from the</text>
+<text x="90.0" y="603.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">platform chart</text>
+<rect x="291.0" y="548" width="201.0" height="86" rx="8" fill="#e4effc" stroke="#2a78d6" stroke-width="1.6"/>
+<text x="303.0" y="570.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">incident-assistant</text>
+<text x="303.0" y="587.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Hosted agent with its own</text>
+<text x="303.0" y="603.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">workload identity</text>
+<rect x="504.0" y="548" width="201.0" height="86" rx="8" fill="#e4effc" stroke="#2a78d6" stroke-width="1.6"/>
+<text x="516.0" y="570.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Batch and scheduled work</text>
+<text x="516.0" y="587.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Jobs with named machine</text>
+<text x="516.0" y="603.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">identities</text>
+<rect x="717.0" y="548" width="201.0" height="86" rx="8" fill="#ebeae6" stroke="#8f8e88" stroke-width="1.6"/>
+<text x="729.0" y="570.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Service APIs</text>
+<text x="729.0" y="587.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Existing services behind the</text>
+<text x="729.0" y="603.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">tools</text>
+<rect x="64" y="660" width="868" height="112" rx="12" fill="#f1f0ec" stroke="#d3d2cc" stroke-width="1"/>
+<text x="78.0" y="681.0" font-size="10.5" font-weight="700" fill="#52514e" text-anchor="start" letter-spacing="0.6">EXISTING CLUSTER SERVICES</text>
+<rect x="78.0" y="690" width="131.66666666666666" height="68" rx="8" fill="#ebeae6" stroke="#8f8e88" stroke-width="1.6"/>
+<text x="90.0" y="712.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Istio</text>
+<text x="90.0" y="729.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Mesh</text>
+<rect x="219.66666666666666" y="690" width="131.66666666666666" height="68" rx="8" fill="#ebeae6" stroke="#8f8e88" stroke-width="1.6"/>
+<text x="231.7" y="712.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Kyverno</text>
+<text x="231.7" y="729.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Admission</text>
+<rect x="361.3333333333333" y="690" width="131.66666666666666" height="68" rx="8" fill="#ebeae6" stroke="#8f8e88" stroke-width="1.6"/>
+<text x="373.3" y="712.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Karpenter</text>
+<text x="373.3" y="729.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Nodes</text>
+<rect x="503.0" y="690" width="131.66666666666666" height="68" rx="8" fill="#ebeae6" stroke="#8f8e88" stroke-width="1.6"/>
+<text x="515.0" y="712.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">CloudNativePG</text>
+<text x="515.0" y="729.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">PostgreSQL</text>
+<rect x="644.6666666666666" y="690" width="131.66666666666666" height="68" rx="8" fill="#ebeae6" stroke="#8f8e88" stroke-width="1.6"/>
+<text x="656.7" y="712.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">OTel collector</text>
+<text x="656.7" y="729.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Telemetry</text>
+<rect x="786.3333333333333" y="690" width="131.66666666666666" height="68" rx="8" fill="#ebeae6" stroke="#8f8e88" stroke-width="1.6"/>
+<text x="798.3" y="712.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">GitLab runners</text>
+<text x="798.3" y="729.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">CI job pods</text>
+<rect x="64" y="784" width="868" height="110" rx="12" fill="#f1f0ec" stroke="#d3d2cc" stroke-width="1"/>
+<text x="78.0" y="805.0" font-size="10.5" font-weight="700" fill="#52514e" text-anchor="start" letter-spacing="0.6">NODE POOLS</text>
+<rect x="78.0" y="814" width="272.0" height="66" rx="8" fill="#ebeae6" stroke="#8f8e88" stroke-width="1.6"/>
+<text x="90.0" y="836.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">General pool</text>
+<text x="90.0" y="853.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Gateway, tools and conventional agents</text>
+<rect x="362.0" y="814" width="272.0" height="66" rx="8" fill="#fdeae1" stroke="#eb6834" stroke-width="1.6" stroke-dasharray="2.5 3"/>
+<text x="374.0" y="836.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">gVisor-capable pool</text>
+<text x="374.0" y="853.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Substrate workers, only if kagent is adopted</text>
+<rect x="646.0" y="814" width="272.0" height="66" rx="8" fill="#ebeae6" stroke="#8f8e88" stroke-width="1.6"/>
+<text x="658.0" y="836.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Runner pool</text>
+<text x="658.0" y="853.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Kept separate from workloads</text>
+<rect x="964" y="202" width="268" height="708" rx="12" fill="#faf9f6" stroke="#d3d2cc" stroke-width="1"/>
+<text x="978.0" y="223.0" font-size="10.5" font-weight="700" fill="#52514e" text-anchor="start" letter-spacing="0.6">AWS SERVICES</text>
+<rect x="978" y="234" width="240" height="100" rx="8" fill="#ebeae6" stroke="#8f8e88" stroke-width="1.6"/>
+<text x="990.0" y="256.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">ECR</text>
+<text x="990.0" y="273.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Images, Helm charts and content</text>
+<text x="990.0" y="289.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">bundles. Immutable tags, pinned by</text>
+<text x="990.0" y="305.0" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">digest.</text>
+<rect x="978" y="345" width="240" height="100" rx="8" fill="#ebeae6" stroke="#8f8e88" stroke-width="1.6"/>
+<text x="990.0" y="367.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">S3</text>
+<text x="990.0" y="384.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Runtime snapshots, packages and</text>
+<text x="990.0" y="400.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">artifacts. Buckets, encryption and</text>
+<text x="990.0" y="416.0" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">lifecycle to inventory.</text>
+<rect x="978" y="456" width="240" height="100" rx="8" fill="#ebeae6" stroke="#8f8e88" stroke-width="1.6"/>
+<text x="990.0" y="478.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Workload IAM</text>
+<text x="990.0" y="495.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">A scoped role per workload through the</text>
+<text x="990.0" y="511.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">EKS identity mechanism. No shared</text>
+<text x="990.0" y="527.0" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">execution role.</text>
+<rect x="978" y="567" width="240" height="100" rx="8" fill="#ebeae6" stroke="#8f8e88" stroke-width="1.6"/>
+<text x="990.0" y="589.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Secret delivery</text>
+<text x="990.0" y="606.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Mechanism not yet identified. Manifests</text>
+<text x="990.0" y="622.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">hold references, never values.</text>
+<rect x="978" y="678" width="240" height="100" rx="8" fill="#e4effc" stroke="#2a78d6" stroke-width="1.6"/>
+<text x="990.0" y="700.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Egress to model providers</text>
+<text x="990.0" y="717.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Private connectivity or restricted egress,</text>
+<text x="990.0" y="733.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">from the gateway only.</text>
+<rect x="978" y="789" width="240" height="100" rx="8" fill="#ebeae6" stroke="#8f8e88" stroke-width="1.6"/>
+<text x="990.0" y="811.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">AWS infrastructure units</text>
+<text x="990.0" y="828.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Existing Terraform, OpenTofu and</text>
+<text x="990.0" y="844.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Terragrunt state owns IAM, S3 and DNS</text>
+<text x="990.0" y="860.0" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">additions.</text>
+<text x="32.0" y="956.0" font-size="11" font-weight="700" fill="#52514e" text-anchor="start">Status</text>
+<rect x="82.5" y="944" width="26" height="16" rx="4" fill="#ebeae6" stroke="#8f8e88" stroke-width="1.6"/>
+<text x="116.5" y="956.0" font-size="11.5" font-weight="400" fill="#0b0b0b" text-anchor="start">Existing, reused</text>
+<rect x="228.4" y="944" width="26" height="16" rx="4" fill="#e4effc" stroke="#2a78d6" stroke-width="1.6"/>
+<text x="262.4" y="956.0" font-size="11.5" font-weight="400" fill="#0b0b0b" text-anchor="start">New in this platform</text>
+<rect x="395.7" y="944" width="26" height="16" rx="4" fill="#e2f5ed" stroke="#1baf7a" stroke-width="1.6" stroke-dasharray="7 4"/>
+<text x="429.7" y="956.0" font-size="11.5" font-weight="400" fill="#0b0b0b" text-anchor="start">Optional</text>
+<rect x="499.3" y="944" width="26" height="16" rx="4" fill="#fdeae1" stroke="#eb6834" stroke-width="1.6" stroke-dasharray="2.5 3"/>
+<text x="533.3" y="956.0" font-size="11.5" font-weight="400" fill="#0b0b0b" text-anchor="start">Candidate, alpha upstream</text>
+<rect x="700.1" y="944" width="26" height="16" rx="4" fill="#ffffff" stroke="#52514e" stroke-width="1.6"/>
+<text x="734.1" y="956.0" font-size="11.5" font-weight="400" fill="#0b0b0b" text-anchor="start">External system or actor</text>
+<text x="32.0" y="984.0" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Stronger execution or data isolation may justify separate nodes or clusters. Namespace separation alone does not establish isolation for arbitrary code.</text>
+</svg>

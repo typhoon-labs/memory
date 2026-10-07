@@ -235,7 +235,7 @@ INCIDENT = {
     "service": "search-service",
     "severity": "sev2",
     "summary": "Every search fails",
-    "impact": "Users cannot search the catalogue",
+    "impact": "Users cannot search the catalog",
     "status": "resolved",
     "opened_by": "service-account-alert-automation",
     "opened_at": "2026-10-06T13:00:00.000Z",

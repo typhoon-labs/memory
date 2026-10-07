@@ -20,7 +20,7 @@ version: "3"
 # this component's name. REGISTRY is the root Taskfile's; the default applies
 # when this file is run on its own.
 vars:
-  TRAFFIC_VERSION: '{{.TRAFFIC_VERSION | default "1.0.0"}}'
+  TRAFFIC_VERSION: '{{.TRAFFIC_VERSION | default "1.0.1"}}'
   TRAFFIC_IMAGE: '{{.REGISTRY | default "localhost:5002"}}/traffic:{{.TRAFFIC_VERSION}}'
   # The Sample App's web through the kind port mapping.
   TRAFFIC_TARGET_URL: '{{.TRAFFIC_TARGET_URL | default "http://localhost:18082"}}'

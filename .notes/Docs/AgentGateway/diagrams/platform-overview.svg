@@ -1,0 +1,174 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="1010" viewBox="0 0 1280 1010" role="img" aria-labelledby="t d" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif">
+<title id="t">EKS agent platform on a page</title>
+<desc id="d">Layered view of the proposed platform. Consumers and Okta at the top; Agentgateway and the optional Agentregistry as the connectivity layer; conventional workloads, kagent with Agent Substrate and hosted MCP servers as the execution layer; service APIs, remote MCP servers and model providers behind them; CloudNativePG, S3, ECR and the GitLab package registry for state and artifacts; and the existing EKS foundation underneath. Each block is marked as existing, new, optional, candidate or external.</desc>
+<defs>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0.8 L10,5 L0,9.2 z" fill="#52514e"/></marker>
+<marker id="ahd" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0.8 L10,5 L0,9.2 z" fill="#d03b3b"/></marker>
+</defs>
+<rect x="0.5" y="0.5" width="1279" height="1009" rx="14" fill="#fcfcfb" stroke="#e4e3df"/>
+<text x="32.0" y="46.0" font-size="19" font-weight="700" fill="#0b0b0b" text-anchor="start">EKS agent platform on a page</text>
+<text x="32.0" y="68.0" font-size="12.5" font-weight="400" fill="#52514e" text-anchor="start">Proposed target architecture. Color, border style and badges show the status of each block; nothing here is deployed or selected.</text>
+<rect x="32" y="88" width="1216" height="116" rx="12" fill="#f3f2ee" stroke="#d3d2cc" stroke-width="1"/>
+<text x="46.0" y="109.0" font-size="10.5" font-weight="700" fill="#52514e" text-anchor="start" letter-spacing="0.6"></text>
+<text x="48.0" y="116.0" font-size="12.5" font-weight="700" fill="#0b0b0b" text-anchor="start">Consumers</text>
+<text x="48.0" y="133.0" font-size="10.5" font-weight="400" fill="#6f6e69" text-anchor="start">Who uses and publishes to</text>
+<text x="48.0" y="146.9" font-size="10.5" font-weight="400" fill="#6f6e69" text-anchor="start">the platform</text>
+<rect x="196.0" y="104" width="248.5" height="84" rx="8" fill="#ffffff" stroke="#52514e" stroke-width="1.6"/>
+<text x="208.0" y="126.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Developer clients</text>
+<text x="208.0" y="143.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">IDEs and CLI agents that already exist.</text>
+<text x="208.0" y="159.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Configure an endpoint and sign in.</text>
+<rect x="458.5" y="104" width="248.5" height="84" rx="8" fill="#ffffff" stroke="#52514e" stroke-width="1.6"/>
+<text x="470.5" y="126.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Users of hosted agents</text>
+<text x="470.5" y="143.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">People and systems that start or resume a</text>
+<text x="470.5" y="159.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">session with a hosted agent.</text>
+<rect x="721.0" y="104" width="248.5" height="84" rx="8" fill="#ffffff" stroke="#52514e" stroke-width="1.6"/>
+<text x="733.0" y="126.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Service and agent teams</text>
+<text x="733.0" y="143.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Publish tools, guidance and agents from</text>
+<text x="733.0" y="159.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">their own repositories.</text>
+<rect x="983.5" y="104" width="248.5" height="84" rx="8" fill="#ebeae6" stroke="#8f8e88" stroke-width="1.6"/>
+<text x="995.5" y="126.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Okta</text>
+<text x="995.5" y="143.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Corporate identity for users and machine</text>
+<text x="995.5" y="159.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">clients; issues the claims the gateway</text>
+<text x="995.5" y="175.0" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">checks.</text>
+<path d="M216.0,207.0 L216.0,231.0" fill="none" stroke="#52514e" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#ah)"/>
+<text x="230.0" y="223.0" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Tool, model and agent requests carry an Okta-verified identity</text>
+<rect x="32" y="234" width="1216" height="180" rx="12" fill="#f3f2ee" stroke="#d3d2cc" stroke-width="1"/>
+<text x="46.0" y="255.0" font-size="10.5" font-weight="700" fill="#52514e" text-anchor="start" letter-spacing="0.6"></text>
+<text x="48.0" y="262.0" font-size="12.5" font-weight="700" fill="#0b0b0b" text-anchor="start">Connectivity and</text>
+<text x="48.0" y="278.0" font-size="12.5" font-weight="700" fill="#0b0b0b" text-anchor="start">discovery</text>
+<text x="48.0" y="295.0" font-size="10.5" font-weight="400" fill="#6f6e69" text-anchor="start">The governed path to tools</text>
+<text x="48.0" y="308.9" font-size="10.5" font-weight="400" fill="#6f6e69" text-anchor="start">and models</text>
+<rect x="196" y="248" width="770" height="152" rx="8" fill="#e4effc" stroke="#2a78d6" stroke-width="1.6"/>
+<text x="208.0" y="271.0" font-size="14" font-weight="700" fill="#0b0b0b" text-anchor="start">Agentgateway</text>
+<text x="314.0" y="271.0" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">One governed endpoint per permission and failure boundary</text>
+<rect x="208.0" y="284" width="240.66666666666666" height="104" rx="8" fill="#ffffff" stroke="#2a78d6" stroke-width="1.6"/>
+<text x="220.0" y="306.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Controller</text>
+<text x="220.0" y="323.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Watches Gateway API and policy</text>
+<text x="220.0" y="339.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">resources; configures proxies over xDS.</text>
+<rect x="460.66666666666663" y="284" width="240.66666666666666" height="104" rx="8" fill="#ffffff" stroke="#2a78d6" stroke-width="1.6"/>
+<text x="472.7" y="306.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Proxy</text>
+<text x="472.7" y="323.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">MCP, LLM, A2A and HTTP routes.</text>
+<text x="472.7" y="339.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Verifies identity; applies tool, model and</text>
+<text x="472.7" y="355.0" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">budget policy.</text>
+<rect x="713.3333333333333" y="284" width="240.66666666666666" height="104" rx="8" fill="#ffffff" stroke="#2a78d6" stroke-width="1.6"/>
+<rect x="882.6" y="293" width="59.4" height="17" rx="8.5" fill="#ffffff" stroke="#2a78d6" stroke-width="1"/>
+<text x="912.3" y="305.0" font-size="10" font-weight="600" fill="#52514e" text-anchor="middle">if budgets</text>
+<text x="725.3" y="306.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Rate-limit server</text>
+<text x="725.3" y="323.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Shared token budgets across proxy</text>
+<text x="725.3" y="339.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">replicas; part of the baseline once</text>
+<text x="725.3" y="355.0" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">budgets are enforced.</text>
+<rect x="980" y="248" width="252" height="152" rx="8" fill="#e2f5ed" stroke="#1baf7a" stroke-width="1.6" stroke-dasharray="7 4"/>
+<rect x="1169.2" y="257" width="50.8" height="17" rx="8.5" fill="#ffffff" stroke="#1baf7a" stroke-width="1"/>
+<text x="1194.6" y="269.0" font-size="10" font-weight="600" fill="#52514e" text-anchor="middle">optional</text>
+<text x="992.0" y="270.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Agentregistry</text>
+<text x="992.0" y="287.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Catalog of MCP servers, agents, skills and</text>
+<text x="992.0" y="303.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">prompts. Publication makes a capability</text>
+<text x="992.0" y="319.0" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">discoverable. It deploys nothing and is not</text>
+<text x="992.0" y="334.7" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">in the request path.</text>
+<path d="M216.0,441.0 L216.0,417.0" fill="none" stroke="#52514e" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#ah)"/>
+<text x="230.0" y="433.0" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Hosted agents reach tools and models only through the gateway</text>
+<rect x="32" y="444" width="1216" height="118" rx="12" fill="#f3f2ee" stroke="#d3d2cc" stroke-width="1"/>
+<text x="46.0" y="465.0" font-size="10.5" font-weight="700" fill="#52514e" text-anchor="start" letter-spacing="0.6"></text>
+<text x="48.0" y="472.0" font-size="12.5" font-weight="700" fill="#0b0b0b" text-anchor="start">Execution</text>
+<text x="48.0" y="489.0" font-size="10.5" font-weight="400" fill="#6f6e69" text-anchor="start">Only where a component</text>
+<text x="48.0" y="502.9" font-size="10.5" font-weight="400" fill="#6f6e69" text-anchor="start">needs a hosted process</text>
+<rect x="196.0" y="460" width="336.0" height="86" rx="8" fill="#e4effc" stroke="#2a78d6" stroke-width="1.6"/>
+<rect x="452.0" y="469" width="68.0" height="17" rx="8.5" fill="#ffffff" stroke="#2a78d6" stroke-width="1"/>
+<text x="486.0" y="481.0" font-size="10" font-weight="600" fill="#52514e" text-anchor="middle">default path</text>
+<text x="208.0" y="482.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Conventional workloads</text>
+<text x="208.0" y="499.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Deployments and Jobs from the platform chart, with</text>
+<text x="208.0" y="515.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">workload identity, limits and telemetry.</text>
+<rect x="546.0" y="460" width="336.0" height="86" rx="8" fill="#fdeae1" stroke="#eb6834" stroke-width="1.6" stroke-dasharray="2.5 3"/>
+<rect x="830.9" y="469" width="39.1" height="17" rx="8.5" fill="#ffffff" stroke="#eb6834" stroke-width="1"/>
+<text x="850.4" y="481.0" font-size="10" font-weight="600" fill="#52514e" text-anchor="middle">alpha</text>
+<text x="558.0" y="482.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">kagent and Agent Substrate</text>
+<text x="558.0" y="499.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Declarative agents and sessions in gVisor sandboxes,</text>
+<text x="558.0" y="515.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">suspended and resumed from snapshots.</text>
+<rect x="896.0" y="460" width="336.0" height="86" rx="8" fill="#e4effc" stroke="#2a78d6" stroke-width="1.6"/>
+<text x="908.0" y="482.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Hosted MCP servers</text>
+<text x="908.0" y="499.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Adapters that service teams own and deploy from the</text>
+<text x="908.0" y="515.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">platform chart, exposed through the gateway.</text>
+<path d="M216.0,565.0 L216.0,589.0" fill="none" stroke="#52514e" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#ah)"/>
+<text x="230.0" y="581.0" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Gateway and tool servers call backends with scoped credentials</text>
+<rect x="32" y="592" width="1216" height="118" rx="12" fill="#f3f2ee" stroke="#d3d2cc" stroke-width="1"/>
+<text x="46.0" y="613.0" font-size="10.5" font-weight="700" fill="#52514e" text-anchor="start" letter-spacing="0.6"></text>
+<text x="48.0" y="620.0" font-size="12.5" font-weight="700" fill="#0b0b0b" text-anchor="start">Capabilities and</text>
+<text x="48.0" y="636.0" font-size="12.5" font-weight="700" fill="#0b0b0b" text-anchor="start">providers</text>
+<text x="48.0" y="653.0" font-size="10.5" font-weight="400" fill="#6f6e69" text-anchor="start">What the governed path</text>
+<text x="48.0" y="666.9" font-size="10.5" font-weight="400" fill="#6f6e69" text-anchor="start">reaches</text>
+<rect x="196.0" y="608" width="336.0" height="86" rx="8" fill="#ebeae6" stroke="#8f8e88" stroke-width="1.6"/>
+<text x="208.0" y="630.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Service APIs</text>
+<text x="208.0" y="647.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Enforce tenant ownership, business limits and</text>
+<text x="208.0" y="663.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">idempotency. Gateway permission never overrides them.</text>
+<rect x="546.0" y="608" width="336.0" height="86" rx="8" fill="#ebeae6" stroke="#8f8e88" stroke-width="1.6"/>
+<text x="558.0" y="630.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Remote MCP servers</text>
+<text x="558.0" y="647.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Integrations already hosted elsewhere, bound at the</text>
+<text x="558.0" y="663.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">gateway without new compute.</text>
+<rect x="896.0" y="608" width="336.0" height="86" rx="8" fill="#ffffff" stroke="#52514e" stroke-width="1.6"/>
+<text x="908.0" y="630.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Model providers</text>
+<text x="908.0" y="647.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Reached only through the gateway, which holds the</text>
+<text x="908.0" y="663.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">provider credential and applies approved-model policy.</text>
+<rect x="32" y="724" width="1216" height="116" rx="12" fill="#f3f2ee" stroke="#d3d2cc" stroke-width="1"/>
+<text x="46.0" y="745.0" font-size="10.5" font-weight="700" fill="#52514e" text-anchor="start" letter-spacing="0.6"></text>
+<text x="48.0" y="752.0" font-size="12.5" font-weight="700" fill="#0b0b0b" text-anchor="start">State and artifacts</text>
+<text x="48.0" y="769.0" font-size="10.5" font-weight="400" fill="#6f6e69" text-anchor="start">Durable data and released</text>
+<text x="48.0" y="782.9" font-size="10.5" font-weight="400" fill="#6f6e69" text-anchor="start">bytes</text>
+<rect x="196.0" y="740" width="248.5" height="84" rx="8" fill="#ebeae6" stroke="#8f8e88" stroke-width="1.6"/>
+<text x="208.0" y="762.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">CloudNativePG</text>
+<text x="208.0" y="779.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Separate databases and credentials for</text>
+<text x="208.0" y="795.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">registry, runtime and application state.</text>
+<rect x="458.5" y="740" width="248.5" height="84" rx="8" fill="#ebeae6" stroke="#8f8e88" stroke-width="1.6"/>
+<text x="470.5" y="762.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">S3</text>
+<text x="470.5" y="779.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Runtime snapshots, packages and</text>
+<text x="470.5" y="795.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">artifacts. Buckets and lifecycle still to</text>
+<text x="470.5" y="811.0" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">inventory.</text>
+<rect x="721.0" y="740" width="248.5" height="84" rx="8" fill="#ebeae6" stroke="#8f8e88" stroke-width="1.6"/>
+<text x="733.0" y="762.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">ECR</text>
+<text x="733.0" y="779.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Images, Helm charts and content bundles,</text>
+<text x="733.0" y="795.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">pinned by digest.</text>
+<rect x="983.5" y="740" width="248.5" height="84" rx="8" fill="#ebeae6" stroke="#8f8e88" stroke-width="1.6"/>
+<text x="995.5" y="762.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">GitLab package registry</text>
+<text x="995.5" y="779.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Packages that only pipelines read, such</text>
+<text x="995.5" y="795.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">as shared libraries.</text>
+<rect x="32" y="854" width="1216" height="116" rx="12" fill="#f3f2ee" stroke="#d3d2cc" stroke-width="1"/>
+<text x="46.0" y="875.0" font-size="10.5" font-weight="700" fill="#52514e" text-anchor="start" letter-spacing="0.6"></text>
+<text x="48.0" y="882.0" font-size="12.5" font-weight="700" fill="#0b0b0b" text-anchor="start">Foundation and</text>
+<text x="48.0" y="898.0" font-size="12.5" font-weight="700" fill="#0b0b0b" text-anchor="start">operations</text>
+<text x="48.0" y="915.0" font-size="10.5" font-weight="400" fill="#6f6e69" text-anchor="start">Reused before anything is</text>
+<text x="48.0" y="928.9" font-size="10.5" font-weight="400" fill="#6f6e69" text-anchor="start">replaced</text>
+<rect x="196.0" y="870" width="196.0" height="84" rx="8" fill="#ebeae6" stroke="#8f8e88" stroke-width="1.6"/>
+<text x="208.0" y="892.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">EKS, Karpenter, Istio</text>
+<text x="208.0" y="909.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Cluster, node capacity and</text>
+<text x="208.0" y="925.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">service networking.</text>
+<rect x="406.0" y="870" width="196.0" height="84" rx="8" fill="#ebeae6" stroke="#8f8e88" stroke-width="1.6"/>
+<text x="418.0" y="892.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Kyverno</text>
+<text x="418.0" y="909.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Admission restrictions on</text>
+<text x="418.0" y="925.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">permitted resources and fields.</text>
+<rect x="616.0" y="870" width="196.0" height="84" rx="8" fill="#ebeae6" stroke="#8f8e88" stroke-width="1.6"/>
+<text x="628.0" y="892.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">OpenTelemetry</text>
+<text x="628.0" y="909.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Existing collectors exporting to</text>
+<text x="628.0" y="925.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">New Relic or Dynatrace.</text>
+<rect x="826.0" y="870" width="196.0" height="84" rx="8" fill="#ebeae6" stroke="#8f8e88" stroke-width="1.6"/>
+<text x="838.0" y="892.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">GitLab CI, Helmfile,</text>
+<text x="838.0" y="908.2" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Terraform</text>
+<text x="838.0" y="926.0" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Delivery on self-hosted runners;</text>
+<text x="838.0" y="941.6" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">AWS additions in existing units.</text>
+<rect x="1036.0" y="870" width="196.0" height="84" rx="8" fill="#e2f5ed" stroke="#1baf7a" stroke-width="1.6" stroke-dasharray="7 4"/>
+<rect x="1169.2" y="879" width="50.8" height="17" rx="8.5" fill="#ffffff" stroke="#1baf7a" stroke-width="1"/>
+<text x="1194.6" y="891.0" font-size="10" font-weight="600" fill="#52514e" text-anchor="middle">optional</text>
+<text x="1048.0" y="892.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Langfuse</text>
+<text x="1048.0" y="909.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Prompt and evaluation</text>
+<text x="1048.0" y="925.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">workspace, only if teams need</text>
+<text x="1048.0" y="941.0" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">it.</text>
+<text x="32.0" y="994.0" font-size="11" font-weight="700" fill="#52514e" text-anchor="start">Status</text>
+<rect x="82.5" y="982" width="26" height="16" rx="4" fill="#ebeae6" stroke="#8f8e88" stroke-width="1.6"/>
+<text x="116.5" y="994.0" font-size="11.5" font-weight="400" fill="#0b0b0b" text-anchor="start">Existing, reused</text>
+<rect x="228.4" y="982" width="26" height="16" rx="4" fill="#e4effc" stroke="#2a78d6" stroke-width="1.6"/>
+<text x="262.4" y="994.0" font-size="11.5" font-weight="400" fill="#0b0b0b" text-anchor="start">New in this platform</text>
+<rect x="395.7" y="982" width="26" height="16" rx="4" fill="#e2f5ed" stroke="#1baf7a" stroke-width="1.6" stroke-dasharray="7 4"/>
+<text x="429.7" y="994.0" font-size="11.5" font-weight="400" fill="#0b0b0b" text-anchor="start">Optional</text>
+<rect x="499.3" y="982" width="26" height="16" rx="4" fill="#fdeae1" stroke="#eb6834" stroke-width="1.6" stroke-dasharray="2.5 3"/>
+<text x="533.3" y="994.0" font-size="11.5" font-weight="400" fill="#0b0b0b" text-anchor="start">Candidate, alpha upstream</text>
+<rect x="700.1" y="982" width="26" height="16" rx="4" fill="#ffffff" stroke="#52514e" stroke-width="1.6"/>
+<text x="734.1" y="994.0" font-size="11.5" font-weight="400" fill="#0b0b0b" text-anchor="start">External system or actor</text>
+</svg>

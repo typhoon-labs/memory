@@ -21,7 +21,7 @@ backend:
   name: model-provider
 
 # Provider selection and settings. The dev cluster's values are in
-# agent-deployments/clusters/dev/platform/model-provider.yaml, which documents
+# agent-deployments/clusters/dev/platform/30-model-route/model-provider.yaml, which documents
 # every field.
 modelProvider:
   active: local

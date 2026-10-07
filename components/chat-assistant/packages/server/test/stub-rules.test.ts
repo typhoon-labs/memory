@@ -23,7 +23,7 @@ async function seeded(): Promise<Downstreams> {
   return createStubDownstreams({ seed: true, phaseMs: 20 });
 }
 
-describe('stub downstreams obey the conventions', () => {
+describe('stub downstreams obey the contracts', () => {
   test('gateway layer: a tool is only offered to its role', async () => {
     const d = await seeded();
     const cases: [string, string, Record<string, unknown>][] = [
@@ -50,7 +50,9 @@ describe('stub downstreams obey the conventions', () => {
       d.delivery.callTool(await token('developer-other-team'), 'propose_change', { incident_id: 'INC-0001', target_version: '2.0.0' }),
     );
     expect([r.layer, r.rule]).toEqual(['service', 'team_owns_service']);
-    expect(r.message).toMatch(/^Refused by the service: team_owns_service - /);
+    expect(r.message).toBe('Refused by the service: your team does not own this service (rule team_owns_service).');
+    // The service's own sentence is kept beside the plain words.
+    expect(r.detail).toContain('owned by team search');
   });
 
   test('service rule: the target is a retained earlier version', async () => {

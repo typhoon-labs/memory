@@ -1,0 +1,154 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
+
+/* The app is light only. Without this line Tailwind would apply the `dark:`
+   classes in the shadcn components whenever the viewer's system is dark. */
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+  /* Kept for the names of rules, which are code. */
+  --font-mono: "Geist Mono Variable", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-heading: var(--font-sans);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-control: var(--control);
+  --color-faint: var(--faint);
+  --color-well: var(--well);
+  --color-destructive: var(--destructive);
+  --color-destructive-wash: var(--destructive-wash);
+  --color-destructive-line: var(--destructive-line);
+  --color-destructive-bright: var(--destructive-bright);
+  --color-warning: var(--warning);
+  --color-warning-wash: var(--warning-wash);
+  --color-warning-line: var(--warning-line);
+  --color-warning-bright: var(--warning-bright);
+  --color-success: var(--success);
+  --color-success-wash: var(--success-wash);
+  --color-developer: var(--developer);
+  --color-incident-manager: var(--incident-manager);
+  --color-platform-engineer: var(--platform-engineer);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/* shadcn's tokens, set for this app. The page is white with neutral grays and
+   one line weight; color is kept for the two things below. The grays for
+   small text and for the outlines of fields are darker than is usual for this
+   look, so that both stay readable in a compressed screen share. */
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+  --card: #ffffff;
+  --card-foreground: var(--foreground);
+  --popover: #ffffff;
+  --popover-foreground: var(--foreground);
+  --primary-foreground: #ffffff;
+  --secondary: #f6f6f7;
+  --secondary-foreground: var(--foreground);
+  --muted: #f6f6f7;
+  --muted-foreground: #5d5d68;
+  --accent: #f6f6f7;
+  --accent-foreground: var(--foreground);
+  --border: #e3e3e7;
+  /* Outlines: of a field, and of a button. */
+  --input: #9a9aa3;
+  --control: #c6c6cd;
+  --ring: #171717;
+  /* A step not started yet, and the text of a disabled button. */
+  --faint: #a9a9b2;
+  /* The track of a spinner and of a line of text that is still loading. */
+  --well: #ececef;
+  --radius: 0.5rem;
+
+  /* 1. Whose window this is. Each role has a hue; signed in, the role's hue
+     is `--primary`: the line at the top of the window, the role's name beside
+     the app's, the step it is the viewer's turn on and the button there. The
+     steps of the card also mark their owner with a dot in the owner's hue. */
+  --developer: #1f6feb;
+  --incident-manager: #6d3fc0;
+  --platform-engineer: #0f766e;
+  /* Before sign-in. */
+  --primary: #3f3f46;
+
+  /* 2. What a status or an outcome means. No role uses these hues.
+     Red: the incident is open, or critical; or the gateway refused.
+     Amber: the incident is being mitigated; or the service refused.
+     Green: the incident is resolved. */
+  --destructive: #b42318;
+  --destructive-wash: #fdeeec;
+  --destructive-line: #efbfb8;
+  --destructive-bright: #e5484d;
+  --warning: #8a4b00;
+  --warning-wash: #fdf2dc;
+  --warning-line: #e9cf9f;
+  --warning-bright: #e08a00;
+  --success: #1f7a48;
+  --success-wash: #e6f4ea;
+}
+
+.role-developer {
+  --primary: var(--developer);
+}
+.role-incident-manager {
+  --primary: var(--incident-manager);
+}
+.role-platform-engineer {
+  --primary: var(--platform-engineer);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans;
+    /* The window scrolls the incident; its scrollbar is as slight as the panels' own. */
+    scrollbar-width: thin;
+  }
+  body {
+    @apply bg-background text-[0.9375rem] leading-normal text-foreground antialiased;
+  }
+}
+
+/* The one thing that moves without being asked: a spinner, where work is running. */
+@keyframes turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@utility spinner {
+  flex: none;
+  border: 2px solid var(--well);
+  border-top-color: var(--foreground);
+  border-radius: 9999px;
+  animation: turn 0.9s linear infinite;
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+    border-color: var(--foreground);
+    border-right-color: var(--well);
+  }
+}

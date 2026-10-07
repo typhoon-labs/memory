@@ -56,7 +56,7 @@ export const CORS_ALLOW_HEADERS = [
   'tracestate',
 ];
 
-/** The A2UI specification names `X-A2A-Extensions`; A2A 1.0 names `A2A-Extensions`. Both are honoured. */
+/** The A2UI specification names `X-A2A-Extensions`; A2A 1.0 names `A2A-Extensions`. Both are honored. */
 const contextBuilder: ServerCallContextBuilder = (options) => {
   const legacy = options.headers['x-a2a-extensions'];
   const fromLegacy = Extensions.parseServiceParameter(Array.isArray(legacy) ? legacy.join(',') : legacy);

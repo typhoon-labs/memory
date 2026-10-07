@@ -1,7 +1,8 @@
 # Sample App tasks. Included by the root Taskfile as `sample-app:` (for
 # example `task sample-app:build`); also runs on its own from this directory.
 #
-#   task test         tests from source (needs Node 22+, no Docker)
+#   task ui           build the pages (web/ui, React) into web/ui/dist, which web serves
+#   task test         type check of the pages and tests from source (needs Node 22+, no Docker)
 #   task build        the four images: web, registration-service, search-service 2.0.0 and 2.1.0
 #   task push         push them to the local registry
 #   task chart:push   package the chart and push it to the registry as an OCI chart
@@ -21,7 +22,7 @@ version: "3"
 # when this file is run on its own.
 vars:
   SAMPLE_APP_REGISTRY: '{{.REGISTRY | default "localhost:5002"}}'
-  SAMPLE_APP_WEB_VERSION: '{{.SAMPLE_APP_WEB_VERSION | default "1.0.0"}}'
+  SAMPLE_APP_WEB_VERSION: '{{.SAMPLE_APP_WEB_VERSION | default "1.2.1"}}'
   SAMPLE_APP_REGISTRATION_VERSION: '{{.SAMPLE_APP_REGISTRATION_VERSION | default "1.0.0"}}'
   # Every search-service version that is built and pushed.
   SAMPLE_APP_SEARCH_VERSIONS: "2.0.0 2.1.0"
@@ -29,8 +30,19 @@ vars:
   SAMPLE_APP_SEARCH_VERSION: '{{.SAMPLE_APP_SEARCH_VERSION | default "2.0.0"}}'
 
 tasks:
+  ui:
+    desc: Build the pages (web/ui) into web/ui/dist, which web reads when it starts
+    dir: web/ui
+    cmds:
+      - npm ci --no-audit --no-fund
+      - npm run build
+    sources: [package.json, package-lock.json, components.json, tsconfig.json, vite.config.ts, index.html, "public/**/*", "src/**/*"]
+    generates: [dist/index.html]
+
   test:
     desc: Run the tests from source (2.0.0 finds "red", 2.1.0 fails, registration confirms)
+    # web serves the built pages, and `npm run build` type checks them first.
+    deps: [ui]
     cmds:
       - node --test "test/*.test.js"
 
@@ -86,10 +98,8 @@ tasks:
       - docker compose down --remove-orphans
 
   lint:
-    desc: Lint the chart and render it with the dev selection
-    vars:
-      SELECTION: "{{.TASKFILE_DIR}}/../../agent-deployments/clusters/dev/workloads/sample-app/values.yaml"
+    desc: Lint the chart and render it with its own values (a cluster's selection is rendered by its helmfile)
     cmds:
       - helm lint chart --strict
-      - helm lint chart --strict --values {{.SELECTION}} --set serviceMonitor.enabled=true
-      - helm template sample-app chart --namespace sample-app --values {{.SELECTION}} > /dev/null
+      - helm lint chart --strict --set serviceMonitor.enabled=true
+      - helm template sample-app chart --namespace sample-app > /dev/null

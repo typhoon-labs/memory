@@ -7,7 +7,7 @@ import type { Downstreams, Incident } from './types.js';
 
 /**
  * `DELIVERY_MCP_URL` may be the component's base URL (the MCP endpoint is then
- * `/mcp`, as the conventions say) or a gateway route that already has a path,
+ * `/mcp`, as the contracts say) or a gateway route that already has a path,
  * which is used as given.
  */
 export function mcpEndpoint(url: string): string {
@@ -37,18 +37,30 @@ export async function listIncidents(d: Downstreams, token: string): Promise<Inci
   return normalizeIncidentList(await d.delivery.callTool(token, 'list_incidents', {}));
 }
 
+/** Newest first. No assumption about the order the service lists them in: the newest is the one opened last. */
+export function newestFirst(incidents: Incident[]): Incident[] {
+  return incidents
+    .map((incident, index) => ({ incident, index }))
+    .sort((a, b) => (b.incident.opened_at ?? '').localeCompare(a.incident.opened_at ?? '') || a.index - b.index)
+    .map(({ incident }) => incident);
+}
+
 /**
- * The incidents the card pane shows: every incident that is not resolved, or,
- * when there is none, the most recent one. Each is read with `get_incident`.
+ * The incident a viewer sees when they have picked none: the newest that is
+ * not resolved, or, when every one is resolved, the most recent.
  */
-export async function currentIncidents(d: Downstreams, token: string): Promise<Incident[]> {
-  const all = await listIncidents(d, token);
-  const open = all.filter((i) => i.status !== 'resolved');
-  // No assumption about the list's order: the most recent is the one opened last.
-  const latest = all.reduce<Incident | undefined>(
-    (best, i) => (!best || (i.opened_at ?? '') >= (best.opened_at ?? '') ? i : best),
-    undefined,
-  );
-  const shown = open.length ? open : latest ? [latest] : [];
-  return Promise.all(shown.map((i) => getIncident(d, token, i.id)));
+export function currentIncident(incidents: Incident[]): Incident | undefined {
+  const ordered = newestFirst(incidents);
+  return ordered.find((i) => i.status !== 'resolved') ?? ordered[0];
+}
+
+/**
+ * What one viewer's page needs: every incident, for the list beside the card,
+ * and the one the card shows. That is the incident the viewer picked, if it
+ * still exists, and otherwise the current one. It is read with `get_incident`.
+ */
+export async function incidentsFor(d: Downstreams, token: string, picked?: string): Promise<{ all: Incident[]; shown?: Incident }> {
+  const all = newestFirst(await listIncidents(d, token));
+  const choice = (picked ? all.find((i) => i.id === picked) : undefined) ?? currentIncident(all);
+  return { all, shown: choice ? await getIncident(d, token, choice.id) : undefined };
 }

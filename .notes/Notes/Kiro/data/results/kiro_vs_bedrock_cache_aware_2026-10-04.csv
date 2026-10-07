@@ -1,0 +1,26 @@
+model,context_price_tier,cache_scenario_cost_usd,kiro_credit_multiplier,api_equivalent_multiplier_cache,kiro_relative_premium_pct_cache,bedrock_input_usd_per_1M,bedrock_output_usd_per_1M,bedrock_cache_write_usd_per_1M,bedrock_cache_read_usd_per_1M,cache_write_ttl_used,kiro_plan_access,notes
+GPT-5.6 Sol,Short context (<=272K),3.4914,4.4,1.73333333333,153.846153846,4.4,22,5.5,0.44,30m,"Pro, Pro+, Pro Max, Power",Served from US regardless of Kiro profile region
+GPT-5.6 Sol,Long context (>272K),5.8828,8.8,2.92056290695,201.311777228,8.8,33,11,0.88,30m,"Pro, Pro+, Pro Max, Power",Served from US regardless of Kiro profile region
+GPT-5.6 Terra,Short context (<=272K),1.9657,2.2,0.97588741861,125.435840041,2.2,13.2,2.75,0.22,30m,"Pro, Pro+, Pro Max, Power",Served from US regardless of Kiro profile region
+GPT-5.6 Terra,Long context (>272K),3.2714,4.4,1.62411258139,170.91717966,4.4,19.8,5.5,0.44,30m,"Pro, Pro+, Pro Max, Power",Served from US regardless of Kiro profile region
+GPT-5.6 Luna,Short context (<=272K),0.19657,1.1,0.097588741861,1027.17920021,0.22,1.32,0.275,0.022,30m,"Pro, Pro+, Pro Max, Power",Served from US regardless of Kiro profile region
+GPT-5.6 Luna,Long context (>272K),0.32714,2.2,0.162411258139,1254.5858983,0.44,1.98,0.55,0.044,30m,"Pro, Pro+, Pro Max, Power",Served from US regardless of Kiro profile region
+Claude Fable 5.1,Single tier (1M),8.06025,6,4.00157529931,49.9409495315,11,55,13.75,0.275,5m,"Enterprise only (limited Preview, admin-enabled)",Inference only in us-east-1; not on any self-serve plan
+Claude Opus 5.5,Single tier (1M),3.3132,2.0,1.64486452426,21.5905608336,4.4,22,5.5,0.22,5m,"Pro, Pro+, Pro Max, Power",Experimental: may be processed in commercial Regions worldwide (Global CRIS is $4/$20)
+Claude Sonnet 5.5,Single tier (1M),1.7457,1.3,0.866666666667,50,2.2,11,2.75,0.22,5m,"Pro, Pro+, Pro Max, Power",Experimental: may be processed in commercial Regions worldwide (Global CRIS is $2/$10)
+Claude Opus 5,Single tier (1M),4.36425,2.2,2.16666666667,1.53846153846,5.5,27.5,6.875,0.55,5m,"Pro, Pro+, Pro Max, Power",
+Claude Opus 4.8,Single tier (1M),4.36425,2.2,2.16666666667,1.53846153846,5.5,27.5,6.875,0.55,5m,"Pro, Pro+, Pro Max, Power",
+Claude Opus 4.7,Single tier (1M),4.36425,2.2,2.16666666667,1.53846153846,5.5,27.5,6.875,0.55,5m,"Pro, Pro+, Pro Max, Power",
+Claude Opus 4.6,Single tier (1M),4.36425,2.2,2.16666666667,1.53846153846,5.5,27.5,6.875,0.55,5m,"Pro, Pro+, Pro Max, Power",Bedrock page has a Long Context row with no published price
+Claude Opus 4.5,Single tier (200K),4.36425,2.2,2.16666666667,1.53846153846,5.5,27.5,6.875,0.55,5m,"Pro, Pro+, Pro Max, Power",
+Claude Sonnet 5,Single tier (1M),1.7457,1.3,0.866666666667,50,2.2,11,2.75,0.22,5m,"Pro, Pro+, Pro Max, Power",
+Claude Sonnet 4.6,Single tier (1M),2.61855,1.3,1.3,Baseline,3.3,16.5,4.125,0.33,5m,"Pro, Pro+, Pro Max, Power",ANCHOR. Bedrock page has a Long Context row with no published price
+Claude Sonnet 4.5,Single tier (200K),2.61855,1.3,1.3,0,3.3,16.5,4.125,0.33,5m,"Free, Pro, Pro+, Pro Max, Power",Bedrock page has a Long Context row with no published price
+Claude Sonnet 4.0,Single tier (200K),2.3805,1.3,1.18181818182,10,3,15,3.75,0.3,5m,"Free, Pro, Pro+, Pro Max, Power",Bedrock lifecycle: Legacy in certain Regions; Long Context row has no published price
+Auto,n/a,unavailable,1.0,unavailable,unavailable,,,,,,"Free, Pro, Pro+, Pro Max, Power","Routes across models; Free gets Sonnet-class or better, paid gets Opus-class or better"
+Claude Haiku 4.5,Single tier (200K),0.87285,0.4,0.433333333333,-7.69230769231,1.1,5.5,1.375,0.11,5m,"Pro, Pro+, Pro Max, Power",
+DeepSeek 3.2,Single tier (128K in Kiro),unavailable,0.25,unavailable,unavailable,0.62,1.85,,,,"Free, Pro, Pro+, Pro Max, Power",Cache rates not published by Bedrock; not computed
+MiniMax M2.5,Single tier (200K in Kiro),unavailable,0.25,unavailable,unavailable,0.3,1.2,,,,"Free, Pro, Pro+, Pro Max, Power",Cache rates not published by Bedrock; not computed
+GLM-5,Single tier (200K),unavailable,0.5,unavailable,unavailable,1,3.2,,,,"Free, Pro, Pro+, Pro Max, Power",Cache rates not published by Bedrock; not computed
+MiniMax M2.1,Single tier (200K in Kiro),unavailable,0.15,unavailable,unavailable,0.3,1.2,,,,"Free, Pro, Pro+, Pro Max, Power",Cache rates not published by Bedrock; not computed
+Qwen3 Coder Next,Single tier (256K),unavailable,0.05,unavailable,unavailable,0.5,1.2,,,,"Free, Pro, Pro+, Pro Max, Power",Cache rates not published by Bedrock; not computed

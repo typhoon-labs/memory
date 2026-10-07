@@ -33,7 +33,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: traffic
-          image: localhost:5002/traffic:1.0.0
+          image: localhost:5002/traffic:1.0.1
           imagePullPolicy: IfNotPresent
           env:
             - name: TARGET_URL

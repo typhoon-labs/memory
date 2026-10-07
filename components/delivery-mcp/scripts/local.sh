@@ -41,7 +41,7 @@ wait_for() {
 
 case "${1:-}" in
   up)
-    [ -x "$PY" ] || uv sync
+    [ -x "$PY" ] || uv sync --frozen
     mkdir -p "$RUN_DIR"
     start issuer "$PY" scripts/test_issuer.py --port "$ISSUER_PORT"
     wait_for issuer "http://127.0.0.1:$ISSUER_PORT/healthz"

@@ -94,6 +94,7 @@ tasks:
     env:
       KUBECONFIG: /dev/null
     cmds:
+      - mkdir -p deploy
       - >-
         {{.DELIVERY_MCP_KMCP}} deploy --file kmcp.yaml --image {{.DELIVERY_MCP_IMAGE}} --namespace tools
         --transport http --port 8080 --dry-run --no-inspector

@@ -4,6 +4,11 @@
 #   token.sh developer            a user (password grant through client demo-cli)
 #   token.sh alert-automation     the machine client (client credentials)
 #   token.sh developer --claims   the decoded claims instead of the token
+#   token.sh developer --other-audience
+#                                 a real token for the same user and issuer that
+#                                 does not carry the audience `agentgateway`
+#                                 (Keycloak's built-in admin-cli client); for
+#                                 checks that the gateway refuses it
 #
 # Users: developer, developer-other-team, incident-manager, platform-engineer.
 # The passwords and the client secret are demo-only values; they are read from
@@ -27,6 +32,8 @@ if [ "${who}" = "alert-automation" ]; then
     --data-urlencode "client_secret=${secret}" \
     "${token_url}")"
 else
+  client="demo-cli"
+  if [ "${mode}" = "--other-audience" ]; then client="admin-cli"; fi
   password="$(jq -r --arg u "${who}" '.users[] | select(.username == $u) | .credentials[0].value // empty' "${realm_file}")"
   if [ -z "${password}" ]; then
     echo "unknown user '${who}'. Users: $(jq -r '[.users[] | select(.credentials) | .username] | join(", ")' "${realm_file}"); machine client: alert-automation" >&2
@@ -34,7 +41,7 @@ else
   fi
   response="$(curl --silent --show-error --max-time 15 \
     -d grant_type=password \
-    -d client_id=demo-cli \
+    -d "client_id=${client}" \
     -d "username=${who}" \
     --data-urlencode "password=${password}" \
     "${token_url}")"

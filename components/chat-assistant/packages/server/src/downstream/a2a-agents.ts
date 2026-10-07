@@ -137,7 +137,7 @@ export class A2aJsonRpcAgent {
 /**
  * The Strands agents answer with words and a data part
  * `{action, outcome, refusal, ...}`. A `refusal` object from delivery-mcp is
- * recognised in `send`. `outcome: "rejected"` means the agent's own tool call
+ * recognized in `send`. `outcome: "rejected"` means the agent's own tool call
  * was turned away before it reached the service, which is the gateway's doing.
  * Any other outcome than `expected` is a failure, reported in the agent's words.
  */

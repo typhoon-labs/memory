@@ -7,7 +7,7 @@ description: Runbook for an alert on the Sample App's search-service. Use it whe
 ### What it is
 
 - Deployment `search-service` in namespace `sample-app`, owned by team `search`. It answers `GET /search?q=`; the `web` service calls it for `/api/search`.
-- One container. Its image is `<registry>/search-service:<version>`, and the image tag is the version. The behaviour of a version is fixed in its image: there is no setting, flag or ConfigMap that changes it.
+- One container. Its image is `<registry>/search-service:<version>`, and the image tag is the version. The behavior of a version is fixed in its image: there is no setting, flag or ConfigMap that changes it.
 - `/healthz` answers 200 even when every search fails. A pod that is Running and Ready with no restarts is therefore not proof that the service works. Only its log is.
 - The log is JSON, one object per line. Every request is one line with `"msg":"request"` and its `status`. A failed search adds a line with `"level":"error"` and `"msg":"search failed"`, carrying `error_type`, `error` and `stack`.
 

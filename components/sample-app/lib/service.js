@@ -62,7 +62,7 @@ export function createService({ name, routes }) {
   configureLog({ service: name, version });
 
   const metrics = new Registry({ service_name: name, version });
-  metrics.gauge('app_info', 'Constant 1, labelled with the running version.', () => 1);
+  metrics.gauge('app_info', 'Constant 1, labeled with the running version.', () => 1);
   metrics.gauge('process_start_time_seconds', 'Start time of the process, in seconds since the Unix epoch.', () =>
     Math.round(Date.now() / 1000 - process.uptime()),
   );

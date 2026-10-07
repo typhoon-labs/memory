@@ -506,7 +506,7 @@ class Driver:
                 service="search-service",
                 severity="sev2",
                 summary="Every search on the Sample App returns an error",
-                impact="Users cannot search the catalogue; registration is unaffected",
+                impact="Users cannot search the catalog; registration is unaffected",
             )
             check(not is_error, f"incident opened: {incident.get('incident_id')}")
             incident_id = incident["incident_id"]
@@ -543,7 +543,7 @@ class Driver:
                 time.sleep(0.5)
                 card = self.card("developer")
             self.timings["break_to_card"] = time.monotonic() - broke_at
-            check(card.get("fact-incident-value") == incident_id, "its card is there for a developer")
+            check(card.get("incident-id") == incident_id, "its card is there for a developer")
             print(
                 f"      the hook opened it {self.timings['break_to_hook']:.1f}s after the release started;"
                 f" the card was there at {self.timings['break_to_card']:.1f}s"
@@ -578,8 +578,8 @@ class Driver:
             check(diagnosis["recommended_version"] == "2.0.0", "it recommends 2.0.0")
             check(len(diagnosis["evidence"]) >= 2, f"with {len(diagnosis['evidence'])} pieces of evidence")
             check(
-                card.get("change", "").endswith("roll back search-service to 2.0.0."),
-                f'the card shows the recommendation: "{card.get("change")}"',
+                (card.get("change-heading"), card.get("change-id")) == ("Rollback to 2.0.0", "Not proposed yet"),
+                f'the card shows the recommendation: "{card.get("change-heading")}", "{card.get("change-id")}"',
             )
             print(
                 f"      the diagnosis was on the card {self.timings['break_to_diagnosis']:.1f}s after the"
@@ -715,7 +715,7 @@ class Driver:
         if a.alert != "direct":
             card = self.card("incident-manager")
             check(
-                (card.get("fact-status-value"), card.get("fact-version-value")) == ("resolved", "2.0.0"),
+                (card.get("status"), card.get("service")) == ("Resolved", "search-service, running 2.0.0"),
                 "an incident-manager's card says resolved, running 2.0.0",
             )
         if a.alert == "real":

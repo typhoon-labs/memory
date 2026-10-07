@@ -10,7 +10,7 @@
  * It implements just enough OpenID Connect for the same client code paths as
  * Keycloak: discovery, JWKS, authorization code with PKCE (S256) for the
  * browser, and the password and client-credentials grants for scripts.
- * The users mirror the realm in agent-platform/docs/conventions.md.
+ * The users mirror the realm in docs/contracts.md.
  */
 import { createHash, randomBytes } from 'node:crypto';
 import express, { Router } from 'express';

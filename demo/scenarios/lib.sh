@@ -1,13 +1,8 @@
 # Shared by the scenario scripts. Sourced, not run.
 #
-# Always the repo-local kubeconfig and our context, whatever the caller
-# exported: with any other kubeconfig the context does not exist and the
-# command fails before it changes anything.
+# The kubeconfig, the context, `k` and `h` come from scripts/lib/cluster.sh.
 repo="$(cd "$(dirname "$0")/../.." && pwd)"
-kubeconfig="${repo}/local/kind/kubeconfig"
-context="kind-agentgateway-demo"
-k() { kubectl --kubeconfig "${kubeconfig}" --context "${context}" "$@"; }
-h() { helm --kubeconfig "${kubeconfig}" --kube-context "${context}" "$@"; }
+. "${repo}/scripts/lib/cluster.sh"
 
 web_url="${WEB_URL:-http://localhost:18082}"
 gateway_url="${GATEWAY_URL:-http://localhost:18080}"

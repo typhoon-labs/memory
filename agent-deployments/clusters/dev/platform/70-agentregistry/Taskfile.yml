@@ -1,8 +1,8 @@
 # Agentregistry tasks. Included by the root Taskfile as `registry:`.
 #
 #   task registry:install     install or upgrade the registry (catalog only)
-#   task registry:arctl       download the arctl CLI into .bin/ (git-ignored)
-#   task registry:publish     publish the entries under catalog/ (safe to re-run)
+#   task registry:arctl       download the arctl CLI into .tools/bin (git-ignored)
+#   task registry:publish     publish every catalog.yaml (safe to re-run)
 #   task registry:status      pods, memory, addresses, and what is published
 #   task registry:uninstall   remove the registry and its data
 #
@@ -23,20 +23,20 @@ tasks:
       - task: status
 
   arctl:
-    desc: Download the arctl CLI into .bin/ (git-ignored, checksum verified)
+    desc: Download the arctl CLI into .tools/bin (git-ignored, checksum verified)
     cmds:
-      - "{{.TASKFILE_DIR}}/get-arctl.sh"
+      - "{{.TASKFILE_DIR}}/scripts/get-arctl.sh"
 
   publish:
     desc: "Publish the catalog entries (safe to re-run); `-- --dry-run` only validates"
     cmds:
-      - "{{.TASKFILE_DIR}}/publish.sh {{.CLI_ARGS}}"
+      - "{{.TASKFILE_DIR}}/scripts/publish.sh {{.CLI_ARGS}}"
 
   status:
     desc: Show Agentregistry pods, memory, addresses and the published entries
     silent: true
     cmds:
-      - "{{.TASKFILE_DIR}}/status.sh"
+      - "{{.TASKFILE_DIR}}/scripts/status.sh"
 
   uninstall:
     desc: Remove Agentregistry and its data; the entries are published again with `task registry:publish`
@@ -53,4 +53,4 @@ tasks:
       - sh: test "$(kubectl --kubeconfig "{{.ROOT_DIR}}/local/kind/kubeconfig" config current-context 2>/dev/null)" = "kind-agentgateway-demo"
         msg: |
           {{.ROOT_DIR}}/local/kind/kubeconfig is missing or its context is not kind-agentgateway-demo.
-          Nothing was changed. Run `task up` to create the cluster and the kubeconfig.
+          Nothing was changed. Run `task up:trunk` to create the cluster and the kubeconfig.

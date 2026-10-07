@@ -1,8 +1,8 @@
 # Loki as one process with local storage. Stands in for the log side of the
-# organisation's operational backend; exists only on kind.
+# organization's operational backend; exists only on kind.
 #
 # Values for the release `loki` in
-# agent-deployments/clusters/dev/platform/50-observability/helmfile.yaml, which
+# agent-deployments/clusters/dev/platform/40-observability/helmfile.yaml, which
 # pins the chart version. Starting point: the "local storage" option of
 # https://agentgateway.dev/docs/kubernetes/latest/documentation/observability/otel-stack/
 #

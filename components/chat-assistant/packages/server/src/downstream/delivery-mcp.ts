@@ -1,7 +1,7 @@
 /**
  * delivery-mcp over MCP Streamable HTTP, called as the signed-in caller.
  * One MCP session per bearer token, kept for a short while so that the
- * 2-second card poll does not re-initialise on every request.
+ * 2-second card poll does not re-initialize on every request.
  */
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport, StreamableHTTPError } from '@modelcontextprotocol/sdk/client/streamableHttp.js';

@@ -3,7 +3,7 @@
 #
 #   task registry:install       this file only
 #   task deploy -- -l name=agentregistry
-#   task registry:publish       the entries under catalog/
+#   task registry:publish       every catalog.yaml of a component or workload
 #
 # A catalog only. It writes nothing to the cluster; values.yaml says how that
 # is enforced.

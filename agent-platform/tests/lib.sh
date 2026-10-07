@@ -1,19 +1,30 @@
 # Shared by the denied-path checks in this directory, and by the backup drills
-# in demo/backup/. Sourced, not run, by a script two directories below the
-# repository root.
+# in demo/backup/. Sourced, not run.
 #
 # Each check proves two halves: the path around the control fails, and the
 # governed path next to it works. A check prints one line saying what it is
 # about to show, one line per attempt, and one line with the result, and
 # exits non-zero when either half is not as expected.
 #
-# Always the repo-local kubeconfig and our context, whatever the caller
-# exported: with any other kubeconfig the context does not exist and the
-# command fails before it changes anything.
-repo="$(cd "$(dirname "$0")/../.." && pwd)"
-tests="${repo}/agent-platform/tests"
-kubeconfig="${repo}/local/kind/kubeconfig"
-context="kind-agentgateway-demo"
+# Which cluster, and whose tokens, come from the environment, so that the same
+# checks run against any cluster that carries the platform:
+#
+#   PLATFORM_KUBECONFIG   the kubeconfig file
+#   PLATFORM_CONTEXT      the context in it. It is named on every command:
+#                         with any other kubeconfig it does not exist, and the
+#                         command fails before it changes anything
+#   PLATFORM_TOKEN_CMD    a command that prints an access token for the
+#                         identity given as its argument
+#
+# Nothing here falls back to the default kubeconfig or the current context.
+# For the dev cluster the root Taskfile sets all three, and so does
+# scripts/lib/cluster.sh for a script that sources it first.
+kubeconfig="${PLATFORM_KUBECONFIG:?set PLATFORM_KUBECONFIG, PLATFORM_CONTEXT and PLATFORM_TOKEN_CMD (the tasks do; see agent-platform/tests/lib.sh)}"
+context="${PLATFORM_CONTEXT:?set PLATFORM_CONTEXT (see agent-platform/tests/lib.sh)}"
+: "${PLATFORM_TOKEN_CMD:?set PLATFORM_TOKEN_CMD (see agent-platform/tests/lib.sh)}"
+# This directory: of the check that was started, unless the caller is a
+# script elsewhere and has set `tests` already.
+tests="${tests:-$(cd "$(dirname "$0")" && pwd)}"
 k() { kubectl --kubeconfig "${kubeconfig}" --context "${context}" "$@"; }
 h() { helm --kubeconfig "${kubeconfig}" --kube-context "${context}" "$@"; }
 
@@ -21,7 +32,7 @@ h() { helm --kubeconfig "${kubeconfig}" --kube-context "${context}" "$@"; }
 gateway_url="${GATEWAY_URL:-http://localhost:18080}"
 gateway_in_cluster="http://agentgateway-proxy.agentgateway-system.svc.cluster.local"
 
-token() { "${repo}/local/identity/token.sh" "$1"; }
+token() { "${PLATFORM_TOKEN_CMD}" "$1"; }
 
 failures=0
 showing() { printf 'Showing: %s\n' "$*"; }

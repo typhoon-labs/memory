@@ -4,8 +4,9 @@
     mcp.py URL IDENTITY list                    the tool names the caller is offered
     mcp.py URL IDENTITY call TOOL JSON-ARGS     one tools/call
 
-IDENTITY is a user or `alert-automation`, as for local/identity/token.sh, or
-`-` to send no token. The session is opened first (`initialize`), and a
+IDENTITY is passed to the command in PLATFORM_TOKEN_CMD, which prints an access
+token for it (for the dev cluster: a user or `alert-automation`), or is `-` to
+send no token. The session is opened first (`initialize`), and a
 session id is carried when the route gives one: /mcp/observability does,
 /mcp/delivery is stateless.
 
@@ -23,13 +24,12 @@ Standard library only.
 from __future__ import annotations
 
 import json
-import pathlib
+import os
 import subprocess
 import sys
 import urllib.error
 import urllib.request
 
-REPO = pathlib.Path(__file__).resolve().parents[2]
 PROTOCOL = "2025-06-18"
 
 
@@ -64,7 +64,7 @@ def main() -> int:
     headers = {"Accept": "application/json, text/event-stream"}
     if identity != "-":
         token = subprocess.run(
-            [str(REPO / "local/identity/token.sh"), identity], capture_output=True, text=True, check=True
+            [os.environ["PLATFORM_TOKEN_CMD"], identity], capture_output=True, text=True, check=True
         ).stdout.strip()
         headers["Authorization"] = f"Bearer {token}"
 

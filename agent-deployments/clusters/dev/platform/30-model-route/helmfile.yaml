@@ -1,7 +1,10 @@
 # The model route: one LLM backend behind the gateway, a valid token required.
 #
-#   model-route-auth   who may call it     values: agent-deployments/access/
-#   model-route        where it goes       values: ../model-provider.yaml
+#   model-route-auth   who may call it     values: access.yaml, and whose
+#                                          tokens count: ../../identity.yaml
+#   model-route        where it goes       values: model-provider.yaml, and
+#                                          the provider `task model` switched
+#                                          to, if any: selection.yaml.gotmpl
 commonLabels:
   layer: trunk
 
@@ -16,8 +19,8 @@ releases:
     namespace: agentgateway-system
     chart: ../../../../../agent-platform/policies/agentgateway/route-auth
     values:
-      - ../../../../access/identity.yaml
-      - ../../../../access/model-route.yaml
+      - ../../identity.yaml
+      - access.yaml
 
   - name: model-route
     namespace: agentgateway-system
@@ -26,4 +29,6 @@ releases:
     needs:
       - agentgateway-system/model-route-auth
     values:
-      - ../model-provider.yaml
+      - model-provider.yaml
+      # After it, so that the choice kept in the cluster wins.
+      - selection.yaml.gotmpl

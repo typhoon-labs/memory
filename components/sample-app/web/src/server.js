@@ -1,9 +1,13 @@
 // web: the pages, and a proxy from /api/* to the two backends.
 //
+// The pages are one React app, built by Vite into ../ui/dist (see ../ui). Home,
+// Search and Register get the same HTML, and the app draws the page for the
+// address.
+//
 // A failing backend never takes this service down. The API answers with the
 // backend's status (or 502/504 when it cannot be reached) and the pages draw
 // the error state.
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { createService, errorFields, log, readBody } from '../../lib/service.js';
 
 const backend = (value, fallback) => (value || fallback).replace(/\/+$/, '');
@@ -12,30 +16,41 @@ const REGISTRATION_URL = backend(process.env.REGISTRATION_SERVICE_URL, 'http://l
 
 const here = (path) => new URL(path, import.meta.url);
 const seedFile = process.env.SEED_FILE || here('../../seed/catalog.json');
-const { title, description, suggestions = [] } = JSON.parse(readFileSync(seedFile, 'utf8'));
+const { title, description = '', suggestions = [] } = JSON.parse(readFileSync(seedFile, 'utf8'));
+
+const dist = here('../ui/dist/');
+if (!existsSync(dist)) {
+  throw new Error('web/ui/dist is missing. Build the pages first: `npm ci && npm run build` in web/ui (`task test` and the image do this).');
+}
 
 const escapeHtml = (text) =>
   String(text).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
-const fill = (template, values) => template.replace(/\{\{(\w+)\}\}/g, (_, key) => values[key] ?? '');
-
-// Pages are put together once, at start: layout + page body + seed values.
-const layout = readFileSync(here('../pages/layout.html'), 'utf8');
-const chips = suggestions.map((text) => `<button type="button" class="chip" data-q="${escapeHtml(text)}">${escapeHtml(text)}</button>`).join('');
-
-function page(file, name) {
-  const values = { title: escapeHtml(title), description: escapeHtml(description ?? ''), chips, page: name, script: `${file}.js` };
-  const body = fill(layout, { ...values, content: fill(readFileSync(here(`../pages/${file}.html`), 'utf8'), values) });
-  return () => ({ body, type: 'text/html; charset=utf-8', headers: NO_STORE });
-}
 
 const NO_STORE = { 'cache-control': 'no-store' };
-const TYPES = { css: 'text/css; charset=utf-8', js: 'text/javascript; charset=utf-8' };
+const NO_CACHE = { 'cache-control': 'no-cache' };
+// Vite puts a hash of the content in the name of every file under assets/.
+const IMMUTABLE = { 'cache-control': 'public, max-age=31536000, immutable' };
+const TYPES = {
+  css: 'text/css; charset=utf-8',
+  js: 'text/javascript; charset=utf-8',
+  svg: 'image/svg+xml',
+  woff2: 'font/woff2',
+};
+
+// Read once, at start. The title comes from the seed; the app sets the rest.
+const shell = readFileSync(new URL('index.html', dist), 'utf8').replace('{{title}}', escapeHtml(title));
+const page = () => ({ body: shell, type: 'text/html; charset=utf-8', headers: NO_STORE });
+
 const assets = Object.fromEntries(
-  readdirSync(here('../public/')).map((file) => {
-    const body = readFileSync(here(`../public/${file}`));
-    const type = TYPES[file.split('.').pop()] ?? 'application/octet-stream';
-    return [`GET /static/${file}`, { label: '/static/*', handler: () => ({ body, type, headers: { 'cache-control': 'no-cache' } }) }];
-  }),
+  readdirSync(dist, { recursive: true })
+    .filter((file) => file !== 'index.html' && statSync(new URL(file, dist)).isFile())
+    .map((file) => {
+      const body = readFileSync(new URL(file, dist));
+      const type = TYPES[file.split('.').pop()] ?? 'application/octet-stream';
+      const hashed = file.startsWith('assets/');
+      const answer = { body, type, headers: hashed ? IMMUTABLE : NO_CACHE };
+      return [`GET /${file}`, { label: hashed ? '/assets/*' : `/${file}`, handler: () => answer }];
+    }),
 );
 
 // Passes the backend's answer through unchanged, so a backend 500 is a 500 here.
@@ -81,10 +96,13 @@ async function health(base) {
 const service = createService({
   name: 'web',
   routes: {
-    'GET /': page('home', 'Home'),
-    'GET /search': page('search', 'Search'),
-    'GET /register': page('register', 'Register'),
+    'GET /': page,
+    'GET /search': page,
+    'GET /register': page,
     ...assets,
+
+    // What the pages show from the seed file.
+    'GET /api/site': () => ({ json: { title, description, suggestions }, headers: NO_STORE }),
 
     'GET /api/search': ({ query }) => {
       const forwarded = new URLSearchParams({ q: query.get('q') ?? '' });

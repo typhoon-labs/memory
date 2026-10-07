@@ -20,6 +20,8 @@ __pycache__/
 # kmcp and MCP Inspector
 .mcpbuilder.yaml
 mcp-server-config.json
+# Rendered by `task kmcp:manifest`; the dev cluster does not use it.
+deploy/
 
 # Local run: process IDs and logs
 .run/

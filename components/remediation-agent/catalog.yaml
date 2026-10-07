@@ -1,0 +1,28 @@
+# Catalog entry for remediation-agent. Facts from docs/contracts.md
+# and agent-deployments/clusters/dev/workloads/remediation-agent/.
+#
+# No `source.image`, so that the registry's UI offers no Deploy button: see
+# components/chat-assistant/catalog.yaml.
+apiVersion: ar.dev/v1alpha1
+kind: Agent
+metadata:
+  name: remediation-agent
+  labels:
+    built-with: strands
+    runs-in: agents
+    version: 0.1.1
+spec:
+  title: Remediation agent
+  description: >-
+    Applies an approved change and reports the verified result. Called with
+    {"action": "apply_and_verify", "change_id": "..."}, it calls apply_change on
+    delivery-mcp with the caller's own token, follows the change through
+    applying and verifying, and words the result in two sentences. It decides
+    nothing: whether the change may be applied is the gateway's and
+    delivery-mcp's answer to the caller. A2A 0.3 over JSON-RPC, streamed.
+    Gateway route /a2a/remediation-agent, for role platform-engineer only.
+  source:
+    protocol: A2A
+  mcpServers:
+    - kind: MCPServer
+      name: delivery-mcp

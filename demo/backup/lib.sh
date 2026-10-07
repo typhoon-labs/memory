@@ -4,9 +4,13 @@
 # what it is about to show, one entry per step, and one line with the result,
 # and it puts back whatever it changed, also when it is interrupted.
 #
-# The output helpers, the kubeconfig and the MCP client are the platform
-# tests' (agent-platform/tests/lib.sh).
-. "$(dirname "$0")/../../agent-platform/tests/lib.sh"
+# The output helpers and the MCP client are the platform tests'
+# (agent-platform/tests/lib.sh); which cluster and whose tokens they use is
+# this demo's (scripts/lib/cluster.sh).
+repo="$(cd "$(dirname "$0")/../.." && pwd)"
+. "${repo}/scripts/lib/cluster.sh"
+tests="${repo}/agent-platform/tests"
+. "${tests}/lib.sh"
 
 # One A2A `message/send` through the gateway, as JSON on stdout.
 # a2a_send <route path> <identity> <request as JSON>

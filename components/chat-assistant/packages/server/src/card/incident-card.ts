@@ -1,21 +1,26 @@
 /**
- * The incident card, built by code from `get_incident` with components of the
- * A2UI basic catalog (v0.9.1). No model is involved.
+ * The incident card, built by code from `get_incident`. No model is involved.
+ * Its components are A2UI's basic catalog (v0.9.1) and the four of the
+ * incident catalog: Steps, Step, Badge and Notice
+ * (packages/ui/src/incident-catalog.ts).
  *
- * Everyone sees the same body. The action row depends on the viewer's roles.
- * Which buttons are shown or enabled is presentation only: whether an action
- * is allowed is decided by the gateway and by delivery-mcp when it is sent.
+ * The middle of the card is the change's five steps. Each step names the role
+ * that owns it, and a viewer's controls sit on the step their role performs,
+ * so everyone sees the same steps and only the controls differ. Which controls
+ * are shown or enabled is presentation only: whether an action is allowed is
+ * decided by the gateway and by delivery-mcp when it is sent.
  *
  * Layout rule: as an incident moves on, components are added but never taken
  * away. A2UI's `updateComponents` adds or updates components and cannot remove
  * one, so a control that does not apply is disabled (a `checks` rule bound to
- * the data model under `/can`) rather than left out. Every step of an incident,
- * including the diagnosis arriving, is then an update in place: nothing is left
- * behind, and a button a viewer is about to press is not replaced under them.
+ * the data model under `/can`) and its step stops drawing it (`open`), rather
+ * than left out. Every step of an incident, including the diagnosis arriving,
+ * is then an update in place: nothing is left behind, and a button a viewer is
+ * about to press is not replaced under them.
  */
 import { createHash } from 'node:crypto';
 import type { DiagnosisStatus } from '../diagnosis-status.js';
-import type { Change, Incident } from '../downstream/types.js';
+import type { Incident } from '../downstream/types.js';
 
 export interface Viewer {
   user: string;
@@ -23,7 +28,7 @@ export interface Viewer {
   team?: string;
 }
 
-/** One basic-catalog component: `id`, `component`, then that component's properties. */
+/** One catalog component: `id`, `component`, then that component's properties. */
 export type Component = { id: string; component: string } & Record<string, unknown>;
 
 /** Which of the viewer's buttons are enabled. Bound from the buttons' `checks`. */
@@ -33,6 +38,21 @@ export interface Can {
   apply: boolean;
   restart: boolean;
 }
+
+/**
+ * What the viewer's last action came to, when it was refused or failed. `slot`
+ * names the controls it belongs to; the Notice beside those controls draws it.
+ */
+export interface Notice {
+  slot: string;
+  /** Who said no, `gateway` or `service`; `failed` for anything else. */
+  tone: string;
+  title: string;
+  text: string;
+  rule: string;
+}
+
+export const NO_NOTICE: Notice = { slot: '', tone: '', title: '', text: '', rule: '' };
 
 export interface CardSurface {
   surfaceId: string;
@@ -45,14 +65,14 @@ export interface CardSurface {
    */
   layout: string[];
   components: Component[];
-  /** Initial data model. `reject`, `draft`, `propose` and `notice` belong to the viewer afterwards. */
+  /** Initial data model. `reject`, `draft`, `propose` and `notice` belong to the viewer afterward. */
   model: {
     meta: { version: string; layout: string[]; incidentId: string };
     can: Can;
     reject: { reason: string };
     draft: { text: string };
     propose: { version: string };
-    notice: { text: string };
+    notice: Notice;
   };
 }
 
@@ -66,6 +86,17 @@ export const ACTIONS = {
   post: 'post_status_update',
 } as const;
 
+/** The Notice an action's outcome is shown in: the one beside the button that was pressed. */
+export const NOTICE_SLOT: Record<string, string> = {
+  [ACTIONS.propose]: 'propose',
+  [ACTIONS.approve]: 'approve',
+  [ACTIONS.reject]: 'approve',
+  [ACTIONS.apply]: 'apply',
+  [ACTIONS.restart]: 'restart',
+  [ACTIONS.draft]: 'update',
+  [ACTIONS.post]: 'update',
+};
+
 const KNOWN_ROLES = ['developer', 'incident-manager', 'platform-engineer'];
 const IN_FLIGHT = ['applying', 'verifying'];
 const ACTIVE = ['proposed', 'approved', ...IN_FLIGHT];
@@ -75,61 +106,56 @@ export function surfaceIdFor(incidentId: string): string {
   return `incident-${incidentId.replace(/[^A-Za-z0-9_-]/g, '_')}`;
 }
 
-/** The five milestones of a change, each marked done, in progress, failed or pending. */
-export function progressSteps(incident: Incident): { label: string; state: 'done' | 'current' | 'failed' | 'pending' }[] {
-  const status = incident.change?.status;
-  const order = ['proposed', 'approved', 'applying', 'verifying', 'applied'];
-  const reached = status ? order.indexOf(status) : -1;
+export type StepKey = 'propose' | 'approve' | 'apply' | 'verify' | 'resolve';
+export type StepState = 'done' | 'current' | 'failed' | 'pending';
+
+/** Each step's name before it starts, while it runs and once it is done. */
+const STEP_NAMES: Record<StepKey, [pending: string, current: string, done: string]> = {
+  propose: ['Propose', 'Proposing', 'Proposed'],
+  approve: ['Approve', 'Approving', 'Approved'],
+  apply: ['Apply', 'Applying', 'Applied'],
+  verify: ['Verify', 'Verifying', 'Verified'],
+  resolve: ['Resolved', 'Resolved', 'Resolved'],
+};
+const STEPS = Object.keys(STEP_NAMES) as StepKey[];
+
+/** The five steps of a change, each done, in progress, failed or pending, and named in that tense. */
+export function progressSteps(incident: Incident): { key: StepKey; label: string; state: StepState }[] {
+  const change = incident.change;
+  const status = change?.status;
+  const reached = status ? ['proposed', 'approved', 'applying', 'verifying', 'applied'].indexOf(status) : -1;
   const resolved = incident.status === 'resolved' || status === 'applied';
-  const labels = ['Proposed', 'Approved', 'Applying', 'Verifying', 'Resolved'];
-  if (status === 'rejected') {
-    return [
-      { label: 'Proposed', state: 'done' },
-      { label: 'Rejected', state: 'failed' },
-      ...labels.slice(2).map((label) => ({ label, state: 'pending' as const })),
-    ];
-  }
-  if (status === 'failed') {
-    return [
-      { label: 'Proposed', state: 'done' },
-      { label: 'Approved', state: 'done' },
-      { label: 'Apply failed', state: 'failed' },
-      ...labels.slice(3).map((label) => ({ label, state: 'pending' as const })),
-    ];
-  }
-  return labels.map((label, i) => {
-    if (resolved) return { label, state: 'done' as const };
-    if (i < reached) return { label, state: 'done' as const };
-    if (i === reached) return { label, state: IN_FLIGHT.includes(order[i]!) ? ('current' as const) : ('done' as const) };
-    return { label, state: 'pending' as const };
+  // A change fails while it is applied or while it is verified; its history says which.
+  const failedAt = status === 'rejected' ? 1 : status === 'failed' ? (change?.at?.verifying ? 3 : 2) : -1;
+  const FAILED: Partial<Record<StepKey, string>> = { approve: 'Rejected', apply: 'Apply failed', verify: 'Not verified' };
+
+  return STEPS.map((key, i) => {
+    let state: StepState;
+    if (resolved) state = 'done';
+    else if (failedAt >= 0) state = i < failedAt ? 'done' : i === failedAt ? 'failed' : 'pending';
+    else if (i < reached) state = 'done';
+    else if (i === reached) state = IN_FLIGHT.includes(status!) ? 'current' : 'done';
+    else state = 'pending';
+    const [pending, current, done] = STEP_NAMES[key];
+    const label = state === 'failed' ? FAILED[key]! : state === 'done' ? done : state === 'current' ? current : pending;
+    return { key, label, state };
   });
 }
 
-const MARK = { done: '✓', current: '●', failed: '✕', pending: '○' } as const;
-
-function clock(at: string | undefined, seconds = false): string {
+/** A time of day in UTC, as `HH:MM` or `HH:MM:SS`; empty for no time or one that cannot be read. */
+export function clock(at: string | undefined, seconds = false): string {
   if (!at) return '';
   const d = new Date(at);
-  return Number.isNaN(d.getTime()) ? '' : `${d.toISOString().slice(11, seconds ? 19 : 16)} `;
+  return Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(11, seconds ? 19 : 16);
 }
 
-function changeLine(service: string, change: Change | undefined, recommended: string | undefined, diagnosing: boolean): string {
-  if (!change) {
-    return recommended
-      ? `No change proposed yet. Recommended: roll back ${service} to ${recommended}.`
-      : diagnosing
-        ? 'No change proposed yet. Waiting for the diagnosis to recommend a version.'
-        : 'No change proposed yet.';
-  }
-  const people = [
-    change.proposed_by && `proposed by ${change.proposed_by}`,
-    change.approved_by && `approved by ${change.approved_by}`,
-    change.rejected_by && `rejected by ${change.rejected_by}`,
-    change.applied_by && `applied by ${change.applied_by}`,
-  ].filter(Boolean);
-  const reason = change.status === 'rejected' && change.reject_reason ? ` Reason: ${change.reject_reason}` : '';
-  return `Roll back ${service} to ${change.target_version} (${change.id}): ${people.join(', ') || 'no one recorded'}.${reason}`;
-}
+const capitalized = (word: string) => word.charAt(0).toUpperCase() + word.slice(1);
+
+const STATUS_BADGE: Record<string, { tone: string; icon: string }> = {
+  open: { tone: 'red', icon: 'dot' },
+  mitigating: { tone: 'amber', icon: 'dot' },
+  resolved: { tone: 'green', icon: 'check' },
+};
 
 /**
  * @param diagnosis where the alert hook's diagnosis stands, while the incident record has none
@@ -140,242 +166,275 @@ export function buildIncidentCard(incident: Incident, viewer: Viewer, diagnosis?
     components.push(c);
     return c.id;
   };
-  const text = (id: string, value: unknown, variant = 'body') => add({ id, component: 'Text', text: value, variant });
+  const text = (id: string, value: unknown, variant = 'body', extra: Record<string, unknown> = {}) =>
+    add({ id, component: 'Text', text: value, variant, ...extra });
   const column = (id: string, children: string[], extra: Record<string, unknown> = {}) =>
     add({ id, component: 'Column', children, ...extra });
   const row = (id: string, children: string[], extra: Record<string, unknown> = {}) =>
     add({ id, component: 'Row', children, ...extra });
-  const divider = (id: string) => add({ id, component: 'Divider' });
+  const badge = (id: string, value: string, tone: string, icon: string) => add({ id, component: 'Badge', text: value, tone, icon });
   const button = (id: string, label: string, action: unknown, extra: Record<string, unknown> = {}) =>
     add({ id, component: 'Button', child: text(`${id}-label`, label), action, ...extra });
+  // Drawn beside the controls it names, and only while the viewer's last action there was refused or failed.
+  const notice = (slot: string) =>
+    add({
+      id: `${slot}-notice`,
+      component: 'Notice',
+      slot,
+      active: { path: '/notice/slot' },
+      tone: { path: '/notice/tone' },
+      title: { path: '/notice/title' },
+      text: { path: '/notice/text' },
+      rule: { path: '/notice/rule' },
+    });
   const event = (name: string, context: Record<string, unknown>) => ({ event: { name, context } });
   const enabledWhen = (path: string, message: string) => ({ condition: { path }, message });
   const filled = (path: string, message: string) => ({
     condition: { call: 'required', args: { value: { path } }, returnType: 'boolean' },
     message,
   });
-  const fact = (id: string, label: string, value: string) =>
-    // An en dash for a value that is not known: the renderer reads text as Markdown, where a
-    // lone hyphen is an empty list item (delivery-mcp reports no running version before a change).
-    column(id, [text(`${id}-label`, label, 'caption'), text(`${id}-value`, value || '–')]);
 
   const change = incident.change;
   const status = change?.status;
   const resolved = incident.status === 'resolved';
   const active = change && ACTIVE.includes(change.status) ? change : undefined;
   const inFlight = !!status && IN_FLIGHT.includes(status);
-  const body: string[] = [];
-  /** The cause and its evidence: below the viewer's actions, so that however long the evidence is, the buttons stay near the top and do not move when it arrives. */
-  const details: string[] = [];
+  const recommended = incident.recommended_version;
+  const diagnosing = !incident.suspected_cause && diagnosis?.state === 'running';
+  const roles = viewer.roles.filter((r) => KNOWN_ROLES.includes(r));
+  const has = (role: string) => roles.includes(role);
+  const ctx = { incident_id: incident.id };
 
-  // --- Body: the same for every viewer ---
-  body.push(text('title', incident.summary || `${incident.service} incident`, 'h3'));
+  // A new change can be proposed while none is under way: at the start, and after a rejection or a failure.
+  const proposable = !resolved && !active && status !== 'applied';
+  const can: Can = {
+    // With no recommendation and no diagnosis running, the developer may name the version themselves.
+    propose: proposable && (!!recommended || !diagnosing),
+    approve: status === 'proposed',
+    // A proposed change can be sent for applying too. Whether it is applied is delivery-mcp's rule
+    // (`change_is_approved`), and the card shows the service's refusal rather than pre-empting it.
+    apply: status === 'proposed' || status === 'approved',
+    restart: !resolved,
+  };
+
+  const body: string[] = [];
+
+  // --- The incident: the same for every viewer, but for the engineer's Restart ---
+  const head = [text('title', incident.summary || `${incident.service} incident`, 'h3', { weight: 1 })];
+  if (has('platform-engineer')) {
+    head.push(
+      button('restart', `Restart ${incident.service}`, event(ACTIONS.restart, { ...ctx, service: incident.service }), {
+        checks: [enabledWhen('/can/restart', 'The incident is resolved')],
+      }),
+    );
+  }
+  body.push(row('head', head, { align: 'start' }));
+
+  const statusBadge = STATUS_BADGE[incident.status] ?? { tone: 'neutral', icon: 'dot' };
   body.push(
     row(
-      'facts',
+      'meta',
       [
-        fact('fact-incident', 'Incident', incident.id),
-        fact('fact-service', 'Service', incident.service),
-        fact('fact-severity', 'Severity', incident.severity),
-        fact('fact-status', 'Status', incident.status),
-        fact('fact-version', 'Running version', incident.current_version ?? ''),
+        badge('status', capitalized(incident.status), statusBadge.tone, statusBadge.icon),
+        badge('severity', capitalized(incident.severity), incident.severity === 'critical' ? 'red' : 'neutral', 'bars'),
+        text('service', `${incident.service}${incident.current_version ? `, running ${incident.current_version}` : ''}`, 'caption'),
+        text('incident-id', incident.id, 'caption'),
       ],
-      { justify: 'spaceBetween' },
+      { align: 'center' },
     ),
   );
 
-  body.push(text('impact-heading', 'Impact', 'h5'));
   if (typeof incident.impact === 'string') {
-    body.push(text('impact', incident.impact || 'Not recorded.'));
+    body.push(text('impact', incident.impact || 'No impact recorded.'));
   } else {
     body.push(
       row(
         'impact',
         Object.entries(incident.impact).map(([label, value], i) =>
-          column(`impact-${i}`, [text(`impact-${i}-value`, String(value), 'h4'), text(`impact-${i}-label`, label, 'caption')]),
+          column(`impact-${i}`, [text(`impact-${i}-value`, String(value), 'h4'), text(`impact-${i}-label`, label, 'caption')], { weight: 1 }),
         ),
-        { justify: 'start' },
       ),
     );
   }
+  if (has('platform-engineer')) body.push(notice('restart'));
 
-  const diagnosing = !incident.suspected_cause && diagnosis?.state === 'running';
-
-  body.push(divider('divider-change'));
-  body.push(text('change-heading', 'Proposed change', 'h5'));
-  body.push(text('change', changeLine(incident.service, change, incident.recommended_version, diagnosing)));
-  body.push(text('change-status', change ? `Change status: ${status}` : 'Change status: none'));
+  // --- The change: five steps, the viewer's controls on the steps their roles perform ---
+  const target = change?.target_version || recommended;
   body.push(
     row(
-      'progress',
-      progressSteps(incident).map((step, i) => text(`progress-${i}`, `${MARK[step.state]} ${step.label}`)),
-      { justify: 'spaceBetween' },
+      'change-head',
+      [
+        text('change-heading', target ? `Rollback to ${target}` : 'Rollback', 'h5'),
+        text('change-id', change ? change.id : recommended ? 'Not proposed yet' : 'No version recommended yet', 'caption'),
+      ],
+      { justify: 'spaceBetween', align: 'end' },
     ),
   );
 
-  // --- Action row: by role ---
-  body.push(divider('divider-actions'));
-  body.push(text('notice', { path: '/notice/text' }));
+  const controls: Partial<Record<StepKey, { child: string; open: boolean }>> = {};
 
-  const roles = viewer.roles.filter((r) => KNOWN_ROLES.includes(r));
-  const ctx = { incident_id: incident.id };
-  const can: Can = {
-    // With no recommendation and no diagnosis running, the developer may name the version themselves.
-    propose: !resolved && !active && status !== 'applied' && (!!incident.recommended_version || !diagnosing),
-    approve: status === 'proposed',
-    apply: status === 'approved',
-    restart: !resolved,
-  };
-
-  if (roles.includes('developer')) {
-    const recommended = incident.recommended_version;
+  if (has('developer')) {
     // No recommendation and none on its way: the developer names the version; the service checks it.
     const byHand = !recommended && !diagnosing;
-    body.push(text('developer-heading', 'Actions for developer', 'h5'));
-    body.push(
-      text(
-        'developer-note',
-        resolved
-          ? 'The incident is resolved. Nothing to do.'
-          : active
-            ? `The rollback to ${active.target_version} is ${active.status}. Nothing to do until it finishes or is rejected.`
-            : recommended
-              ? `The diagnosis recommends rolling ${incident.service} back to ${recommended}.`
-              : diagnosing
-                ? 'The diagnosis is running. Propose is enabled once it recommends a version.'
-                : 'No version is recommended. Enter the retained version to roll back to; the delivery service checks it.',
-      ),
-    );
-    // Always there, and empty unless the developer has to name the version: see the evidence list above.
-    body.push(
-      column(
-        'propose-by-hand',
-        byHand
-          ? [add({ id: 'propose-version', component: 'TextField', label: 'Version to roll back to', value: { path: '/propose/version' } })]
-          : [],
-      ),
-    );
-    body.push(
-      button(
-        'propose',
-        recommended ? `Propose rollback to ${recommended}` : 'Propose rollback',
-        event(ACTIONS.propose, { ...ctx, target_version: byHand ? { path: '/propose/version' } : (recommended ?? '') }),
-        {
-          variant: 'primary',
-          checks: [
-            enabledWhen('/can/propose', diagnosing ? 'Waiting for the diagnosis' : 'Nothing to propose right now'),
-            ...(byHand ? [filled('/propose/version', 'Enter a version')] : []),
-          ],
-        },
-      ),
-    );
+    controls.propose = {
+      open: proposable,
+      child: column('propose-controls', [
+        // Always there, and empty unless the developer has to name the version.
+        column(
+          'propose-by-hand',
+          byHand ? [add({ id: 'propose-version', component: 'TextField', label: 'Version to roll back to', value: { path: '/propose/version' } })] : [],
+        ),
+        button(
+          'propose',
+          recommended ? `Propose rollback to ${recommended}` : 'Propose rollback',
+          event(ACTIONS.propose, { ...ctx, target_version: byHand ? { path: '/propose/version' } : (recommended ?? '') }),
+          {
+            variant: 'primary',
+            checks: [
+              enabledWhen('/can/propose', diagnosing ? 'Waiting for the diagnosis' : 'Nothing to propose right now'),
+              ...(byHand ? [filled('/propose/version', 'Enter a version')] : []),
+            ],
+          },
+        ),
+        notice('propose'),
+      ]),
+    };
   }
 
-  if (roles.includes('incident-manager')) {
+  if (has('incident-manager')) {
     const proposed = status === 'proposed' ? change : undefined;
     const changeCtx = { ...ctx, change_id: proposed?.id ?? '' };
-    body.push(text('manager-heading', 'Actions for incident-manager', 'h5'));
-    body.push(
-      text(
-        'manager-note',
-        proposed
-          ? `${proposed.proposed_by ?? 'Someone'} proposed rolling back to ${proposed.target_version}. Approve or reject it.`
-          : status
-            ? `Nothing to approve: the change is ${status}.`
-            : 'Nothing to approve yet.',
-      ),
-    );
-    body.push(
-      button('approve', proposed ? `Approve rollback to ${proposed.target_version}` : 'Approve rollback', event(ACTIONS.approve, changeCtx), {
-        variant: 'primary',
-        checks: [enabledWhen('/can/approve', 'There is no proposed change to approve')],
-      }),
-    );
-    body.push(
-      row(
-        'reject-row',
-        [
+    controls.approve = {
+      open: can.approve,
+      child: column('approve-controls', [
+        button('approve', proposed ? `Approve rollback to ${proposed.target_version}` : 'Approve rollback', event(ACTIONS.approve, changeCtx), {
+          variant: 'primary',
+          checks: [enabledWhen('/can/approve', 'There is no proposed change to approve')],
+        }),
+        row('reject-row', [
           add({ id: 'reject-reason', component: 'TextField', label: 'Reason for rejecting', value: { path: '/reject/reason' }, weight: 1 }),
           button('reject', 'Reject', event(ACTIONS.reject, { ...changeCtx, reason: { path: '/reject/reason' } }), {
-            checks: [
-              enabledWhen('/can/approve', 'There is no proposed change to reject'),
-              filled('/reject/reason', 'Give a reason to reject'),
-            ],
+            checks: [enabledWhen('/can/approve', 'There is no proposed change to reject'), filled('/reject/reason', 'Give a reason to reject')],
           }),
-        ],
-        { align: 'end' },
-      ),
-    );
-    body.push(button('draft', 'Draft status update', event(ACTIONS.draft, ctx)));
-    body.push(
-      add({ id: 'draft-text', component: 'TextField', label: 'Status update draft', value: { path: '/draft/text' }, variant: 'longText' }),
-    );
-    body.push(
-      button('post', 'Post status update', event(ACTIONS.post, { ...ctx, text: { path: '/draft/text' } }), {
-        checks: [filled('/draft/text', 'Draft a status update first')],
-      }),
-    );
+        ]),
+        notice('approve'),
+      ]),
+    };
   }
 
-  if (roles.includes('platform-engineer')) {
-    const approved = status === 'approved' ? change : undefined;
-    body.push(text('engineer-heading', 'Actions for platform-engineer', 'h5'));
-    body.push(
-      text(
-        'engineer-note',
-        resolved
-          ? 'The incident is resolved. Nothing to do.'
-          : inFlight
-            ? `The rollback is ${status}.`
-            : approved
-              ? `The rollback to ${approved.target_version} is approved and ready to apply.`
-              : 'Apply is enabled once an incident-manager approves the change.',
-      ),
-    );
-    body.push(
-      row(
-        'engineer-row',
-        [
-          button(
-            'apply',
-            active ? `Apply rollback to ${active.target_version}` : 'Apply rollback',
-            event(ACTIONS.apply, { ...ctx, change_id: approved?.id ?? '' }),
-            // Enabled only once the change is approved.
-            {
-              variant: 'primary',
-              checks: [
-                enabledWhen(
-                  '/can/apply',
-                  resolved
-                    ? 'The incident is resolved'
-                    : inFlight
-                      ? 'The rollback is already running'
-                      : 'Waiting for an incident-manager to approve',
-                ),
-              ],
-            },
-          ),
-          button('restart', `Restart ${incident.service}`, event(ACTIONS.restart, { ...ctx, service: incident.service }), {
-            checks: [enabledWhen('/can/restart', 'The incident is resolved')],
-          }),
-        ],
-        { align: 'center' },
-      ),
-    );
+  if (has('platform-engineer')) {
+    const applicable = can.apply ? change : undefined;
+    controls.apply = {
+      open: can.apply,
+      child: column('apply-controls', [
+        button(
+          'apply',
+          active ? `Apply rollback to ${active.target_version}` : 'Apply rollback',
+          event(ACTIONS.apply, { ...ctx, change_id: applicable?.id ?? '' }),
+          // Enabled as soon as there is a change to apply, approved or not: the card does not
+          // stand in for the service's rule.
+          {
+            variant: 'primary',
+            checks: [
+              enabledWhen(
+                '/can/apply',
+                resolved ? 'The incident is resolved' : inFlight ? 'The rollback is already running' : 'There is no change to apply yet',
+              ),
+            ],
+          },
+        ),
+        notice('apply'),
+      ]),
+    };
   }
+
+  // Who owns each step, who did it once it is done, and when.
+  const owners: Record<StepKey, { role?: string; by?: string; at?: string }> = {
+    propose: { role: 'developer', by: change?.proposed_by, at: change?.at?.proposed },
+    approve: {
+      role: 'incident-manager',
+      by: status === 'rejected' ? change?.rejected_by : change?.approved_by,
+      at: status === 'rejected' ? change?.at?.rejected : change?.at?.approved,
+    },
+    // Applied is the moment the new version was rolled out and verifying began.
+    apply: { role: 'platform-engineer', by: change?.applied_by, at: change?.at?.verifying ?? (status === 'failed' ? change?.at?.failed : undefined) },
+    verify: { by: 'remediation-agent', at: status === 'failed' ? change?.at?.failed : change?.at?.applied },
+    resolve: { at: change?.at?.applied },
+  };
+
+  const steps = progressSteps(incident).map(({ key, label, state }) => {
+    const owner = owners[key];
+    const settled = state === 'done' || state === 'failed';
+    const who = (settled && owner.by) || owner.role || owner.by || '';
+    const mine = !!owner.role && has(owner.role);
+    const control = controls[key];
+
+    let note = '';
+    let busy = false;
+    if (key === 'propose' && state === 'pending') {
+      note = diagnosing ? 'Waiting for the diagnosis' : recommended ? `The diagnosis recommends ${recommended}` : 'No version is recommended';
+      busy = diagnosing;
+    } else if (key === 'approve' && status === 'proposed') note = mine ? 'Waiting for you' : 'Waiting for approval';
+    else if (key === 'approve' && status === 'rejected') note = change?.reject_reason || 'No reason given';
+    else if (key === 'apply' && status === 'proposed') note = 'Not approved yet';
+    else if (key === 'apply' && status === 'approved') note = mine ? 'Ready for you to apply' : 'Ready to apply';
+    else if (key === 'apply' && state === 'current') note = `Rolling out ${change!.target_version}`;
+    else if (key === 'verify' && state === 'current') note = 'Checking that the rollback worked';
+
+    return add({
+      id: `step-${key}`,
+      component: 'Step',
+      label,
+      state,
+      closes: key === 'resolve',
+      owner: who,
+      ...(owner.role ? { ownerRole: owner.role } : {}),
+      // Once a step is done, "you" is the person who did it; until then, anyone with the role.
+      you: settled && owner.by ? owner.by === viewer.user : mine,
+      note,
+      busy,
+      time: settled ? clock(owner.at) : '',
+      ...(control ? { child: control.child, open: control.open, turn: control.open && can[key as keyof Can] } : {}),
+    });
+  });
+  body.push(add({ id: 'steps', component: 'Steps', children: steps }));
 
   if (!roles.length) {
     body.push(text('no-actions', 'No actions are available for your role.', 'caption'));
   }
 
-  details.push(divider('divider-cause'));
-  details.push(text('cause-heading', 'Suspected cause', 'h5'));
-  details.push(
+  // --- The status update: the incident-manager's, and apart from the change ---
+  if (has('incident-manager')) {
+    body.push(text('update-heading', 'Status update', 'h5'));
+    body.push(
+      add({
+        id: 'draft-text',
+        component: 'TextField',
+        label: 'Write a status update, or have comms-agent draft one',
+        accessibility: { label: 'Status update' },
+        value: { path: '/draft/text' },
+        variant: 'longText',
+      }),
+    );
+    body.push(
+      row('update-actions', [
+        button('draft', 'Draft status update', event(ACTIONS.draft, ctx)),
+        button('post', 'Post status update', event(ACTIONS.post, { ...ctx, text: { path: '/draft/text' } }), {
+          checks: [filled('/draft/text', 'Draft a status update first')],
+        }),
+      ]),
+    );
+    body.push(notice('update'));
+  }
+
+  // --- The cause and its evidence: below the steps, so that however long they are the controls do not move ---
+  body.push(text('cause-heading', 'Suspected cause', 'h5'));
+  body.push(
     text(
       'cause',
       incident.suspected_cause ??
         (diagnosis?.state === 'running'
-          ? `Diagnosing… The diagnosis agent started at ${clock(diagnosis.since, true)}UTC. A diagnosis usually takes 10 to 20 seconds.`
+          ? `Diagnosing… The diagnosis agent started at ${clock(diagnosis.since, true)} UTC. A diagnosis usually takes 10 to 20 seconds.`
           : diagnosis?.state === 'failed'
             ? `Diagnosis failed: ${diagnosis.message}. No version is recommended.`
             : 'No diagnosis recorded yet.'),
@@ -384,8 +443,8 @@ export function buildIncidentCard(incident: Incident, viewer: Viewer, diagnosis?
   // The heading and the list are always part of the card, empty until there is evidence. The body's
   // own list of children then never changes, so the renderer leaves the viewer's buttons alone when
   // the diagnosis arrives: only this list fills in.
-  details.push(text('evidence-heading', incident.evidence.length ? 'Evidence' : '', 'caption'));
-  details.push(
+  body.push(text('evidence-heading', incident.evidence.length ? 'Evidence' : '', 'caption'));
+  body.push(
     column(
       'evidence',
       incident.evidence.map((e, i) =>
@@ -395,23 +454,24 @@ export function buildIncidentCard(incident: Incident, viewer: Viewer, diagnosis?
       ),
     ),
   );
-  body.push(...details);
 
-  // The timeline comes last.
-  body.push(divider('divider-timeline'));
-  body.push(text('timeline-heading', 'Timeline (UTC)', 'h5'));
-  // One Text holding a short list, so a new entry never adds or removes a component.
+  // --- The timeline comes last: the newest entries, a row each. The rows keep their ids, so a new
+  // entry fills one in or adds one, and never takes one away. ---
+  body.push(row('timeline-head', [text('timeline-heading', 'Timeline', 'h5'), text('timeline-zone', 'UTC', 'caption')], { justify: 'spaceBetween', align: 'end' }));
+  const entries = incident.timeline.length ? incident.timeline.slice(-TIMELINE_ENTRIES) : [{ text: 'Nothing recorded yet.' }];
   body.push(
-    text(
+    column(
       'timeline',
-      incident.timeline
-        .slice(-TIMELINE_ENTRIES)
-        .map((entry) => `- ${clock(entry.at)}${entry.text.replace(/\s*\n\s*/g, ' ')}`)
-        .join('\n') || 'Nothing recorded yet.',
+      entries.map((entry, i) =>
+        row(`timeline-${i}`, [
+          text(`timeline-${i}-at`, clock(entry.at), 'caption'),
+          text(`timeline-${i}-text`, entry.text.replace(/\s*\n\s*/g, ' '), 'body', { weight: 1 }),
+        ]),
+      ),
     ),
   );
 
-  add({ id: 'root', component: 'Card', child: column('body', body) });
+  add({ id: 'root', component: 'Column', children: body });
 
   const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex').slice(0, 16);
   const layout = components.map((c) => `${c.id}:${c.component}`).sort();
@@ -428,7 +488,7 @@ export function buildIncidentCard(incident: Incident, viewer: Viewer, diagnosis?
       reject: { reason: '' },
       draft: { text: '' },
       propose: { version: '' },
-      notice: { text: '' },
+      notice: NO_NOTICE,
     },
   };
 }

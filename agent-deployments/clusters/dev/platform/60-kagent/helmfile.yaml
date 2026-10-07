@@ -1,0 +1,104 @@
+# kagent 1.x on Agent Substrate.
+#
+#   substrate-crds   ate-system   WorkerPool, SandboxConfig, CSIDriverConfig
+#   substrate        ate-system   the Actor runtime: API server, controller,
+#                                 node agent, router, egress gateway, its own
+#                                 PostgreSQL and object store (snapshots)
+#   substrate-egress-boundary
+#                    ate-system   a NetworkPolicy: Actors reach pods of this
+#                                 cluster and nothing outside it
+#   kagent-crds      kagent       Harness, AgentTemplate, Agent, ModelConfig,
+#                                 RemoteMCPServer, SandboxTemplate, MCPServer
+#   kagent           kagent       controller (API and A2A on port 8083), its
+#                                 PostgreSQL, the kmcp controller, one WorkerPool
+#                                 and the NetworkPolicy that guards port 8083.
+#                                 No bundled tool servers: see
+#                                 agent-platform/profiles/kagent/kagent-values.yaml.
+#                                 The UI behind its sign-in proxy, at
+#                                 http://localhost:18087: see values.yaml
+#
+# Versions are the pair that
+# https://kagent.dev/docs/kagent/1.x/setup/installation/ names (read
+# 2026-10-06). Do not move one without the other: a kagent release is tested
+# against exactly one Substrate version, and Substrate's database does not
+# migrate between its own alphas.
+#
+# Order matters and the charts do not enforce it:
+#
+#   1. substrate installs without waiting. Its pods cannot start yet.
+#   2. scripts/bootstrap-identity.sh creates the signing pools they mount
+#      (no chart does), then waits for them.
+#   3. kagent installs. Its controller connects to Substrate at startup.
+#
+# Apply all five:   task kagent:install
+# Apply one:        task deploy -- -l name=<release>
+#
+# Not labeled layer=trunk: `task up:trunk` does not install this.
+commonLabels:
+  layer: platform
+
+# Not inherited from the root helmfile. With any other kubeconfig this context
+# does not exist, and helm fails before it changes anything.
+helmDefaults:
+  kubeContext: kind-agentgateway-demo
+
+releases:
+  - name: substrate-crds
+    namespace: ate-system
+    createNamespace: true
+    chart: oci://ghcr.io/kagent-dev/substrate/helm/substrate-crds
+    version: 0.3.0-alpha3
+
+  - name: substrate
+    namespace: ate-system
+    chart: oci://ghcr.io/kagent-dev/substrate/helm/substrate
+    version: 0.3.0-alpha3
+    needs:
+      - ate-system/substrate-crds
+    values:
+      - ../../../../../agent-platform/profiles/kagent/substrate-values.yaml
+    # No `wait`: the pods become ready only after the hook below.
+    hooks:
+      # A hook runs in this file's directory. The scripts name the repo-local
+      # kubeconfig and the context themselves; see scripts/lib.sh.
+      - events: ["postsync"]
+        showlogs: true
+        command: ./scripts/bootstrap-identity.sh
+
+  # The outer limit of what any agent can reach: pods of this cluster. See the
+  # chart's values.yaml for why kagent's own allowlist is not enough.
+  - name: substrate-egress-boundary
+    namespace: ate-system
+    chart: ../../../../../agent-platform/policies/network/substrate-egress-boundary
+    needs:
+      - ate-system/substrate
+
+  - name: kagent-crds
+    namespace: kagent
+    createNamespace: true
+    chart: oci://ghcr.io/kagent-dev/kagent/helm/kagent-crds
+    version: 1.0.0-alpha7
+    wait: true
+
+  - name: kagent
+    namespace: kagent
+    chart: oci://ghcr.io/kagent-dev/kagent/helm/kagent
+    version: 1.0.0-alpha7
+    needs:
+      - kagent/kagent-crds
+      - ate-system/substrate
+    values:
+      - ../../../../../agent-platform/profiles/kagent/kagent-values.yaml
+      - values.yaml
+    wait: true
+    timeout: 600
+    hooks:
+      # Also covers `task deploy -- -l name=kagent`, where the release above
+      # is not part of the run.
+      - events: ["presync"]
+        showlogs: true
+        command: ./scripts/wait-substrate.sh
+      # The Secret the UI's sign-in proxy starts with (values.yaml).
+      - events: ["presync"]
+        showlogs: true
+        command: ./scripts/ui-secret.sh

@@ -1,4 +1,4 @@
-// search-service: GET /search?q= over the seed catalogue.
+// search-service: GET /search?q= over the seed catalog.
 import { readFileSync } from 'node:fs';
 import { createService, errorFields, log } from '../../lib/service.js';
 import { strategy } from './ranking.js';
@@ -41,5 +41,5 @@ const zeroResults = service.metrics.counter('search_zero_results_total', 'Search
 zeroResults.inc({}, 0);
 service.metrics.gauge('search_records_indexed', 'Records loaded from the seed file.', () => index.length);
 
-log.info('catalogue loaded', { title: catalog.title, records: index.length, ranking: strategy });
+log.info('catalog loaded', { title: catalog.title, records: index.length, ranking: strategy });
 await service.listen();

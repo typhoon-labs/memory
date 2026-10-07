@@ -25,7 +25,7 @@ request='{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 
 showing "a pod in namespace agents, and one in another namespace, call delivery-mcp directly; then the same call through the gateway."
 
-bearer="$(token developer)" || { unexpected "no token for developer from Keycloak"; result ""; }
+bearer="$(token developer)" || { unexpected "no token for developer from ${PLATFORM_TOKEN_CMD}"; result ""; }
 
 answer="$(printf '%s' "${bearer}" | in_pod post "${direct_url}" "${request}" bearer)"
 if [ "$(printf '%s' "${answer}" | jq -r '.connected')" = "false" ]; then

@@ -18,6 +18,8 @@ export interface Change {
   reject_reason?: string;
   applied_by?: string;
   operation_id?: string;
+  /** When the change reached each status, from its history. */
+  at?: Partial<Record<ChangeStatus | string, string>>;
 }
 
 export interface Evidence {
@@ -41,6 +43,7 @@ export interface Incident {
   /** The version the service runs now, when the incident record lets us tell. */
   current_version?: string;
   opened_at?: string;
+  resolved_at?: string;
   suspected_cause?: string;
   evidence: Evidence[];
   recommended_version?: string;
@@ -49,7 +52,7 @@ export interface Incident {
   timeline: TimelineEntry[];
 }
 
-/** The tools of delivery-mcp, by the names in the conventions. */
+/** The tools of delivery-mcp, by the names in the contracts. */
 export interface Delivery {
   callTool(token: string, name: string, args: Record<string, unknown>): Promise<unknown>;
 }
@@ -124,13 +127,47 @@ export class Refusal extends Error {
   }
 }
 
-/** The one sentence shown to the user. */
-export function refusalText(r: { layer: RefusalLayer; rule?: string; status?: number; detail: string }): string {
+/**
+ * delivery-mcp's rules in plain words, for a reader who does not know their
+ * names. A rule that is not listed is shown with the service's own message.
+ */
+const RULE_IN_WORDS: Record<string, string> = {
+  change_is_approved: 'this change has not been approved yet',
+  approver_is_not_proposer: 'the person who proposed a change cannot approve it',
+  team_owns_service: 'your team does not own this service',
+  target_is_retained_earlier_version: 'that is not a retained earlier version of the service',
+  one_open_incident_per_service: 'this service already has an open incident',
+  role_required: 'your role may not do this',
+};
+
+type RefusalFacts = { layer: RefusalLayer; rule?: string; status?: number; detail: string };
+
+/** What was refused, without the rule's name: "Refused by the service: this change has not been approved yet". */
+function refusalHeadline(r: RefusalFacts): string {
   if (r.layer === 'gateway') {
     const why = r.status ? `HTTP ${r.status}` : 'tool not available to you';
     return `Refused by the gateway (${why}): ${r.detail}`;
   }
-  return `Refused by the service: ${r.rule ?? 'rule not named'} - ${r.detail}`;
+  const words = (r.rule && RULE_IN_WORDS[r.rule]) || r.detail.replace(/[.\s]+$/, '');
+  return `Refused by the service: ${words}`;
+}
+
+/** The one sentence shown to the user, as plain text. */
+export function refusalText(r: RefusalFacts): string {
+  return r.layer === 'service' && r.rule ? `${refusalHeadline(r)} (rule ${r.rule}).` : refusalHeadline(r);
+}
+
+const sentence = (words: string) => `${words.charAt(0).toUpperCase()}${words.slice(1).replace(/[.\s]+$/, '')}.`;
+
+/**
+ * The same in the parts the card and the chat pane draw apart: who refused,
+ * why in a sentence, and the name of the service's rule if one did.
+ */
+export function refusalWords(r: RefusalFacts): { title: string; reason: string; rule?: string } {
+  if (r.layer === 'gateway') {
+    return { title: `Refused by the gateway (${r.status ? `HTTP ${r.status}` : 'tool not available to you'})`, reason: sentence(r.detail) };
+  }
+  return { title: 'Refused by the service', reason: sentence((r.rule && RULE_IN_WORDS[r.rule]) || r.detail), rule: r.rule };
 }
 
 /** A downstream failed for a reason that is not a refusal. */

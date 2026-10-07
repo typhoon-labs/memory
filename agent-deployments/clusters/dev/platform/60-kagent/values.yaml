@@ -1,0 +1,93 @@
+# What the dev cluster changes in the kagent profile
+# (agent-platform/profiles/kagent/kagent-values.yaml).
+
+# Traces from the controller and from every agent's runtime (one span per model
+# call and per tool call) to the cluster's collector
+# (platform/40-observability). OTLP over HTTP, because an agent's export
+# leaves its sandbox through Substrate's egress gateway, which is an HTTP
+# proxy; kagent adds the collector's host to each agent's egress allowlist by
+# itself. Prompts and answers are not put on the spans (otel.capture).
+otel:
+  exporter:
+    otlp:
+      endpoint: http://otel-collector.telemetry.svc.cluster.local:4318
+      protocol: http/protobuf
+  traces:
+    enabled: true
+  resourceAttributes:
+    deployment.environment: dev
+
+# The kagent UI, at http://localhost:18087 (NodePort 30087, docs/cluster.md).
+# The profile leaves it off, because it needs a sign-in proxy and the proxy
+# needs an identity provider, which is a cluster's own:
+#
+#   browser -> oauth2-proxy (signs in with Keycloak, client `kagent-ui`)
+#           -> the UI's nginx -> the controller's port 8083
+#
+# The proxy hands on the ID token Keycloak issued. The controller reads the
+# user from it without verifying it (controller.auth in the profile), so the
+# proxy is the only check there is. Two things keep it the only door: the UI's
+# own Service stays ClusterIP, and the NetworkPolicy `kagent-ui-callers` in
+# the profile lets nothing but the proxy reach the UI.
+#
+# This is an operator's console and a second door to the agents. A signed-in
+# user talks to `diagnosis-agent` through kagent's controller and not through
+# the gateway route /a2a/diagnosis-agent, so the route's policy and the
+# gateway's records do not cover that conversation. The agent's own model and
+# tool calls still go through the gateway, with the agent's key.
+ui:
+  replicas: 1
+
+oauth2-proxy:
+  enabled: true
+  config:
+    # Keys client-id, client-secret and cookie-secret. Made by
+    # scripts/ui-secret.sh before each sync of this release.
+    existingSecret: kagent-ui-oidc
+    # Cookies are kept per host and not per port, so this one is also sent to
+    # every other UI on localhost. A name of its own keeps it apart from theirs.
+    cookieName: kagent_ui
+  service:
+    type: NodePort
+    nodePort: 30087
+  # Nothing scrapes it, and on a NodePort Service the metrics port would get a
+  # node port as well.
+  metrics:
+    enabled: false
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 128Mi
+  # Added to the chart's own arguments; a key written here replaces the chart's.
+  extraArgs:
+    # Keycloak answers on two addresses (docs/contracts.md): the browser's,
+    # which is the issuer in every token, and its Service, which is the one a
+    # pod can reach. Discovery returns a single set, so each endpoint is named.
+    skip-oidc-discovery: true
+    oidc-issuer-url: http://localhost:18081/realms/demo
+    login-url: http://localhost:18081/realms/demo/protocol/openid-connect/auth
+    redeem-url: http://keycloak.keycloak.svc.cluster.local:8080/realms/demo/protocol/openid-connect/token
+    oidc-jwks-url: http://keycloak.keycloak.svc.cluster.local:8080/realms/demo/protocol/openid-connect/certs
+    redirect-url: http://localhost:18087/oauth2/callback
+    # The client requires it (local/identity/keycloak/files/demo-realm.json).
+    code-challenge-method: S256
+    # The chart also asks for `groups`, a scope this realm does not have.
+    scope: openid profile email
+    # WHO MAY SIGN IN: `platform-engineer` only. kagent authorizes nothing
+    # itself: whoever gets in may do all its API offers, such as create,
+    # change and delete agents. The role is the top-level `roles` claim.
+    oidc-groups-claim: roles
+    allowed-group: platform-engineer
+    # The address is plain http, where a browser other than Chrome or Firefox
+    # drops a cookie marked Secure.
+    cookie-secure: false
+    # The proxy does not renew a session, and the controller does not look at
+    # a token's expiry. So a session ends before its token does (30 minutes,
+    # the realm's accessTokenLifespan); the browser is then sent through
+    # Keycloak again, which asks for no password while its own session lasts.
+    cookie-expire: 25m
+    # The chart lets a client with a bearer token of this client skip the
+    # sign-in. Nothing needs that here: programs call the gateway's routes.
+    skip-jwt-bearer-tokens: false

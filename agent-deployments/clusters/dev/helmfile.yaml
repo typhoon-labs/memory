@@ -5,12 +5,16 @@
 #
 #   platform/<nn>-<name>/helmfile.yaml    shared platform services
 #   workloads/<name>/helmfile.yaml        one directory per workload
+#   domains/<domain>/helmfile.yaml        a domain's gateway routes
 #
-# Order: the two globs are processed in the order listed, and the matches of a
-# glob in lexical order, one sub-helmfile after another. `needs:` only orders
+# Order: the three globs are processed in the order listed, and the matches of
+# a glob in lexical order, one sub-helmfile after another. `needs:` only orders
 # releases inside one sub-helmfile. Platform directories therefore carry a
-# two-digit prefix; the trunk uses 10 to 30, so later platform services start
-# at 40. Workloads must not depend on each other's order.
+# two-digit prefix, in the order they are installed: the trunk is 10 to 30,
+# then 40 observability (it brings the kinds later releases use), 50 Langfuse,
+# 60 kagent, 70 Agentregistry, 80 policies. Routes come last because a route
+# lives in its backend's namespace. Workloads must not depend on each other's
+# order, and neither must domains.
 #
 # Paths inside a sub-helmfile are relative to that sub-helmfile.
 #
@@ -26,10 +30,11 @@
 #
 # Apply all of it:        task deploy
 # Apply one release:      task deploy -- -l name=<release>
-# Apply the trunk only:   task up      (selector layer=trunk)
+# Apply the trunk only:   task up:trunk      (selector layer=trunk)
 helmfiles:
   - path: platform/*/helmfile.yaml
   - path: workloads/*/helmfile.yaml
+  - path: domains/*/helmfile.yaml
 
 # helmfile 1.8 fails when a glob matches nothing. Until the first workload has
 # a helmfile.yaml, that is the normal state, so warn instead.

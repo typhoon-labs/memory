@@ -3,7 +3,7 @@
 #
 # Follows https://kind.sigs.k8s.io/docs/user/local-registry/ with this
 # project's own container name, `agentgateway-demo-registry`, and host port
-# 5002, both from agent-platform/docs/conventions.md. The kind guide's default
+# 5002, both from docs/cluster.md. The kind guide's default
 # name and port are not used, so this registry is unmistakably ours.
 #
 #   registry.sh up      create the registry container if it is missing
@@ -16,7 +16,7 @@
 set -o errexit
 set -o nounset
 
-# Fixed by agent-platform/docs/conventions.md. Deliberately not read from the
+# Fixed by docs/cluster.md. Deliberately not read from the
 # environment: `down` must never be pointed at another container or cluster.
 REGISTRY_NAME="agentgateway-demo-registry"
 REGISTRY_PORT="5002"
@@ -79,7 +79,7 @@ case "${1:-}" in
       docker rm -f -v "${REGISTRY_NAME}" >/dev/null
       echo "registry ${REGISTRY_NAME} removed"
     else
-      echo "registry ${REGISTRY_NAME} was not created by task up; leaving it" >&2
+      echo "registry ${REGISTRY_NAME} was not created by task up:trunk; leaving it" >&2
     fi
     ;;
 

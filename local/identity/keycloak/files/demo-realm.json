@@ -426,6 +426,67 @@
           }
         }
       ]
+    },
+    {
+      "clientId": "kagent-ui",
+      "name": "kagent UI (browser sign-in through its sign-in proxy)",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "fullScopeAllowed": true,
+      "redirectUris": [
+        "http://localhost:18087/oauth2/callback"
+      ],
+      "webOrigins": [],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      },
+      "defaultClientScopes": [
+        "basic",
+        "profile",
+        "email",
+        "web-origins",
+        "acr"
+      ],
+      "optionalClientScopes": [],
+      "clientAuthenticatorType": "client-secret",
+      "secret": "demo-only-kagent-ui-secret",
+      "protocolMappers": [
+        {
+          "name": "roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "roles",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        },
+        {
+          "name": "team",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "team",
+            "claim.name": "team",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
     }
   ],
   "components": {
@@ -441,6 +502,6 @@
     ]
   },
   "attributes": {
-    "demo-only-notice": "DEMO ONLY. Stands in for Okta on a local kind cluster. Every password and the client secret in this file are throwaway demo values, public by design. Contract: agent-platform/docs/conventions.md."
+    "demo-only-notice": "DEMO ONLY. Stands in for Okta on a local kind cluster. Every password and client secret in this file are throwaway demo values, public by design. Contract: docs/contracts.md."
   }
 }

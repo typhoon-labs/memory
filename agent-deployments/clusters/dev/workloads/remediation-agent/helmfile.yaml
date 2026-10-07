@@ -1,10 +1,10 @@
 # remediation-agent: applies an approved change as the caller and reports the verified result.
 # Picked up by ../../helmfile.yaml (workloads/*/helmfile.yaml).
 #
-# The image must be in the registry first: `task demo:publish`, or
+# The image must be in the registry first: `task publish`, or
 # `task remediation-agent:build remediation-agent:push` for this one alone.
 # The gateway route to it (/a2a/remediation-agent) is not part of this file: it is the
-# release `remediation-agent-route` in ../../platform/80-routes/helmfile.yaml, and who
+# release `remediation-agent-route` in ../../domains/operations/helmfile.yaml, and who
 # may call it is in ../../domains/operations/remediation-agent.yaml.
 commonLabels:
   layer: workload

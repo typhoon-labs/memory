@@ -2,10 +2,10 @@
 # Picked up by ../../helmfile.yaml (workloads/*/helmfile.yaml).
 #
 # The chart belongs to the component; what this cluster runs is in values.yaml.
-# Images and the chart must be in the registry first: `task demo:publish`.
+# Images and the chart must be in the registry first: `task publish`.
 #
 # The chart is installed from the component's directory. delivery-mcp later
-# upgrades this same release from the chart `task demo:publish` pushed to the
+# upgrades this same release from the chart `task publish` pushed to the
 # registry (oci://localhost:5002/charts/sample-app), changing only
 # searchService.image.tag; the two are the same chart as long as it is
 # published after every change to it.

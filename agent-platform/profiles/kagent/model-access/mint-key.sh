@@ -17,8 +17,13 @@
 # value for a while; restart deployment/atenet-egress in ate-system to use the
 # new one at once.
 #
-# Always the repo-local kubeconfig and this cluster's context, whatever the
-# caller exported.
+# Which cluster comes from the environment, so that the script serves any
+# cluster this chart is installed in: PLATFORM_KUBECONFIG and PLATFORM_CONTEXT.
+# The context is named on every command: with any other kubeconfig it does not
+# exist, and the command fails before it changes anything. Nothing falls back
+# to the default kubeconfig or the current context. For the dev cluster the
+# root Taskfile sets both, so the hook that runs this gets them from
+# `task deploy`; to run it by hand, as for --rotate, set the two yourself.
 set -o errexit
 set -o nounset
 
@@ -26,10 +31,8 @@ workload="${1:?usage: mint-key.sh <workload> <workload-namespace> [--rotate]}"
 namespace="${2:?usage: mint-key.sh <workload> <workload-namespace> [--rotate]}"
 rotate="${3:-}"
 
-here="$(cd "$(dirname "$0")" && pwd)"
-repo_root="$(cd "${here}/../../../.." && pwd)"
-kubeconfig="${repo_root}/local/kind/kubeconfig"
-context="kind-agentgateway-demo"
+kubeconfig="${PLATFORM_KUBECONFIG:?set PLATFORM_KUBECONFIG and PLATFORM_CONTEXT (the tasks do; apply through task deploy)}"
+context="${PLATFORM_CONTEXT:?set PLATFORM_CONTEXT (the tasks do; apply through task deploy)}"
 gateway_namespace="agentgateway-system"
 secret="${workload}-gateway-key"
 

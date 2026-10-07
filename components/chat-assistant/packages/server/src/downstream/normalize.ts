@@ -1,5 +1,5 @@
 /**
- * The conventions fix tool names, arguments and status values, but not the
+ * The contracts fix tool names, arguments and status values, but not the
  * exact JSON a tool returns. These readers accept the reasonable spellings so
  * the card does not break on a field name.
  */
@@ -55,6 +55,18 @@ function normalizeChange(raw: unknown): Change | undefined {
   if (!o) return undefined;
   const id = str(o.change_id, o.id);
   if (!id) return undefined;
+  // When each status was reached: the history says, and for the first statuses the record's own fields do too.
+  const at: Record<string, string> = {};
+  for (const status of ['proposed', 'approved', 'rejected']) {
+    const when = str(o[`${status}_at`]);
+    if (when) at[status] = when;
+  }
+  for (const item of Array.isArray(o.history) ? o.history : []) {
+    const h = rec(item);
+    const status = str(h?.status);
+    const when = str(h?.at);
+    if (status && when) at[status] = when;
+  }
   return {
     id,
     target_version: str(o.target_version, o.version) ?? '',
@@ -65,6 +77,7 @@ function normalizeChange(raw: unknown): Change | undefined {
     reject_reason: str(o.reject_reason, o.rejection_reason, o.reason),
     applied_by: str(o.applied_by),
     operation_id: str(o.operation_id, o.operation_identifier, o.operation),
+    ...(Object.keys(at).length ? { at } : {}),
   };
 }
 
@@ -162,6 +175,7 @@ export function normalizeIncident(raw: unknown): Incident {
       str(o.current_version, o.running_version, o.version) ??
       (latest ? (str(latest.status) === 'applied' ? str(latest.target_version) : str(latest.previous_version)) : undefined),
     opened_at: str(o.opened_at),
+    resolved_at: str(o.resolved_at),
     suspected_cause: str(d?.suspected_cause, d?.cause),
     evidence: normalizeEvidence(d?.evidence),
     recommended_version: str(d?.recommended_version),
@@ -212,7 +226,7 @@ export function firstJsonObject(text: string): Rec | undefined {
 }
 
 /**
- * Recognises the structured refusal the conventions define:
+ * Recognizes the structured refusal the contracts define:
  * `{"error": "forbidden", "layer": "service", "rule": "<rule_name>", "message": "..."}`,
  * as an object or embedded in text.
  */

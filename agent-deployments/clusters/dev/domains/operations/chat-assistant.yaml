@@ -4,7 +4,7 @@
 #   from a pod      http://agentgateway-proxy.agentgateway-system.svc.cluster.local/a2a/chat-assistant
 #   from the host   http://localhost:18080/a2a/chat-assistant
 #
-# Values for two releases in ../../platform/80-routes/helmfile.yaml:
+# Values for two releases in the helmfile.yaml next to this file:
 # `chat-assistant-route` (route, backend, cors, timeouts) and
 # `chat-assistant-route-auth` (allow, passthrough).
 

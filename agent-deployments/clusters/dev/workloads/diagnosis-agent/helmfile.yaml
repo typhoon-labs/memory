@@ -1,12 +1,13 @@
 # diagnosis-agent: read-only investigation of an alert, declared in kagent.
 # Picked up by ../../helmfile.yaml (workloads/*/helmfile.yaml). Needs kagent
-# (platform/40-kagent) and the model route (platform/30-model-route).
+# (platform/60-kagent) and the model route (platform/30-model-route).
 #
 #   diagnosis-agent-access         sample-app            what its tools may read: a Role
 #   diagnosis-agent-tools          kagent                its own read-only Kubernetes tool server
 #   diagnosis-agent-model-access   agentgateway-system   its door to the model route, with a
 #                                                        key the gateway issued to it
-#   diagnosis-agent-route-auth     kagent                who may call it (route.yaml)
+#   diagnosis-agent-route-auth     kagent                who may call it
+#                                                        (../../domains/operations/diagnosis-agent.yaml)
 #   diagnosis-agent                kagent                the agent itself, and its A2A route
 #
 # The agent is defined in components/diagnosis-agent/ (prompt, runbook, tool
@@ -31,7 +32,7 @@ releases:
   - name: diagnosis-agent-access
     namespace: sample-app
     createNamespace: true
-    chart: ./access
+    chart: ./rbac
 
   - name: diagnosis-agent-tools
     namespace: kagent
@@ -50,8 +51,9 @@ releases:
       - workload: diagnosis-agent
     hooks:
       # The key is generated in the cluster and written to no file. A hook
-      # runs in this file's directory; the script names the repo-local
-      # kubeconfig and the context itself.
+      # runs in this file's directory. The script is the platform's, so it
+      # takes the kubeconfig and the context from PLATFORM_KUBECONFIG and
+      # PLATFORM_CONTEXT, which `task deploy` sets, and stops without them.
       - events: ["presync"]
         showlogs: true
         command: ../../../../../agent-platform/profiles/kagent/model-access/mint-key.sh
@@ -63,8 +65,8 @@ releases:
     namespace: kagent
     chart: ../../../../../agent-platform/policies/agentgateway/route-auth
     values:
-      - ../../../../access/identity.yaml
-      - route.yaml
+      - ../../identity.yaml
+      - ../../domains/operations/diagnosis-agent.yaml
 
   - name: diagnosis-agent
     namespace: kagent

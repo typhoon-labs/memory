@@ -6,7 +6,7 @@
 #   local.sh status   is it running
 #
 # It binds to 127.0.0.1. The process ID and the log go to .run/ (git-ignored).
-# Defaults are the local-development bindings in agent-platform/docs/conventions.md;
+# Defaults are the local-development bindings in docs/contracts.md;
 # any of them can be set in the environment first, for example
 #   MODEL_ID=claude-haiku-4-5-20251001 scripts/local.sh up
 set -o errexit
@@ -22,7 +22,7 @@ alive() { [ -f "$RUN_DIR/$NAME.pid" ] && kill -0 "$(cat "$RUN_DIR/$NAME.pid")" 2
 
 case "${1:-}" in
   up)
-    [ -x .venv/bin/python ] || uv sync
+    [ -x .venv/bin/python ] || uv sync --frozen
     mkdir -p "$RUN_DIR"
     if alive; then echo "$NAME already running"; exit 0; fi
     OIDC_ISSUER="$ISSUER" \

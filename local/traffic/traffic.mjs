@@ -31,11 +31,11 @@ const reportSeconds = number('REPORT_SECONDS', 10);
 const durationSeconds = number('DURATION_SECONDS', 0); // 0: until stopped
 const maxInFlight = 200;
 
-// Words the seed catalogue knows, one group per attribute. A search uses one
+// Words the seed catalog knows, one group per attribute. A search uses one
 // word from each of one or two groups, so it always matches something; the
 // searches that match nothing are the ZERO_RESULT_SHARE and no more.
 // Another seed: QUERY_TERMS="a,b,c;x,y,z".
-const termGroups = (env.QUERY_TERMS || 'red,orange,yellow,green,teal,blue,purple,pink,brown,grey;circle,square,triangle,diamond,pentagon,hexagon,octagon,star,oval,cross;tiny,small,medium,large,huge')
+const termGroups = (env.QUERY_TERMS || 'red,orange,yellow,green,teal,blue,purple,pink,brown,gray;circle,square,triangle,diamond,pentagon,hexagon,octagon,star,oval,cross;tiny,small,medium,large,huge')
   .split(';')
   .map((group) => group.split(',').map((term) => term.trim()).filter(Boolean))
   .filter((group) => group.length);

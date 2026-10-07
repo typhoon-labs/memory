@@ -1,0 +1,19 @@
+# What the dev cluster's admission rules for gateway resources take as "the
+# platform". Values for release `gateway-rules`, chart
+# agent-platform/policies/kyverno/gateway-rules, which explains the rules.
+
+platform:
+  deployers:
+    # The identity in local/kind/kubeconfig, which `task deploy` and every
+    # other task uses: user `kubernetes-admin`, in this group. On kind there
+    # is no other identity, so the exemption is for this group applying a Helm
+    # release. With a pipeline, name the pipeline's identity instead.
+    groups:
+      - kubeadm:cluster-admins
+    usernames: []
+
+  # `modelProvider.local.host` in ../30-model-route/model-provider.yaml.
+  modelHosts:
+    - host.docker.internal
+
+  changeHint: "Who may call what is in agent-deployments/clusters/dev/domains/, and for the model route in platform/30-model-route/access.yaml; routes are releases in the helmfile.yaml of each directory under agent-deployments/clusters/dev/domains/."

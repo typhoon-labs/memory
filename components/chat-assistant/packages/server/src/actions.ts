@@ -1,6 +1,6 @@
 /**
  * Button actions. Each one is a direct call, made by this code as the
- * signed-in caller, to the tool or agent the conventions name for it:
+ * signed-in caller, to the tool or agent the contracts name for it:
  *
  *   propose, approve, reject, restart, post  -> delivery-mcp (MCP tool)
  *   apply                                    -> remediation-agent (A2A)
@@ -14,14 +14,15 @@ import type { A2uiAction } from './a2a/wire.js';
 import type { Identity } from './auth.js';
 import { ACTIONS } from './card/incident-card.js';
 import { firstJsonObject } from './downstream/normalize.js';
-import { Refusal, type AgentReply, type Downstreams, type RefusalLayer } from './downstream/types.js';
+import { Refusal, refusalWords, type AgentReply, type Downstreams, type RefusalLayer } from './downstream/types.js';
 
 export interface ActionOutcome {
   action: string;
   ok: boolean;
-  /** One sentence for the chat pane and the card's notice line. */
+  /** One sentence, as plain text. */
   text: string;
-  refusal?: { layer: RefusalLayer; rule?: string; status?: number; message: string };
+  /** A "no": who said it, the service's own message, and the same in the words the card and the chat pane show. */
+  refusal?: { layer: RefusalLayer; rule?: string; status?: number; message: string; title: string; reason: string };
   /** Set by the draft action. */
   draft?: string;
   incidentId?: string;
@@ -97,7 +98,7 @@ export async function performAction(d: Downstreams, identity: Identity, action: 
         action: action.name,
         ok: false,
         text: err.message,
-        refusal: { layer: err.layer, rule: err.rule, status: err.status, message: err.detail },
+        refusal: { layer: err.layer, rule: err.rule, status: err.status, message: err.detail, ...refusalWords(err) },
         incidentId,
       };
     }

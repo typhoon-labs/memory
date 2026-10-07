@@ -28,7 +28,7 @@ answer="$(curl --silent --show-error --max-time 60 -X POST "${gateway_url}/hooks
       "labels": {"alertname": "SearchErrorRatioHigh", "service": "search-service", "severity": "critical"},
       "annotations": {
         "summary": "Search is failing: requests to search-service return a server error.",
-        "impact": "Visitors of the Sample App cannot search the catalogue."
+        "impact": "Visitors of the Sample App cannot search the catalog."
       }
     }]
   }')"

@@ -14,17 +14,17 @@ env:
   DEPLOYMENT_ENVIRONMENT: dev
 
   # Whose tokens are trusted: the same three values as
-  # agent-deployments/access/identity.yaml. The service verifies every caller
+  # agent-deployments/clusters/dev/identity.yaml. The service verifies every caller
   # itself, whatever the gateway did before it.
   OIDC_ISSUER: http://localhost:18081/realms/demo
   OIDC_AUDIENCE: agentgateway
   OIDC_JWKS_URL: http://keycloak.keycloak.svc.cluster.local:8080/realms/demo/protocol/openid-connect/certs
 
   # Changes are applied by upgrading the Helm release `sample-app` in namespace
-  # `sample-app`, with the rights in access/ (release delivery-mcp-access).
+  # `sample-app`, with the rights in rbac/ (release delivery-mcp-access).
   APPLIER: helm
   # helm needs the Sample App chart, at the version the release was installed
-  # from. `task demo:publish` (or `task sample-app:chart:push`) pushes it to
+  # from. `task publish` (or `task sample-app:chart:push`) pushes it to
   # the local registry as an OCI chart; this is that registry as a pod sees it.
   HELM_CHART_REF: oci://agentgateway-demo-registry:5000/charts/sample-app
   HELM_CHART_VERSION: 0.1.0
@@ -42,7 +42,7 @@ env:
   RESTART_LABEL_SELECTOR: app.kubernetes.io/instance=sample-app,app.kubernetes.io/name={service}
 
   # Traces: to the dev cluster's OpenTelemetry Collector
-  # (platform/50-observability), as OTLP over HTTP.
+  # (platform/40-observability), as OTLP over HTTP.
   OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector.telemetry.svc.cluster.local:4318
   OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
 

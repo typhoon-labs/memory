@@ -1,0 +1,19 @@
+# The web UIs of the dev cluster. Included by the root Taskfile as `ui:`.
+#
+#   task ui                    every UI, its address, and whether it answers
+#   task ui -- prometheus      forward one that has no host port, until Ctrl-C
+#   task ui -- all             forward all seven
+#
+# The seven are agentgateway, prometheus, alertmanager, rustfs, seaweedfs,
+# seaweedfs-filer and clickhouse, on host ports 18090 to 18096. ui.sh says why
+# they are forwarded and not published. The script names the repo-local
+# kubeconfig and the context itself, as the root Taskfile requires. This file
+# defines no top-level variables.
+version: "3"
+
+tasks:
+  default:
+    desc: "Every web UI and its address; `-- <name>` forwards one that has no host port until Ctrl-C (agentgateway, prometheus, alertmanager, rustfs, seaweedfs, seaweedfs-filer, clickhouse), `-- all` forwards the seven"
+    silent: true
+    cmds:
+      - '"{{.TASKFILE_DIR}}/ui.sh" {{.CLI_ARGS}}'

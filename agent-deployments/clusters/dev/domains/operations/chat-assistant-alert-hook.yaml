@@ -5,7 +5,7 @@
 #   from the host   http://localhost:18080/hooks/alert
 #
 # The assistant then opens the incident, and asks diagnosis-agent, as the
-# caller. Values for two releases in ../../platform/80-routes/helmfile.yaml:
+# caller. Values for two releases in the helmfile.yaml next to this file:
 # `chat-assistant-alert-hook` (route, backend) and
 # `chat-assistant-alert-hook-auth` (allow, passthrough).
 

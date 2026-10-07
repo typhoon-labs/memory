@@ -1,0 +1,7 @@
+tier,monthly_price_usd_per_user,included_credits_per_month,addon_or_overage_usd_per_credit,effective_usd_per_included_credit,model_access_notes
+Free,0,50,Not available,0,"Sonnet 4.5, Sonnet 4.0, Auto, open-weight models; rate-limited; not available for Enterprise or GovCloud"
+Pro,20,1000,0.04,0.02,All GA and experimental models except Fable 5.1
+Pro+,40,2000,0.04,0.02,Same model access as Pro
+Pro Max,100,5000,0.04,0.02,Same model access as Pro
+Power,200,10000,0.04,0.02,Same model access as Pro
+Enterprise (Kiro for enterprise),Custom / contact sales (per-user Pro to Power tiers billed via AWS),Per subscribed tier,"0.04 (opt-in overage, billed at month end)",n/a,Adds Fable 5.1 Preview where enabled by admin; GovCloud pricing about 20% higher

@@ -47,7 +47,7 @@ else
   unexpected "the model route without a token answered ${status}, not 401: $(printf '%s' "${answer}" | jq -c '{connected, error, body: .body[0:120]}')"
 fi
 
-bearer="$(token developer)" || { unexpected "no token for developer from Keycloak"; result ""; }
+bearer="$(token developer)" || { unexpected "no token for developer from ${PLATFORM_TOKEN_CMD}"; result ""; }
 answer="$(printf '%s' "${bearer}" | in_pod post "${governed_url}" "${request}" bearer patient)"
 status="$(printf '%s' "${answer}" | jq -r '.status')"
 text="$(printf '%s' "${answer}" | jq -r '.body' | jq -r '.content[0].text // empty' 2>/dev/null | head -c 60)"

@@ -40,7 +40,7 @@ echo
 
 # --- the cluster -------------------------------------------------------------
 if [ ! -f "${kubeconfig}" ] || ! version="$(k version --output json 2>/dev/null | jq -r '.serverVersion.gitVersion // empty')" || [ -z "${version}" ]; then
-  no_go "Cluster" "the kind cluster does not answer" "task demo:up   (about 15 minutes; safe to re-run)"
+  no_go "Cluster" "the kind cluster does not answer" "task up   (about 15 minutes; safe to re-run)"
   echo
   echo "Result: NO-GO. Without the cluster nothing else can be checked."
   exit 1
@@ -48,9 +48,11 @@ fi
 go "Cluster" "Kubernetes ${version}"
 
 pods="$(k get pods --all-namespaces --output json 2>/dev/null)"
-total="$(printf '%s' "${pods}" | jq '[.items[] | select(.status.phase != "Succeeded")] | length')"
+# A pod that is being deleted is on its way out, not unready: a drill that
+# scaled a Deployment down and up leaves one for up to 30 seconds.
+total="$(printf '%s' "${pods}" | jq '[.items[] | select(.status.phase != "Succeeded" and .metadata.deletionTimestamp == null)] | length')"
 not_ready="$(printf '%s' "${pods}" | jq -r '
-  [.items[] | select(.status.phase != "Succeeded")
+  [.items[] | select(.status.phase != "Succeeded" and .metadata.deletionTimestamp == null)
    | select(.status.phase != "Running" or ([.status.containerStatuses[]?.ready] | all | not))
    | "\(.metadata.namespace)/\(.metadata.name)"] | join(", ")')"
 if [ -z "${not_ready}" ] && [ "${total:-0}" -gt 0 ]; then
@@ -59,7 +61,7 @@ else
   no_go "Every pod ready" "not ready: ${not_ready:-no pods found}" \
     "wait a minute and run this again; a pod that has just started needs it" \
     "still not ready: ${kube} describe pod -n <namespace> <pod>" \
-    "a release is missing or failed: task demo:up   (safe to re-run)"
+    "a release is missing or failed: task up   (safe to re-run)"
 fi
 
 routes="$(k get httproute --all-namespaces --output json 2>/dev/null | jq -r '
@@ -70,7 +72,7 @@ if [ "${route_count:-0}" -ge 10 ] && [ -z "${route_bad}" ]; then
   go "Gateway routes accepted" "${route_count} routes"
 else
   no_go "Gateway routes accepted" "${route_count:-0} routes, 10 expected${route_bad:+; not accepted: ${route_bad}}" \
-    "task demo:install && task diagnosis-agent:deploy && task observability:install"
+    "task install && task diagnosis-agent:deploy && task observability:install"
 fi
 
 # --- identity ----------------------------------------------------------------
@@ -84,7 +86,7 @@ if [ -z "${bad_tokens}" ]; then
 else
   no_go "Sign-in for each role" "no token with the right role for: ${bad_tokens}" \
     "Keycloak at http://localhost:18081 must answer: task status" \
-    "the realm is applied by: task up   (safe to re-run)"
+    "the realm is applied by: task up:trunk   (safe to re-run)"
 fi
 
 # --- the model ---------------------------------------------------------------
@@ -97,8 +99,21 @@ model_code="$(curl --silent --max-time 60 --output "${model_out}" --write-out '%
   -d "{\"model\":\"${model_fast}\",\"max_tokens\":16,\"messages\":[{\"role\":\"user\",\"content\":\"Reply with the single word: ok\"}]}" \
   "${gateway_url}/v1/messages" 2>/dev/null || true)"
 model_seconds=$(($(date +%s) - model_started))
+# `local`, or `bedrock` after `task model -- bedrock`; from scripts/lib/cluster.sh.
+provider="$(model_provider)"
 if [ "${model_code}" = "200" ] && [ -n "$(jq -r '.content[0].text // empty' "${model_out}" 2>/dev/null)" ]; then
-  go "Model answers through the gateway" "${model_fast} answered in ${model_seconds}s"
+  if [ "${provider}" = "bedrock" ]; then
+    go "Model answers through the gateway" "${model_fast} answered in ${model_seconds}s, from Amazon Bedrock"
+  else
+    go "Model answers through the gateway" "${model_fast} answered in ${model_seconds}s"
+  fi
+elif [ "${provider}" = "bedrock" ]; then
+  # Bedrock's refusal is JSON with the reason at its end.
+  reason="$(jq -r '.error.message // .message // empty' "${model_out}" 2>/dev/null | head -c 160)"
+  no_go "Model answers through the gateway" "HTTP ${model_code:-none} with Amazon Bedrock as the provider: ${reason:-$(head -c 120 "${model_out}" | tr '\n' ' ')}" \
+    "temporary AWS credentials expire: export new ones in this shell, then: task model -- bedrock" \
+    "task model   (the region, the endpoint and the model IDs the gateway uses)" \
+    "back to the model endpoint on this machine: task model -- local"
 elif [ "$(http_code "${model_host_url}/v1/models" 5)" = "000" ]; then
   no_go "Model answers through the gateway" "HTTP ${model_code:-none}; nothing listens at ${model_host_url} on this machine" \
     "start the model endpoint on this machine, then run this again" \
@@ -106,7 +121,7 @@ elif [ "$(http_code "${model_host_url}/v1/models" 5)" = "000" ]; then
 else
   no_go "Model answers through the gateway" "HTTP ${model_code:-none}: $(head -c 120 "${model_out}" | tr '\n' ' ')" \
     "task smoke   (says which part of the model route fails)" \
-    "after a change to platform/model-provider.yaml: task deploy -- -l name=model-route"
+    "after a change to platform/30-model-route/model-provider.yaml: task deploy -- -l name=model-route"
 fi
 
 # --- the Sample App, the incident, the alert ---------------------------------
@@ -123,7 +138,7 @@ listed="$(mcp_call "${developer_token}" list_incidents '{}')"
 incidents="$(printf '%s' "${listed}" | jq -r '[.incidents[]? | "\(.incident_id) (\(.status))"] | join(", ")' 2>/dev/null || true)"
 if [ -z "${listed}" ]; then
   no_go "No incident on the card" "delivery-mcp did not answer through ${gateway_url}/mcp/delivery" \
-    "task demo:install   (applies delivery-mcp and its route), then task demo:reset"
+    "task install   (applies delivery-mcp and its route), then task demo:reset"
 elif [ -z "${incidents}" ]; then
   go "No incident on the card" "delivery-mcp lists none"
 else
@@ -162,7 +177,7 @@ if [ "${chat_code}" = "200" ] && [ "${web_code}" = "200" ]; then
   go "Chat UI and Sample App pages" "${chat_url} and ${web_url}/search answer"
 else
   no_go "Chat UI and Sample App pages" "Chat UI HTTP ${chat_code}, Sample App HTTP ${web_code}" \
-    "task demo:install"
+    "task install"
 fi
 
 grafana_password="$(secret telemetry kube-prometheus-stack-grafana admin-password)"
@@ -232,8 +247,9 @@ if [ -n "${last_fired}" ]; then
 else
   note "Grafana, Sample App dashboard" "no break in the last hour: every tile starts green"
 fi
-note "Sign-ins" "a Chat UI sign-in lasts 30 minutes and renews itself while its tab stays open;" \
-  "after task demo:reset, reload each Chat UI tab to clear its chat pane."
+note "Chat UI sign-ins" "last 30 minutes. With three tabs in one browser only the tab that signed in last" \
+  "renews itself: sign in no earlier than 15 minutes before the show, or give" \
+  "each role its own browser profile. After task demo:reset, reload each Chat UI tab."
 note "Node memory" "$(docker stats --no-stream --format '{{.MemUsage}} ({{.MemPerc}})' agentgateway-demo-control-plane 2>/dev/null || echo unknown)"
 
 echo

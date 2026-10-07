@@ -89,14 +89,15 @@ spec:
           # No condition on who calls: every caller a route has let in may
           # read. That is any valid Keycloak token on the route above (the
           # three human roles and the machine client `alert-automation`), and
-          # the workloads of ../workload-access on theirs.
+          # the workloads with a gateway key on theirs.
           matchExpressions:
             - {{ printf "mcp.tool.name in %s" (toJson (required "allowedTools: at least one tool" .Values.allowedTools)) | quote }}
 
 {{- with .Values.workloadRoutesNamespace }}
 ---
-# Lets the routes for workloads with a gateway key (../workload-access, which
-# live next to those keys) use this backend from their namespace.
+# Lets the routes for workloads with a gateway key
+# (agent-platform/profiles/kagent/tool-access, which live next to those keys)
+# use this backend from their namespace.
 apiVersion: gateway.networking.k8s.io/v1beta1
 kind: ReferenceGrant
 metadata:

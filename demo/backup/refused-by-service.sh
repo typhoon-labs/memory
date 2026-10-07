@@ -2,11 +2,12 @@
 # Drill for the run of show: `platform-engineer` calls `apply_change` on a
 # change that is proposed but not yet approved, and delivery-mcp refuses.
 #
-# The incident card cannot show this: its Apply button stays disabled until
-# the change is approved. That is the card being helpful, not the control. The
-# control is delivery-mcp's own rule `change_is_approved`, and this is the
-# call that reaches it: the gateway offers apply_change to a
-# platform-engineer and lets the call through, and the service says no.
+# The incident card shows the same refusal: a platform-engineer may press
+# Apply on a proposed change, and the card says "Refused by the service: this
+# change has not been approved yet". This drill is the fallback if the card
+# stalls, and it makes the call without the card: the gateway offers
+# apply_change to a platform-engineer and lets the call through, and
+# delivery-mcp's own rule `change_is_approved` says no.
 #
 # Needs an open incident with a proposed change, so it belongs between the
 # developer's proposal and the incident manager's approval. Without one it

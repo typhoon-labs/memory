@@ -2,12 +2,12 @@
 # Picked up by ../../helmfile.yaml (workloads/*/helmfile.yaml).
 #
 #   delivery-mcp          the service, in namespace `tools`      values.yaml
-#   delivery-mcp-access   what it may do in `sample-app`         access/
+#   delivery-mcp-access   what it may do in `sample-app`         rbac/
 #
 # The image and the Sample App chart must be in the registry first:
-# `task demo:publish`.
+# `task publish`.
 # The gateway route to it (/mcp/delivery) is not part of this file: it is the
-# release `delivery-mcp-route` in ../../platform/80-routes/helmfile.yaml, and
+# release `delivery-mcp-route` in ../../domains/operations/helmfile.yaml, and
 # who may call which tool is in ../../domains/operations/delivery-mcp.yaml.
 commonLabels:
   layer: workload
@@ -24,7 +24,7 @@ releases:
   - name: delivery-mcp-access
     namespace: sample-app
     createNamespace: true
-    chart: ./access
+    chart: ./rbac
 
   - name: delivery-mcp
     namespace: tools

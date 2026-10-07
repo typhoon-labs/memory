@@ -4,7 +4,7 @@ FROM node:22-alpine
 
 # One source tree, two releases. src/ is 2.0.0. The files a later release
 # changed are in releases/<VERSION>/ and are copied over src/ here, so the
-# behaviour of a version is fixed in its image and no setting can change it.
+# behavior of a version is fixed in its image and no setting can change it.
 ARG VERSION=2.0.0
 ENV NODE_ENV=production APP_VERSION=${VERSION} PORT=8080
 

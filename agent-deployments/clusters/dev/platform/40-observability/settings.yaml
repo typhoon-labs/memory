@@ -1,0 +1,59 @@
+# The settings of the observability releases that depend on other workstreams.
+# Read by the *.gotmpl values files next to this file as `.Values`.
+# After a change: `task observability:install`.
+
+# Where the collector accepts OTLP. Stated here once; the Service is named by
+# `fullnameOverride` in collector.yaml.gotmpl.
+#   gRPC  otel-collector.telemetry.svc.cluster.local:4317
+#   HTTP  http://otel-collector.telemetry.svc.cluster.local:4318
+collector:
+  service: otel-collector
+  namespace: telemetry
+
+alert:
+  # The gateway URL of chat-assistant's `POST /hooks/alert`, as seen from a pod
+  # (route `chat-assistant-alert-hook` in domains/operations; it accepts only
+  # the role `alert-automation`). Alertmanager posts firing alerts here.
+  webhookUrl: http://agentgateway-proxy.agentgateway-system.svc.cluster.local/hooks/alert
+  # Alertmanager fetches a token for client `alert-automation` here (client
+  # credentials). The issuer in the token is still http://localhost:18081/realms/demo.
+  tokenUrl: http://keycloak.keycloak.svc.cluster.local:8080/realms/demo/protocol/openid-connect/token
+
+# A second traces pipeline, to Langfuse (platform/50-langfuse).
+#
+# The pipeline runs when both are true: `enabled` below, and Secret
+# `langfuse-ingest` exists in namespace `telemetry` at the moment the releases
+# are applied. Its key `authorization` holds the whole header value, `Basic
+# <base64 of public-key:secret-key>`; `task langfuse:secrets` creates it.
+#
+# The Secret comes from a later release than the collector, so on a new
+# cluster the first `task observability:install` leaves the pipeline off and
+# nothing fails. Once Langfuse is installed, `task observability:install` again
+# (or `task deploy` for otel-collector and gateway-telemetry) switches it on.
+#
+# While the pipeline runs, the gateway also puts the prompt and the completion
+# on its model spans (gen_ai.prompt, gen_ai.completion). They reach Langfuse
+# only; the Tempo pipeline removes them. While it does not run, the gateway
+# does not record them. A values file without `enabled` means off.
+langfuse:
+  enabled: true
+  # Langfuse's OTLP base URL as seen from a pod, without /v1/traces. Langfuse
+  # accepts OTLP over HTTP only, at /api/public/otel.
+  endpoint: http://langfuse-web.langfuse.svc.cluster.local:3000/api/public/otel
+  secret:
+    name: langfuse-ingest
+    key: authorization
+  # Sent as the header x-langfuse-ingestion-version. Langfuse's documentation:
+  # without it, spans sent over OTLP can take up to 10 minutes to appear.
+  ingestionVersion: "4"
+  # Langfuse gets the traces that contain a model call, each complete with its
+  # root span, and nothing else. The collector decides per trace, this long
+  # after the trace's first span, so a trace shows up in Langfuse about this
+  # much later than in Tempo.
+  decisionWait: 20s
+  # Services whose spans never go to Langfuse, whatever trace they are in: the
+  # Sample App's request traffic has no model call in it.
+  dropServices:
+    - web
+    - search-service
+    - registration-service

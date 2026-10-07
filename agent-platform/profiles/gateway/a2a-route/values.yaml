@@ -1,0 +1,62 @@
+# One A2A agent behind the gateway:
+#
+#   AgentgatewayBackend <route.name>   the agent, as A2A traffic
+#   HTTPRoute <route.name>             <route.path> on the shared Gateway
+#
+# The route's prefix is removed, because the agent serves A2A at its root:
+# <route.path>/.well-known/agent-card.json reaches the agent as
+# /.well-known/agent-card.json, and the gateway rewrites the card's `url` to
+# the address the client used.
+#
+# Who may call it, and that the agent receives the caller's token, is a
+# separate release of agent-platform/policies/agentgateway/route-auth that
+# targets HTTPRoute <route.name>. Install both in the agent's namespace.
+#
+# Schema: Agentgateway 1.6 (agentgateway.dev/v1alpha1), from
+#   https://agentgateway.dev/docs/kubernetes/latest/documentation/agent/a2a/
+#   https://agentgateway.dev/docs/kubernetes/latest/documentation/security/backend-authn/key/
+#
+# The pattern (these two resources and a route-auth policy with passthrough)
+# was verified by applying, 2026-10-06, Agentgateway 1.6.0 on Kubernetes 1.37,
+# against a stub HTTP server that reports the request it receives:
+#   - all three resources accepted, policy attached
+#   - no token: 401, on the JSON-RPC endpoint and on the agent card
+#   - with a token the stub received POST / with the identical
+#     `Authorization: Bearer <token>` header
+#   - the agent card is fetched from the agent at /.well-known/agent-card.json
+#     and its `url` is rewritten to the address the client used, including the
+#     route prefix (http://localhost:18080/a2a/remediation-agent from the host)
+#   - a card with neither `url` nor `supportedInterfaces` is answered with 503
+# That run had no real A2A agent, no streaming and no A2UI extension; the dev
+# cluster's routes (agent-deployments/clusters/dev/) are where those run.
+
+# The Gateway this route attaches to.
+gateway:
+  name: agentgateway-proxy
+  namespace: agentgateway-system
+  listener: http
+
+route:
+  # Names the HTTPRoute and the AgentgatewayBackend.
+  name: ""
+  # The path prefix clients use, for example /a2a/remediation-agent.
+  path: ""
+
+backend:
+  # The agent's Service, as a host name.
+  host: ""
+  port: 8080
+
+# Only for an agent that a browser calls from another origin (the Chat UI).
+# The gateway then answers the CORS preflight itself, without a token, and adds
+# the CORS headers to every answer, its own refusals included.
+#   allowOrigins   for example [http://localhost:18083]
+#   allowMethods, allowHeaders, exposeHeaders   lists
+#   maxAge         seconds a browser may cache the preflight
+cors: {}
+
+# Only for an agent whose answers take long. Durations such as 300s.
+#   request        from the request until the response headers arrive
+#   responseIdle   the longest silence allowed inside a streamed answer
+# Unset: the gateway's defaults.
+timeouts: {}

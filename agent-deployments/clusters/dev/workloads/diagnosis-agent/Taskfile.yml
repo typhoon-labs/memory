@@ -1,0 +1,45 @@
+# diagnosis-agent in the dev cluster. Included by the root Taskfile as
+# `diagnosis-agent:`.
+#
+#   task diagnosis-agent:deploy            apply its five releases, in order (safe to re-run)
+#   task diagnosis-agent:status            is it ready, what may it reach, its conversations
+#   task diagnosis-agent:checks            what it cannot do: writes, other namespaces, other hosts
+#   task diagnosis-agent:ask -- "<text>"   one question through the gateway, as alert-automation
+#   task diagnosis-agent:eval              run the component's scenarios against the live cluster
+#
+# The last two are the component's own tasks
+# (components/diagnosis-agent/Taskfile.yml), included here under the same name.
+#
+# Every kubectl, helm and helmfile command names the repo-local kubeconfig and
+# the context (see the root Taskfile).
+version: "3"
+
+includes:
+  component:
+    taskfile: ../../../../../components/diagnosis-agent/Taskfile.yml
+    dir: ../../../../../components/diagnosis-agent
+    flatten: true
+
+tasks:
+  deploy:
+    desc: "Apply diagnosis-agent (tool server, access, model access, route, agent) and wait until it is ready"
+    preconditions:
+      - sh: kubectl --kubeconfig "{{.ROOT_DIR}}/local/kind/kubeconfig" --context kind-agentgateway-demo get crd agents.api.kagent.dev >/dev/null 2>&1
+        msg: "kagent is not installed in this cluster. Run `task kagent:install` first."
+    cmds:
+      # This workload's helmfile only; pass helmfile flags after --, such as
+      # `-- --set model.id=claude-haiku-4-5-20251001` to try the fast model.
+      - KUBECONFIG="{{.ROOT_DIR}}/local/kind/kubeconfig" helmfile --kubeconfig "{{.ROOT_DIR}}/local/kind/kubeconfig" --kube-context kind-agentgateway-demo --file "{{.TASKFILE_DIR}}/helmfile.yaml" sync {{.CLI_ARGS}}
+      - "{{.TASKFILE_DIR}}/scripts/wait-ready.sh"
+
+  status:
+    desc: Readiness, the revision in use, what the agent may reach, and its conversations
+    silent: true
+    cmds:
+      - "{{.TASKFILE_DIR}}/scripts/status.sh"
+
+  checks:
+    desc: What the agent cannot do, checked without a model call (writes, other namespaces, the route's authentication, egress)
+    silent: true
+    cmds:
+      - "{{.TASKFILE_DIR}}/scripts/checks.sh"

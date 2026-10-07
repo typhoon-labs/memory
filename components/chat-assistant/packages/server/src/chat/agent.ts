@@ -5,7 +5,7 @@
  *
  * The model is reached through MODEL_BASE_URL (the gateway's model route; an
  * Anthropic Messages API) with the caller's bearer token, so the gateway
- * attributes and authorises the model call per user. No provider key exists
+ * attributes and authorizes the model call per user. No provider key exists
  * in this process.
  *
  * Request parameters are left at their defaults on purpose: the current

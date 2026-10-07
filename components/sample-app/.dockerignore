@@ -1,8 +1,9 @@
 # The build context is this directory. Images need only the service's own
-# source, lib/, seed/ and package.json.
+# source, lib/, seed/ and package.json. The web image builds its pages itself.
 chart/
 test/
-node_modules/
+**/node_modules/
+web/ui/dist/
 compose.yaml
 Taskfile.yml
 .task/

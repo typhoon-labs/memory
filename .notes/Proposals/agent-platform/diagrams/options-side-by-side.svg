@@ -1,0 +1,104 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="990" viewBox="0 0 1280 990" role="img" aria-labelledby="t d" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif">
+<title id="t">Two options, compared on one basis</title>
+<desc id="d">A band at the top lists what both options use: GitLab.com CI/CD on self-hosted runners, ECR, Okta and OpenTelemetry with New Relic or Dynatrace. Below it, two columns compare the EKS agent platform and AgentCore on eight concerns: tool governance, model access, hosted execution, session state, deployment selection, release gate, catalog and cost shape. A band at the bottom lists the shared comparison basis: the same requirement values, one pilot workload, twelve common experiments and one ten-criterion scorecard. Neither option is selected.</desc>
+<defs>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0.8 L10,5 L0,9.2 z" fill="#52514e"/></marker>
+<marker id="ahd" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0.8 L10,5 L0,9.2 z" fill="#d03b3b"/></marker>
+</defs>
+<rect x="0.5" y="0.5" width="1279" height="989" rx="14" fill="#fcfcfb" stroke="#e4e3df"/>
+<text x="32.0" y="46.0" font-size="19" font-weight="700" fill="#0b0b0b" text-anchor="start">Two options, compared on one basis</text>
+<text x="32.0" y="68.0" font-size="12.5" font-weight="400" fill="#52514e" text-anchor="start">Neither option is selected. Both are measured against the same requirement values, pilot workload, experiments and scorecard.</text>
+<rect x="32" y="88" width="1216" height="112" rx="12" fill="#f3f2ee" stroke="#d3d2cc" stroke-width="1"/>
+<text x="46.0" y="109.0" font-size="10.5" font-weight="700" fill="#52514e" text-anchor="start" letter-spacing="0.6">BOTH OPTIONS USE</text>
+<rect x="46.0" y="118" width="286.5" height="68" rx="8" fill="#ebeae6" stroke="#8f8e88" stroke-width="1.6"/>
+<text x="58.0" y="140.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">GitLab.com CI/CD</text>
+<text x="58.0" y="157.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Merge requests and pipelines, on self-hosted</text>
+<text x="58.0" y="173.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">runners in the existing EKS cluster.</text>
+<rect x="346.5" y="118" width="286.5" height="68" rx="8" fill="#ebeae6" stroke="#8f8e88" stroke-width="1.6"/>
+<text x="358.5" y="140.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">ECR</text>
+<text x="358.5" y="157.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Container images and Helm charts as OCI</text>
+<text x="358.5" y="173.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">artifacts.</text>
+<rect x="647.0" y="118" width="286.5" height="68" rx="8" fill="#ebeae6" stroke="#8f8e88" stroke-width="1.6"/>
+<text x="659.0" y="140.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Okta</text>
+<text x="659.0" y="157.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Corporate identity for users and machine clients.</text>
+<rect x="947.5" y="118" width="286.5" height="68" rx="8" fill="#ebeae6" stroke="#8f8e88" stroke-width="1.6"/>
+<text x="959.5" y="140.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">OpenTelemetry</text>
+<text x="959.5" y="157.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Export to New Relic or Dynatrace as the</text>
+<text x="959.5" y="173.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">operational backend.</text>
+<text x="46.0" y="262.0" font-size="10.5" font-weight="700" fill="#52514e" text-anchor="start" letter-spacing="0.6">CONCERN</text>
+<rect x="222" y="218" width="506" height="76" rx="8" fill="#ffffff" stroke="#52514e" stroke-width="1.6"/>
+<text x="234.0" y="240.0" font-size="15" font-weight="700" fill="#0b0b0b" text-anchor="start">EKS agent platform</text>
+<text x="234.0" y="260.2" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Agentgateway as the connectivity layer, with optional hosted execution, on the EKS</text>
+<text x="234.0" y="275.9" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">infrastructure we already operate.</text>
+<rect x="736" y="218" width="506" height="76" rx="8" fill="#ffffff" stroke="#52514e" stroke-width="1.6"/>
+<text x="748.0" y="240.0" font-size="15" font-weight="700" fill="#0b0b0b" text-anchor="start">AgentCore</text>
+<text x="748.0" y="260.2" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">AWS AgentCore, managed through Terraform and Terragrunt.</text>
+<rect x="32" y="308" width="1216" height="56" rx="8" fill="#f3f2ee" stroke="#d3d2cc" stroke-width="1"/>
+<text x="46.0" y="340.5" font-size="12.5" font-weight="700" fill="#0b0b0b" text-anchor="start">Tool governance</text>
+<rect x="222" y="314" width="506" height="44" rx="6" fill="#ffffff" stroke="#52514e" stroke-width="1.2"/>
+<text x="236.0" y="340.2" font-size="12" font-weight="400" fill="#0b0b0b" text-anchor="start">Agentgateway on EKS.</text>
+<rect x="736" y="314" width="506" height="44" rx="6" fill="#ffffff" stroke="#52514e" stroke-width="1.2"/>
+<text x="750.0" y="340.2" font-size="12" font-weight="400" fill="#0b0b0b" text-anchor="start">AgentCore domain tool gateway.</text>
+<rect x="32" y="372" width="1216" height="56" rx="8" fill="#f3f2ee" stroke="#d3d2cc" stroke-width="1"/>
+<text x="46.0" y="404.5" font-size="12.5" font-weight="700" fill="#0b0b0b" text-anchor="start">Model access</text>
+<rect x="222" y="378" width="506" height="44" rx="6" fill="#ffffff" stroke="#52514e" stroke-width="1.2"/>
+<text x="236.0" y="404.2" font-size="12" font-weight="400" fill="#0b0b0b" text-anchor="start">Gateway model endpoint. The provider credential stays at the gateway.</text>
+<rect x="736" y="378" width="506" height="44" rx="6" fill="#ffffff" stroke="#52514e" stroke-width="1.2"/>
+<text x="750.0" y="404.2" font-size="12" font-weight="400" fill="#0b0b0b" text-anchor="start">Execution role and approved model list. An inference gateway is optional later.</text>
+<rect x="32" y="436" width="1216" height="56" rx="8" fill="#f3f2ee" stroke="#d3d2cc" stroke-width="1"/>
+<text x="46.0" y="468.5" font-size="12.5" font-weight="700" fill="#0b0b0b" text-anchor="start">Hosted execution</text>
+<rect x="222" y="442" width="506" height="44" rx="6" fill="#ffffff" stroke="#52514e" stroke-width="1.2"/>
+<text x="236.0" y="468.2" font-size="12" font-weight="400" fill="#0b0b0b" text-anchor="start">Conventional Deployment, or kagent and Agent Substrate.</text>
+<rect x="736" y="442" width="506" height="44" rx="6" fill="#ffffff" stroke="#52514e" stroke-width="1.2"/>
+<text x="750.0" y="468.2" font-size="12" font-weight="400" fill="#0b0b0b" text-anchor="start">Managed harness or custom runtime.</text>
+<rect x="32" y="500" width="1216" height="56" rx="8" fill="#f3f2ee" stroke="#d3d2cc" stroke-width="1"/>
+<text x="46.0" y="532.5" font-size="12.5" font-weight="700" fill="#0b0b0b" text-anchor="start">Session state</text>
+<rect x="222" y="506" width="506" height="44" rx="6" fill="#ffffff" stroke="#52514e" stroke-width="1.2"/>
+<text x="236.0" y="532.2" font-size="12" font-weight="400" fill="#0b0b0b" text-anchor="start">CloudNativePG, with S3 snapshots.</text>
+<rect x="736" y="506" width="506" height="44" rx="6" fill="#ffffff" stroke="#52514e" stroke-width="1.2"/>
+<text x="750.0" y="532.2" font-size="12" font-weight="400" fill="#0b0b0b" text-anchor="start">AgentCore memory, owned per workload.</text>
+<rect x="32" y="564" width="1216" height="56" rx="8" fill="#f3f2ee" stroke="#d3d2cc" stroke-width="1"/>
+<text x="46.0" y="596.5" font-size="12.5" font-weight="700" fill="#0b0b0b" text-anchor="start">Deployment selection</text>
+<rect x="222" y="570" width="506" height="44" rx="6" fill="#ffffff" stroke="#52514e" stroke-width="1.2"/>
+<text x="236.0" y="596.2" font-size="12" font-weight="400" fill="#0b0b0b" text-anchor="start">Helm values under agent-deployments, applied by Helmfile.</text>
+<rect x="736" y="570" width="506" height="44" rx="6" fill="#ffffff" stroke="#52514e" stroke-width="1.2"/>
+<text x="750.0" y="588.0" font-size="12" font-weight="400" fill="#0b0b0b" text-anchor="start">deployment.yaml under agentcore-deployments, applied by Terraform, with</text>
+<text x="750.0" y="604.4" font-size="12" font-weight="400" fill="#0b0b0b" text-anchor="start">candidate and active releases.</text>
+<rect x="32" y="628" width="1216" height="56" rx="8" fill="#f3f2ee" stroke="#d3d2cc" stroke-width="1"/>
+<text x="46.0" y="660.5" font-size="12.5" font-weight="700" fill="#0b0b0b" text-anchor="start">Release gate</text>
+<rect x="222" y="634" width="506" height="44" rx="6" fill="#ffffff" stroke="#52514e" stroke-width="1.2"/>
+<text x="236.0" y="660.2" font-size="12" font-weight="400" fill="#0b0b0b" text-anchor="start">Checks proportional to the change. Candidates only for identified risks.</text>
+<rect x="736" y="634" width="506" height="44" rx="6" fill="#ffffff" stroke="#52514e" stroke-width="1.2"/>
+<text x="750.0" y="660.2" font-size="12" font-weight="400" fill="#0b0b0b" text-anchor="start">Isolated candidate, evidence bound to a manifest hash, then activation.</text>
+<rect x="32" y="692" width="1216" height="56" rx="8" fill="#f3f2ee" stroke="#d3d2cc" stroke-width="1"/>
+<text x="46.0" y="724.5" font-size="12.5" font-weight="700" fill="#0b0b0b" text-anchor="start">Catalog</text>
+<rect x="222" y="698" width="506" height="44" rx="6" fill="#ffffff" stroke="#52514e" stroke-width="1.2"/>
+<text x="236.0" y="724.2" font-size="12" font-weight="400" fill="#0b0b0b" text-anchor="start">Agentregistry, optional.</text>
+<rect x="736" y="698" width="506" height="44" rx="6" fill="#ffffff" stroke="#52514e" stroke-width="1.2"/>
+<text x="750.0" y="724.2" font-size="12" font-weight="400" fill="#0b0b0b" text-anchor="start">AWS Agent Registry.</text>
+<rect x="32" y="756" width="1216" height="56" rx="8" fill="#f3f2ee" stroke="#d3d2cc" stroke-width="1"/>
+<text x="46.0" y="788.5" font-size="12.5" font-weight="700" fill="#0b0b0b" text-anchor="start">Cost shape</text>
+<rect x="222" y="762" width="506" height="44" rx="6" fill="#ffffff" stroke="#52514e" stroke-width="1.2"/>
+<text x="236.0" y="788.2" font-size="12" font-weight="400" fill="#0b0b0b" text-anchor="start">Provisioned capacity and operating effort. Unpriced.</text>
+<rect x="736" y="762" width="506" height="44" rx="6" fill="#ffffff" stroke="#52514e" stroke-width="1.2"/>
+<text x="750.0" y="788.2" font-size="12" font-weight="400" fill="#0b0b0b" text-anchor="start">Metered services. Priced inventory with illustrative totals.</text>
+<rect x="32" y="832" width="1216" height="116" rx="12" fill="#f3f2ee" stroke="#d3d2cc" stroke-width="1"/>
+<text x="46.0" y="853.0" font-size="10.5" font-weight="700" fill="#52514e" text-anchor="start" letter-spacing="0.6">COMPARED ON ONE BASIS</text>
+<rect x="46.0" y="862" width="286.5" height="72" rx="8" fill="#ffffff" stroke="#52514e" stroke-width="1.6"/>
+<text x="58.0" y="884.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">The same requirement values</text>
+<text x="58.0" y="901.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Agreed once and carried into both plans. None is</text>
+<text x="58.0" y="917.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">agreed yet.</text>
+<rect x="346.5" y="862" width="286.5" height="72" rx="8" fill="#ffffff" stroke="#52514e" stroke-width="1.6"/>
+<text x="358.5" y="884.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">One pilot workload</text>
+<text x="358.5" y="901.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">One service, one consumer, one task set and one</text>
+<text x="358.5" y="917.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">model configuration.</text>
+<rect x="647.0" y="862" width="286.5" height="72" rx="8" fill="#ffffff" stroke="#52514e" stroke-width="1.6"/>
+<text x="659.0" y="884.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Twelve common experiments</text>
+<text x="659.0" y="901.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Run with the same identities, task set and</text>
+<text x="659.0" y="917.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">retained data.</text>
+<rect x="947.5" y="862" width="286.5" height="72" rx="8" fill="#ffffff" stroke="#52514e" stroke-width="1.6"/>
+<text x="959.5" y="884.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">One scorecard, ten criteria</text>
+<text x="959.5" y="901.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">A pass only against an agreed value. Otherwise</text>
+<text x="959.5" y="917.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">an observation.</text>
+<text x="32.0" y="974.0" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Possible outcomes: a smaller tool-access platform, conventional EKS execution, conditional kagent adoption, AgentCore, hybrid use, deferral or rejection. An unpriced option is not a cheaper one.</text>
+</svg>

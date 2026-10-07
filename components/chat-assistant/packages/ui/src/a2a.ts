@@ -66,6 +66,44 @@ export function textIn(parts: Part[] | undefined): string {
   return (parts ?? []).map((p) => (p.content?.$case === 'text' ? p.content.value : '')).join('');
 }
 
+/** One row of the list of incidents, as the server builds it (packages/server/src/card/incident-list.ts). */
+export interface IncidentListEntry {
+  id: string;
+  service: string;
+  summary: string;
+  /** `open`, `mitigating` or `resolved`. */
+  status: string;
+  /** When it was resolved, as `HH:MM` in UTC; empty while it is not. */
+  resolved: string;
+  /** Where its change stands, in a few words. */
+  note: string;
+}
+
+/** What a sync reply says beside the card: every incident, and which one the card shows. */
+export interface Page {
+  incidents: IncidentListEntry[];
+  /** The incident on the card, and the surface it is drawn on. Absent when there is no incident. */
+  shown?: string;
+  surfaceId?: string;
+}
+
+const text = (value: unknown) => (typeof value === 'string' ? value : '');
+
+/** The page a sync reply describes. Undefined when the reply carries none: it failed, and what is on screen stays. */
+export function pageIn(parts: Part[] | undefined): Page | undefined {
+  for (const part of parts ?? []) {
+    if (part.content?.$case !== 'data' || mimeOf(part) !== SYNC_MIME_TYPE) continue;
+    const state = part.content.value as { incidents?: unknown; shown?: unknown; surfaces?: unknown } | null;
+    if (!state || !Array.isArray(state.incidents)) return undefined;
+    const incidents = (state.incidents as Record<string, unknown>[])
+      .filter((i) => i && typeof i === 'object' && text(i.id))
+      .map((i) => ({ id: text(i.id), service: text(i.service), summary: text(i.summary), status: text(i.status), resolved: text(i.resolved), note: text(i.note) }));
+    const surfaces = Array.isArray(state.surfaces) ? (state.surfaces as { surfaceId?: unknown }[]) : [];
+    return { incidents, shown: text(state.shown) || undefined, surfaceId: text(surfaces[0]?.surfaceId) || undefined };
+  }
+  return undefined;
+}
+
 export class AssistantClient {
   private client?: Promise<Client>;
   private readonly contextId = crypto.randomUUID();

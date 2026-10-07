@@ -127,7 +127,7 @@ async def open_delivery(
             # The transport's task group hands the block's own exception back
             # inside a group. Give the caller the exception they raised.
             raise body_error from None
-        # The transport reports a broken connection by cancelling the work in
+        # The transport reports a broken connection by canceling the work in
         # progress and raising the cause as a group when the session closes.
         if isinstance(exc, Exception | BaseExceptionGroup):
             raise DeliveryUnavailable(_flatten(exc)) from exc

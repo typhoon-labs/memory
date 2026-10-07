@@ -8,7 +8,7 @@ searchService:
 
 # Where the three services send traces: the base URL of an OTLP receiver that
 # speaks HTTP (port 4318), without /v1/traces. This is the dev cluster's
-# OpenTelemetry Collector (platform/50-observability).
+# OpenTelemetry Collector (platform/40-observability).
 otlp:
   endpoint: http://otel-collector.telemetry.svc.cluster.local:4318
 

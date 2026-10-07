@@ -38,23 +38,32 @@ describe('web', () => {
     await collector.stop();
   });
 
-  test('serves the three pages with the title from the seed', async () => {
-    for (const [path, heading] of [['/', '<h1>Sample App</h1>'], ['/search', 'Search the catalogue'], ['/register', '<h1>Register</h1>']]) {
+  test('serves the app on the three pages, with its files and what it shows from the seed', async () => {
+    let html;
+    for (const path of ['/', '/search', '/register']) {
       const response = await fetch(`${web.url}${path}`);
-      const html = await response.text();
+      html = await response.text();
       assert.equal(response.status, 200, path);
       assert.match(response.headers.get('content-type'), /^text\/html/);
-      assert.ok(html.includes('| Sample App</title>'), path);
-      assert.ok(html.includes(heading), path);
+      assert.ok(html.includes('<title>Sample App</title>'), path);
+      assert.ok(html.includes('<div id="root">'), path);
       assert.ok(!html.includes('{{'), `${path} has an unfilled placeholder`);
     }
-    const searchPage = await (await fetch(`${web.url}/search`)).text();
-    assert.ok(searchPage.includes('data-q="tiny pink hexagon"'), 'suggested searches come from the seed');
 
-    for (const file of ['app.css', 'common.js', 'home.js', 'search.js', 'register.js']) {
-      assert.equal((await fetch(`${web.url}/static/${file}`)).status, 200, file);
+    // The page names its script and its stylesheet; both must be served, and cached for good.
+    const files = [...html.matchAll(/(?:src|href)="(\/assets\/[^"]+)"/g)].map((match) => match[1]);
+    assert.ok(files.some((file) => file.endsWith('.js')) && files.some((file) => file.endsWith('.css')), 'a script and a stylesheet');
+    for (const file of files) {
+      const response = await fetch(`${web.url}${file}`);
+      assert.equal(response.status, 200, file);
+      assert.match(response.headers.get('cache-control'), /immutable/, file);
     }
-    assert.equal((await fetch(`${web.url}/static/../src/server.js`)).status, 404);
+    assert.equal((await fetch(`${web.url}/favicon.svg`)).headers.get('content-type'), 'image/svg+xml');
+    assert.equal((await fetch(`${web.url}/assets/../src/server.js`)).status, 404);
+
+    const site = await api('/api/site');
+    assert.equal(site.body.title, 'Sample App');
+    assert.ok(site.body.suggestions.includes('tiny pink hexagon'), 'suggested searches come from the seed');
 
     const head = await fetch(`${web.url}/search/`, { method: 'HEAD' });
     assert.equal(head.status, 200, 'HEAD and a trailing slash reach the same page');

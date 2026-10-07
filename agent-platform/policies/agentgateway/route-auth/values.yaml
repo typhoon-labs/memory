@@ -16,8 +16,8 @@ target:
   kind: HTTPRoute
   name: ""
 
-# Whose tokens are trusted. The dev cluster's values are in
-# agent-deployments/access/identity.yaml.
+# Whose tokens are trusted. A cluster's values are in
+# agent-deployments/clusters/<cluster>/identity.yaml.
 identity:
   # Must equal the token's `iss` claim exactly.
   issuer: ""

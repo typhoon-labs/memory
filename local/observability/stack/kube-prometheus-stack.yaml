@@ -1,9 +1,9 @@
 # kube-prometheus-stack, cut down to what the demo needs: the operator,
-# Prometheus, Alertmanager and Grafana. Stands in for the organisation's real
+# Prometheus, Alertmanager and Grafana. Stands in for the organization's real
 # operational backend (New Relic or Dynatrace), so it exists only on kind.
 #
 # Values for the release `kube-prometheus-stack` in
-# agent-deployments/clusters/dev/platform/50-observability/helmfile.yaml, which
+# agent-deployments/clusters/dev/platform/40-observability/helmfile.yaml, which
 # pins the chart version. Starting point: the Agentgateway OTel stack guide,
 # https://agentgateway.dev/docs/kubernetes/latest/documentation/observability/otel-stack/
 #

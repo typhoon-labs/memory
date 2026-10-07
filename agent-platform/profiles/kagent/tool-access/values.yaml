@@ -1,0 +1,51 @@
+# A door to an MCP server behind the gateway for workloads that present a
+# gateway key instead of a user's token.
+#
+# WHY. The server's ordinary route asks for a token from the identity provider.
+# A kagent agent cannot forward its caller's token to a tool; it can only send
+# a fixed header from a Secret. The gateway already issues such a workload a
+# key of its own for the model route (../model-access, mint-key.sh). This
+# chart lets the same key open an MCP backend, on a route of its own.
+#
+# WHAT, per workload:
+#
+#   HTTPRoute `<backend.name>-<workload>`
+#       /workloads/<workload><route.path>, to the AgentgatewayBackend
+#       <backend.name> in <backend.namespace> (which must allow it with a
+#       ReferenceGrant)
+#   AgentgatewayPolicy `<backend.name>-<workload>-auth`
+#       apiKeyAuthentication: the caller presents a key whose SHA-256 the
+#       gateway knows, and that key must be the one issued to <workload>
+#
+# Which tools exist is decided once, on the backend, for every route.
+#
+# Why a second route and not a second credential on the ordinary one: the
+# key's hash is a ConfigMap in the gateway's namespace, and a policy reads
+# ConfigMaps and attaches to routes of its own namespace only. One route
+# taking either credential would also have to stop refusing a request without
+# a token at the authentication step (401), which callers rely on.
+#
+# Install in the namespace that holds the workload keys' ConfigMaps
+# (`workload-key-<workload>`, label agentgateway-demo/workload-key=<workload>).
+#
+# Schema: Agentgateway 1.6, AgentgatewayPolicy `traffic.apiKeyAuthentication`,
+# as in ../model-access.
+
+# The workloads that get a route. Each needs a key from mint-key.sh.
+workloads: []
+
+# The Gateway the routes attach to.
+gateway:
+  name: agentgateway-proxy
+  namespace: agentgateway-system
+  listener: http
+
+route:
+  # The server's ordinary path on the gateway, such as /mcp/observability. A
+  # workload's door is /workloads/<workload> followed by it.
+  path: ""
+
+# The MCP backend the routes lead to: its AgentgatewayBackend and namespace.
+backend:
+  name: ""
+  namespace: ""

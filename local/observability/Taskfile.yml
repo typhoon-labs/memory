@@ -12,7 +12,7 @@
 #   task observability:login            the demo-only Grafana login, read from the cluster
 #   task observability:test-rules       unit tests of the alert rules (promtool)
 #
-# What the releases are: agent-deployments/clusters/dev/platform/50-observability/helmfile.yaml
+# What the releases are: agent-deployments/clusters/dev/platform/40-observability/helmfile.yaml
 # and agent-deployments/clusters/dev/workloads/observability-mcp/helmfile.yaml.
 #
 # Following the root Taskfile's rules: every kubectl command names the

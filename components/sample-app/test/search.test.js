@@ -23,8 +23,8 @@ describe('search-service 2.0.0', () => {
     assert.equal(body.count, 50);
     assert.equal(body.results.length, 50);
     assert.equal(body.indexed, 500);
-    assert.ok(body.results.every((record) => record.colour === 'red'));
-    assert.deepEqual(Object.keys(body.results[0]), ['id', 'name', 'colour', 'hex', 'shape', 'size']);
+    assert.ok(body.results.every((record) => record.color === 'red'));
+    assert.deepEqual(Object.keys(body.results[0]), ['id', 'name', 'color', 'hex', 'shape', 'size']);
   });
 
   test('every word of the query must match', async () => {
@@ -33,7 +33,7 @@ describe('search-service 2.0.0', () => {
     assert.equal(body.results[0].name, 'Large red circle');
   });
 
-  test('an empty query lists the catalogue, and limit is honoured', async () => {
+  test('an empty query lists the catalog, and limit is honored', async () => {
     const { body } = await get(service, '/search?q=&limit=0');
     assert.equal(body.count, 500);
     assert.equal(body.results.length, 0);

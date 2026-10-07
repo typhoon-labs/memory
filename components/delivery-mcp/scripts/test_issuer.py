@@ -31,7 +31,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 
 AUDIENCE = "agentgateway"
 
-# The identities in agent-platform/docs/conventions.md. The last one exists in
+# The identities in docs/contracts.md. The last one exists in
 # no realm: it holds two roles so that the rule "the approver is not the
 # proposer" can be reached, which no demo user can do.
 IDENTITIES: dict[str, dict[str, Any]] = {

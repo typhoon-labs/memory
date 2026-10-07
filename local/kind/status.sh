@@ -4,10 +4,9 @@
 set -o nounset
 
 here="$(cd "$(dirname "$0")" && pwd)"
-# Always the repo-local kubeconfig and our context, whatever the caller exported.
-kubeconfig="${here}/kubeconfig"
-context="kind-agentgateway-demo"
-k() { kubectl --kubeconfig "${kubeconfig}" --context "${context}" "$@"; }
+repo="$(cd "${here}/../.." && pwd)"
+# The kubeconfig, the context and `k` come from scripts/lib/cluster.sh.
+. "${repo}/scripts/lib/cluster.sh"
 
 cluster="agentgateway-demo"
 node="${cluster}-control-plane"
@@ -21,7 +20,7 @@ docker ps -a --filter "name=^${node}$" --filter "name=^${registry}$" \
   --format '  {{.Names}}\t{{.Status}}\t{{.Ports}}' | sed 's/, /\n\t\t\t/g'
 
 if ! docker inspect "${node}" >/dev/null 2>&1; then
-  echo "  cluster ${cluster} does not exist. Run: task up"
+  echo "  cluster ${cluster} does not exist. Run: task up:trunk"
   exit 0
 fi
 
@@ -46,8 +45,14 @@ echo "== Endpoints"
 probe "Keycloak" "${keycloak_url}/realms/demo/.well-known/openid-configuration"
 probe "Gateway" "${gateway_url}/v1/models"
 echo "               (401 from the gateway is the healthy answer without a token)"
-probe "Model host" "http://localhost:7070/v1/models"
+# The endpoint on this machine is the provider unless `task model` switched it.
+if [ "$(model_provider)" = "bedrock" ]; then
+  printf '  %-12s %s\n' "Model host" "Amazon Bedrock, with the credentials in the cluster: task model"
+else
+  probe "Model host" "http://localhost:7070/v1/models"
+fi
 probe "Registry" "http://localhost:${registry_port}/v2/"
+echo "  Every web UI, its address and whether it answers: task ui"
 
 echo "== In-cluster addresses"
 echo "  Gateway    http://agentgateway-proxy.agentgateway-system.svc.cluster.local"

@@ -4,6 +4,10 @@
 #   observability-mcp                   the server and its route, in `tools`
 #   observability-mcp-workload-access   a route per workload that presents a
 #                                       gateway key instead of a Keycloak token
+#                                       (chart agent-platform/profiles/kagent/tool-access)
+#
+# Where it is reached, who may call it and which tools callers see is in
+# ../../domains/operations/observability-mcp.yaml.
 #
 # Callers with a Keycloak token reach it at
 #   from a pod    http://agentgateway-proxy.agentgateway-system.svc.cluster.local/mcp/observability
@@ -15,7 +19,7 @@
 # with the gateway's short name, because kagent keeps one credential per host
 # name and the model route already uses the long one.
 #
-# Needs Grafana (release kube-prometheus-stack in platform/50-observability):
+# Needs Grafana (release kube-prometheus-stack in platform/40-observability):
 # the hook creates a Viewer service account in it, and the Secret
 # `observability-mcp-credentials` that the server and the gateway read.
 commonLabels:
@@ -34,7 +38,8 @@ releases:
     # and agent-platform/charts/agent cannot pass arguments to a container.
     chart: ./chart
     values:
-      - ../../../../access/identity.yaml
+      - ../../identity.yaml
+      - ../../domains/operations/observability-mcp.yaml
       - values.yaml
     wait: true
     timeout: 180
@@ -48,9 +53,12 @@ releases:
   # (agent-platform/profiles/kagent/model-access/mint-key.sh creates them).
   - name: observability-mcp-workload-access
     namespace: agentgateway-system
-    chart: ./workload-access
+    chart: ../../../../../agent-platform/profiles/kagent/tool-access
     needs:
       - tools/observability-mcp
     values:
-      - workloads:
-          - diagnosis-agent
+      # Which workloads, and the path their door is built from.
+      - ../../domains/operations/observability-mcp.yaml
+      - backend:
+          name: observability-mcp
+          namespace: tools

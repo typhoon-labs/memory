@@ -28,10 +28,18 @@
 #
 # Exit status: the number of failed checks.
 set -o nounset
-. "$(dirname "$0")/../lib.sh"
+component_dir="$(cd "$(dirname "$0")/.." && pwd)"
+# The cluster the agent runs in, for `cluster_unchanged`: from the environment,
+# as the tasks set it, never the default kubeconfig or the current context.
+k() {
+  kubectl --kubeconfig "${PLATFORM_KUBECONFIG:?set PLATFORM_KUBECONFIG and PLATFORM_CONTEXT (task diagnosis-agent:eval does)}" \
+    --context "${PLATFORM_CONTEXT:?set PLATFORM_CONTEXT (task diagnosis-agent:eval does)}" "$@"
+}
 
 web_url="${WEB_URL:-http://localhost:18082}"
-allowed_tools="$(sed -n '/^  kubernetes:/,/^  [a-z]*:$/p' "${component_dir}/config/agent.yaml" | sed -n 's/^      - //p' | jq -Rnc '[inputs]')"
+# Every tool of every group under `tools:` in the agent's definition: its
+# Kubernetes tools and its observability tools. All of them only read.
+allowed_tools="$(sed -n '/^tools:/,$p' "${component_dir}/config/agent.yaml" | sed -n 's/^      - //p' | jq -Rnc '[inputs]')"
 failures=0
 out="$(mktemp)"; trap 'rm -f "${out}"' EXIT
 
@@ -64,7 +72,7 @@ run_scenario() {
   fi
 
   before="$(snapshot)"
-  "${component_dir}/ask.sh" --raw "$(jq -r .question "${file}")" >"${out}" 2>/dev/null
+  "${component_dir}/scripts/ask.sh" --raw "$(jq -r .question "${file}")" >"${out}" 2>/dev/null
   # Kept for a closer look: the whole response, tool results included.
   kept="${TMPDIR:-/tmp}/diagnosis-agent-eval-${name}.json"
   cp "${out}" "${kept}" 2>/dev/null && echo "   response kept in ${kept}"

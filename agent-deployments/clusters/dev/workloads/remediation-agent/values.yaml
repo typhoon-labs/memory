@@ -14,7 +14,7 @@ env:
   DEPLOYMENT_ENVIRONMENT: dev
 
   # Whose tokens are trusted: the same three values as
-  # agent-deployments/access/identity.yaml. The agent verifies the caller's
+  # agent-deployments/clusters/dev/identity.yaml. The agent verifies the caller's
   # token, then forwards that same token on both of the calls below.
   OIDC_ISSUER: http://localhost:18081/realms/demo
   OIDC_AUDIENCE: agentgateway
@@ -41,7 +41,7 @@ env:
   A2A_PUBLIC_URL: http://localhost:18080/a2a/remediation-agent/
 
   # Traces: to the dev cluster's OpenTelemetry Collector
-  # (platform/50-observability), as OTLP over HTTP.
+  # (platform/40-observability), as OTLP over HTTP.
   OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector.telemetry.svc.cluster.local:4318
   OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
 

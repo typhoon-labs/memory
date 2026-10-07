@@ -13,13 +13,14 @@ import { ClientFactory, DefaultAgentCardResolver, JsonRpcTransportFactory, type 
 import {
   A2UI_EXTENSION_URI,
   A2UI_VERSION,
-  BASIC_CATALOG_ID,
+  INCIDENT_CATALOG_ID,
   SYNC_MIME_TYPE,
   a2uiMessagesOf,
   a2uiPart,
   dataPart,
   isA2uiPart,
   isTask,
+  partMimeType,
   textOf,
   textPart,
   userMessage,
@@ -64,6 +65,8 @@ export interface Reply {
 
 export class A2aSession {
   readonly surfaces = new Map<string, Surface>();
+  /** The catalogs this client says it can draw. A test may change it to stand for another client. */
+  catalogs = [INCIDENT_CATALOG_ID];
   private readonly contextId = crypto.randomUUID();
 
   private constructor(
@@ -100,7 +103,7 @@ export class A2aSession {
   private metadata(): Json {
     const surfaces = Object.fromEntries([...this.surfaces].map(([id, s]) => [id, s.model]));
     return {
-      a2uiClientCapabilities: { [A2UI_VERSION]: { supportedCatalogIds: [BASIC_CATALOG_ID] } },
+      a2uiClientCapabilities: { [A2UI_VERSION]: { supportedCatalogIds: this.catalogs } },
       ...(this.surfaces.size ? { a2uiClientDataModel: { version: A2UI_VERSION, surfaces } } : {}),
     };
   }
@@ -149,12 +152,23 @@ export class A2aSession {
     };
   }
 
-  /** What the UI sends on load and every 2 seconds: "bring my card up to date". */
-  async sync(): Promise<Reply> {
+  /**
+   * What the UI sends on load and every 2 seconds: "bring my page up to date".
+   * With `incident`, the card of that incident is asked for, as when a viewer
+   * picks one from the list; without, the current incident's.
+   */
+  async sync(incident?: string): Promise<Reply> {
     const reply = this.newReply();
-    const result = (await this.client.sendMessage(this.request([dataPart({ request: 'sync' }, SYNC_MIME_TYPE)]))) as Message | Task;
+    const ask = { request: 'sync', ...(incident ? { incident } : {}) };
+    const result = (await this.client.sendMessage(this.request([dataPart(ask, SYNC_MIME_TYPE)]))) as Message | Task;
     this.absorb(reply, result);
     return reply;
+  }
+
+  /** What a sync reply says beside the card: the viewer, the list of incidents and which one is shown. */
+  static pageOf(reply: Reply): Json {
+    const part = reply.parts.find((p) => p.content?.$case === 'data' && partMimeType(p) === SYNC_MIME_TYPE);
+    return (part?.content?.$case === 'data' ? part.content.value : {}) as Json;
   }
 
   private absorb(reply: Reply, result: Message | Task) {
@@ -252,6 +266,27 @@ export class A2aSession {
   /** A component as received. */
   component(componentId: string, surfaceId = [...this.surfaces.keys()][0] ?? ''): Json | undefined {
     return this.surfaces.get(surfaceId)?.components.get(componentId);
+  }
+
+  /** The five steps of the change as `state:label`, for example `done:Proposed`. */
+  steps(surfaceId = [...this.surfaces.keys()][0] ?? ''): string[] {
+    return [...(this.surfaces.get(surfaceId)?.components.values() ?? [])].filter((c) => c.component === 'Step').map((c) => `${c.state}:${c.label}`);
+  }
+
+  /** One step as received: `propose`, `approve`, `apply`, `verify` or `resolve`. */
+  step(key: string, surfaceId = [...this.surfaces.keys()][0] ?? ''): Json {
+    return this.component(`step-${key}`, surfaceId) ?? {};
+  }
+
+  /** What the viewer's last action left on the card: empty fields unless it was refused or failed. */
+  notice(surfaceId = [...this.surfaces.keys()][0] ?? ''): Json {
+    return this.model(surfaceId).notice ?? {};
+  }
+
+  /** The timeline's entries, one per line. */
+  timeline(surfaceId = [...this.surfaces.keys()][0] ?? ''): string {
+    const rows = (this.component('timeline', surfaceId)?.children ?? []) as string[];
+    return rows.map((id) => this.text(`${id}-text`, surfaceId)).join('\n');
   }
 
   /** The surface's data model, as this client holds it. */

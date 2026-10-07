@@ -44,7 +44,7 @@ tests:
               diagnose: "true"
             exp_annotations:
               summary: 'Search is failing: 100% of requests to search-service 2.1.0 return a server error.'
-              impact: Visitors of the Sample App cannot search the catalogue.
+              impact: Visitors of the Sample App cannot search the catalog.
               description: 'More than 5% of GET /search requests to search-service version 2.1.0 returned HTTP 5xx over the last 30 seconds.'
 
   # After the rollback the failing pod is gone and 2.0.0 serves again.
@@ -69,7 +69,7 @@ tests:
               diagnose: "true"
             exp_annotations:
               summary: 'Search is failing: 100% of requests to search-service 2.1.0 return a server error.'
-              impact: Visitors of the Sample App cannot search the catalogue.
+              impact: Visitors of the Sample App cannot search the catalog.
               description: 'More than 5% of GET /search requests to search-service version 2.1.0 returned HTTP 5xx over the last 30 seconds.'
       # 2.1.0's last sample was at 1m. The 30s window still holds two of its
       # samples until 1m25s, so the alert ends about 25 seconds after the
@@ -85,7 +85,7 @@ tests:
               diagnose: "true"
             exp_annotations:
               summary: 'Search is failing: 100% of requests to search-service 2.1.0 return a server error.'
-              impact: Visitors of the Sample App cannot search the catalogue.
+              impact: Visitors of the Sample App cannot search the catalog.
               description: 'More than 5% of GET /search requests to search-service version 2.1.0 returned HTTP 5xx over the last 30 seconds.'
       - eval_time: 1m25s
         alertname: SearchErrorRatioHigh

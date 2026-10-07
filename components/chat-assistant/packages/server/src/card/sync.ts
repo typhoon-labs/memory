@@ -24,8 +24,8 @@
  * written only when an action produces them, and carried over on a rebuild, so
  * a poll never overwrites what someone is typing.
  */
-import { A2UI_VERSION, BASIC_CATALOG_ID, type A2uiMessage } from '../a2a/wire.js';
-import type { CardSurface } from './incident-card.js';
+import { A2UI_VERSION, INCIDENT_CATALOG_ID, type A2uiMessage } from '../a2a/wire.js';
+import { NO_NOTICE, type CardSurface, type Notice } from './incident-card.js';
 
 export const SURFACE_PREFIX = 'incident-';
 export const CARD_THEME = { primaryColor: '#1F6FEB', agentDisplayName: 'Chat assistant' };
@@ -34,8 +34,8 @@ export const CARD_THEME = { primaryColor: '#1F6FEB', agentDisplayName: 'Chat ass
 export type ClientSurfaces = Record<string, unknown>;
 
 export interface SurfaceExtras {
-  /** The outcome of the viewer's last action, shown on the card. */
-  notice?: string;
+  /** What the viewer's last action came to: a refusal or a failure, or `NO_NOTICE` when it went through. */
+  notice?: Notice;
   /** A status draft from comms-agent, or '' to clear the field after posting. */
   draft?: string;
   /** '' to clear the reject reason once the rejection went through. */
@@ -47,7 +47,7 @@ interface ClientModel {
   reject?: { reason?: unknown };
   draft?: { text?: unknown };
   propose?: { version?: unknown };
-  notice?: { text?: unknown };
+  notice?: Partial<Record<keyof Notice, unknown>>;
 }
 
 /** True when every component the client holds is still part of the card, with the same type. */
@@ -65,6 +65,12 @@ export function clientSurfacesFrom(metadata: Record<string, unknown> | undefined
 }
 
 const str = (value: unknown, fallback: string) => (typeof value === 'string' ? value : fallback);
+
+/** The notice a client holds, with every field a string. */
+function heldNotice(held: ClientModel | undefined): Notice {
+  const n = held?.notice ?? {};
+  return { slot: str(n.slot, ''), tone: str(n.tone, ''), title: str(n.title, ''), text: str(n.text, ''), rule: str(n.rule, '') };
+}
 
 export function syncMessages(
   desired: CardSurface[],
@@ -87,7 +93,7 @@ export function syncMessages(
 
     if (!held || !updatableInPlace(held.meta?.layout, surface.layout)) {
       if (held) msg({ deleteSurface: { surfaceId } });
-      msg({ createSurface: { surfaceId, catalogId: BASIC_CATALOG_ID, theme: CARD_THEME, sendDataModel: true } });
+      msg({ createSurface: { surfaceId, catalogId: INCIDENT_CATALOG_ID, theme: CARD_THEME, sendDataModel: true } });
       msg({ updateComponents: { surfaceId, components: surface.components } });
       msg({
         updateDataModel: {
@@ -98,7 +104,7 @@ export function syncMessages(
             reject: { reason: extra.rejectReason ?? str(held?.reject?.reason, '') },
             draft: { text: extra.draft ?? str(held?.draft?.text, '') },
             propose: { version: str(held?.propose?.version, '') },
-            notice: { text: extra.notice ?? str(held?.notice?.text, '') },
+            notice: extra.notice ?? heldNotice(held),
           },
         },
       });
@@ -110,11 +116,11 @@ export function syncMessages(
       msg({ updateDataModel: { surfaceId, path: '/can', value: surface.model.can } });
       msg({ updateDataModel: { surfaceId, path: '/meta', value: surface.model.meta } });
       // The incident moved on: the outcome of an earlier action no longer describes it.
-      if (extra.notice === undefined && str(held.notice?.text, '')) {
-        msg({ updateDataModel: { surfaceId, path: '/notice', value: { text: '' } } });
+      if (extra.notice === undefined && heldNotice(held).slot) {
+        msg({ updateDataModel: { surfaceId, path: '/notice', value: NO_NOTICE } });
       }
     }
-    if (extra.notice !== undefined) msg({ updateDataModel: { surfaceId, path: '/notice', value: { text: extra.notice } } });
+    if (extra.notice !== undefined) msg({ updateDataModel: { surfaceId, path: '/notice', value: extra.notice } });
     if (extra.draft !== undefined) msg({ updateDataModel: { surfaceId, path: '/draft', value: { text: extra.draft } } });
     if (extra.rejectReason !== undefined) {
       msg({ updateDataModel: { surfaceId, path: '/reject', value: { reason: extra.rejectReason } } });

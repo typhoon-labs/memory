@@ -1,2 +1,2 @@
-# NodePort that kind maps to host port 18080 (agent-platform/docs/conventions.md).
+# NodePort that kind maps to host port 18080 (docs/cluster.md).
 nodePort: 30080

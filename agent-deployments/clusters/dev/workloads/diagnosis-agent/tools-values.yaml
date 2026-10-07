@@ -28,7 +28,7 @@ tools:
 # 3. No ClusterRole. The chart's choices are cluster-admin or read everything
 #    in the cluster; this server gets neither. The chart still creates the
 #    ServiceAccount `diagnosis-agent-tools`, and the only rights it has are the
-#    Role in namespace sample-app (./access).
+#    Role in namespace sample-app (./rbac).
 rbac:
   create: false
 

@@ -1,0 +1,225 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="1136" viewBox="0 0 1280 1136" role="img" aria-labelledby="t d" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif">
+<title id="t">What the demo ran, stood in for, and left out</title>
+<desc id="d">The layers of the platform overview, with each block marked by what the demo did with it. Ran as itself: Agentgateway with MCP, A2A and model routes, Agentregistry as a catalog, kagent with Agent Substrate for one declarative agent, conventional hosted agents, hosted MCP servers, Kyverno, the OpenTelemetry collector, Langfuse, Helm and Helmfile. Stand-in: Keycloak for Okta, a Grafana stack for New Relic or Dynatrace, a local registry for ECR, task targets for GitLab CI/CD, an endpoint on the host for the model provider, kind for EKS, and a Chat UI with scripted calls for developer clients. Not exercised: Istio, Karpenter, CloudNativePG, S3 and snapshots, the rate-limit server and token budgets, the GitLab package registry, Terraform and OpenTofu, remote MCP servers, stage and prod.</desc>
+<defs>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0.8 L10,5 L0,9.2 z" fill="#52514e"/></marker>
+<marker id="ahd" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0.8 L10,5 L0,9.2 z" fill="#d03b3b"/></marker>
+</defs>
+<rect x="0.5" y="0.5" width="1279" height="1135" rx="14" fill="#fcfcfb" stroke="#e4e3df"/>
+<text x="32.0" y="46.0" font-size="19" font-weight="700" fill="#0b0b0b" text-anchor="start">What the demo ran, stood in for, and left out</text>
+<text x="32.0" y="68.0" font-size="12.5" font-weight="400" fill="#52514e" text-anchor="start">Observations on one machine, 7 October 2026. Not pilot evidence.</text>
+<rect x="32" y="88" width="1216" height="128" rx="12" fill="#f3f2ee" stroke="#d3d2cc" stroke-width="1"/>
+<text x="46.0" y="109.0" font-size="10.5" font-weight="700" fill="#52514e" text-anchor="start" letter-spacing="0.6"></text>
+<text x="48.0" y="116.0" font-size="12.5" font-weight="700" fill="#0b0b0b" text-anchor="start">Consumers</text>
+<text x="48.0" y="133.0" font-size="10.5" font-weight="400" fill="#6f6e69" text-anchor="start">Who used the demo</text>
+<rect x="196.0" y="104" width="248.5" height="96" rx="8" fill="#e2f5ed" stroke="#1baf7a" stroke-width="1.6" stroke-dasharray="7 4"/>
+<rect x="379.3" y="113" width="53.2" height="17" rx="8.5" fill="#ffffff" stroke="#1baf7a" stroke-width="1"/>
+<text x="405.9" y="125.0" font-size="10" font-weight="600" fill="#52514e" text-anchor="middle">stand-in</text>
+<text x="208.0" y="126.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Developer clients</text>
+<text x="208.0" y="143.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">A Chat UI and scripted MCP calls with a</text>
+<text x="208.0" y="159.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">token. A real MCP client could not sign in</text>
+<text x="208.0" y="175.0" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">by itself.</text>
+<rect x="458.5" y="104" width="248.5" height="96" rx="8" fill="#e2f5ed" stroke="#1baf7a" stroke-width="1.6" stroke-dasharray="7 4"/>
+<rect x="641.8" y="113" width="53.2" height="17" rx="8.5" fill="#ffffff" stroke="#1baf7a" stroke-width="1"/>
+<text x="668.4" y="125.0" font-size="10" font-weight="600" fill="#52514e" text-anchor="middle">stand-in</text>
+<text x="470.5" y="126.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Users of hosted agents</text>
+<text x="470.5" y="143.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Four demo users in three roles, signed in</text>
+<text x="470.5" y="159.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">through Keycloak.</text>
+<rect x="721.0" y="104" width="248.5" height="96" rx="8" fill="#e2f5ed" stroke="#1baf7a" stroke-width="1.6" stroke-dasharray="7 4"/>
+<rect x="904.3" y="113" width="53.2" height="17" rx="8.5" fill="#ffffff" stroke="#1baf7a" stroke-width="1"/>
+<text x="930.9" y="125.0" font-size="10" font-weight="600" fill="#52514e" text-anchor="middle">stand-in</text>
+<text x="733.0" y="126.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Service and agent teams</text>
+<text x="733.0" y="143.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Component directories in one repository</text>
+<text x="733.0" y="159.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">stood in for team repositories.</text>
+<rect x="983.5" y="104" width="248.5" height="96" rx="8" fill="#e2f5ed" stroke="#1baf7a" stroke-width="1.6" stroke-dasharray="7 4"/>
+<rect x="1166.8" y="113" width="53.2" height="17" rx="8.5" fill="#ffffff" stroke="#1baf7a" stroke-width="1"/>
+<text x="1193.4" y="125.0" font-size="10" font-weight="600" fill="#52514e" text-anchor="middle">stand-in</text>
+<text x="995.5" y="126.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Okta</text>
+<text x="995.5" y="143.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Keycloak. Tokens carried roles and a</text>
+<text x="995.5" y="159.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">team, for one audience.</text>
+<path d="M216.0,219.0 L216.0,243.0" fill="none" stroke="#52514e" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#ah)"/>
+<text x="230.0" y="235.0" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Every request through the gateway carried a verified identity</text>
+<rect x="32" y="246" width="1216" height="180" rx="12" fill="#f3f2ee" stroke="#d3d2cc" stroke-width="1"/>
+<text x="46.0" y="267.0" font-size="10.5" font-weight="700" fill="#52514e" text-anchor="start" letter-spacing="0.6"></text>
+<text x="48.0" y="274.0" font-size="12.5" font-weight="700" fill="#0b0b0b" text-anchor="start">Connectivity and</text>
+<text x="48.0" y="290.0" font-size="12.5" font-weight="700" fill="#0b0b0b" text-anchor="start">discovery</text>
+<text x="48.0" y="307.0" font-size="10.5" font-weight="400" fill="#6f6e69" text-anchor="start">The governed path to tools</text>
+<text x="48.0" y="320.9" font-size="10.5" font-weight="400" fill="#6f6e69" text-anchor="start">and models</text>
+<rect x="196" y="260" width="770" height="152" rx="8" fill="#e4effc" stroke="#2a78d6" stroke-width="1.6"/>
+<text x="208.0" y="283.0" font-size="14" font-weight="700" fill="#0b0b0b" text-anchor="start">Agentgateway</text>
+<text x="314.0" y="283.0" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Version 1.6.0, one gateway for one domain in one environment</text>
+<rect x="208.0" y="296" width="240.66666666666666" height="104" rx="8" fill="#ffffff" stroke="#2a78d6" stroke-width="1.6"/>
+<rect x="408.6" y="305" width="28.1" height="17" rx="8.5" fill="#ffffff" stroke="#2a78d6" stroke-width="1"/>
+<text x="422.6" y="317.0" font-size="10" font-weight="600" fill="#52514e" text-anchor="middle">ran</text>
+<text x="220.0" y="318.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Controller</text>
+<text x="220.0" y="335.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Its own controller and GatewayClass,</text>
+<text x="220.0" y="351.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">not managed by a mesh.</text>
+<rect x="460.66666666666663" y="296" width="240.66666666666666" height="104" rx="8" fill="#ffffff" stroke="#2a78d6" stroke-width="1.6"/>
+<rect x="661.2" y="305" width="28.1" height="17" rx="8.5" fill="#ffffff" stroke="#2a78d6" stroke-width="1"/>
+<text x="675.3" y="317.0" font-size="10" font-weight="600" fill="#52514e" text-anchor="middle">ran</text>
+<text x="472.7" y="318.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Proxy</text>
+<text x="472.7" y="335.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">MCP, A2A and model routes. Token</text>
+<text x="472.7" y="351.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">checks, tool rules by role, approved</text>
+<text x="472.7" y="367.0" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">models only.</text>
+<rect x="713.3333333333333" y="296" width="240.66666666666666" height="104" rx="8" fill="#ffffff" stroke="#8f8e88" stroke-width="1.6" stroke-dasharray="2.5 3"/>
+<rect x="896.7" y="305" width="45.3" height="17" rx="8.5" fill="#ffffff" stroke="#8f8e88" stroke-width="1"/>
+<text x="919.3" y="317.0" font-size="10" font-weight="600" fill="#52514e" text-anchor="middle">not run</text>
+<text x="725.3" y="318.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Rate-limit server</text>
+<text x="725.3" y="335.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Not installed. No token budget was</text>
+<text x="725.3" y="351.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">configured.</text>
+<rect x="980" y="260" width="252" height="152" rx="8" fill="#e4effc" stroke="#2a78d6" stroke-width="1.6"/>
+<rect x="1191.9" y="269" width="28.1" height="17" rx="8.5" fill="#ffffff" stroke="#2a78d6" stroke-width="1"/>
+<text x="1206.0" y="281.0" font-size="10" font-weight="600" fill="#52514e" text-anchor="middle">ran</text>
+<text x="992.0" y="282.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Agentregistry</text>
+<text x="992.0" y="299.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Catalog only: four agents and two tool</text>
+<text x="992.0" y="315.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">servers published. With it scaled to zero,</text>
+<text x="992.0" y="331.0" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">tools and agents still answered.</text>
+<path d="M216.0,453.0 L216.0,429.0" fill="none" stroke="#52514e" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#ah)"/>
+<text x="230.0" y="445.0" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Agents reached tools and the model only through the gateway; direct calls were blocked</text>
+<rect x="32" y="456" width="1216" height="112" rx="12" fill="#f3f2ee" stroke="#d3d2cc" stroke-width="1"/>
+<text x="46.0" y="477.0" font-size="10.5" font-weight="700" fill="#52514e" text-anchor="start" letter-spacing="0.6"></text>
+<text x="48.0" y="484.0" font-size="12.5" font-weight="700" fill="#0b0b0b" text-anchor="start">Execution</text>
+<text x="48.0" y="501.0" font-size="10.5" font-weight="400" fill="#6f6e69" text-anchor="start">Hosted processes in the</text>
+<text x="48.0" y="514.9" font-size="10.5" font-weight="400" fill="#6f6e69" text-anchor="start">demo</text>
+<rect x="196.0" y="472" width="336.0" height="80" rx="8" fill="#e4effc" stroke="#2a78d6" stroke-width="1.6"/>
+<rect x="491.9" y="481" width="28.1" height="17" rx="8.5" fill="#ffffff" stroke="#2a78d6" stroke-width="1"/>
+<text x="505.9" y="493.0" font-size="10" font-weight="600" fill="#52514e" text-anchor="middle">ran</text>
+<text x="208.0" y="494.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Conventional workloads</text>
+<text x="208.0" y="511.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Three agents as Deployments from one shared chart.</text>
+<rect x="546.0" y="472" width="336.0" height="80" rx="8" fill="#e4effc" stroke="#2a78d6" stroke-width="1.6"/>
+<rect x="810.6" y="481" width="59.4" height="17" rx="8.5" fill="#ffffff" stroke="#2a78d6" stroke-width="1"/>
+<text x="840.3" y="493.0" font-size="10" font-weight="600" fill="#52514e" text-anchor="middle">ran, alpha</text>
+<text x="558.0" y="494.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">kagent and Agent Substrate</text>
+<text x="558.0" y="511.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">One declarative, read-only agent on kagent 1.0.0-alpha7.</text>
+<text x="558.0" y="527.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Sessions and snapshots were not tested.</text>
+<rect x="896.0" y="472" width="336.0" height="80" rx="8" fill="#e4effc" stroke="#2a78d6" stroke-width="1.6"/>
+<rect x="1191.9" y="481" width="28.1" height="17" rx="8.5" fill="#ffffff" stroke="#2a78d6" stroke-width="1"/>
+<text x="1206.0" y="493.0" font-size="10" font-weight="600" fill="#52514e" text-anchor="middle">ran</text>
+<text x="908.0" y="494.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Hosted MCP servers</text>
+<text x="908.0" y="511.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Two tool servers, each behind its own gateway route.</text>
+<path d="M216.0,571.0 L216.0,595.0" fill="none" stroke="#52514e" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#ah)"/>
+<text x="230.0" y="587.0" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">The tool server enforced its own rules, whatever the gateway allowed</text>
+<rect x="32" y="598" width="1216" height="112" rx="12" fill="#f3f2ee" stroke="#d3d2cc" stroke-width="1"/>
+<text x="46.0" y="619.0" font-size="10.5" font-weight="700" fill="#52514e" text-anchor="start" letter-spacing="0.6"></text>
+<text x="48.0" y="626.0" font-size="12.5" font-weight="700" fill="#0b0b0b" text-anchor="start">Capabilities and</text>
+<text x="48.0" y="642.0" font-size="12.5" font-weight="700" fill="#0b0b0b" text-anchor="start">providers</text>
+<text x="48.0" y="659.0" font-size="10.5" font-weight="400" fill="#6f6e69" text-anchor="start">What the governed path</text>
+<text x="48.0" y="672.9" font-size="10.5" font-weight="400" fill="#6f6e69" text-anchor="start">reached</text>
+<rect x="196.0" y="614" width="336.0" height="80" rx="8" fill="#e2f5ed" stroke="#1baf7a" stroke-width="1.6" stroke-dasharray="7 4"/>
+<rect x="466.8" y="623" width="53.2" height="17" rx="8.5" fill="#ffffff" stroke="#1baf7a" stroke-width="1"/>
+<text x="493.4" y="635.0" font-size="10" font-weight="600" fill="#52514e" text-anchor="middle">stand-in</text>
+<text x="208.0" y="636.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Service APIs</text>
+<text x="208.0" y="653.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">A Sample App built for the demo. The business rules were</text>
+<text x="208.0" y="669.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">in the delivery tool server.</text>
+<rect x="546.0" y="614" width="336.0" height="80" rx="8" fill="#ffffff" stroke="#8f8e88" stroke-width="1.6" stroke-dasharray="2.5 3"/>
+<rect x="824.7" y="623" width="45.3" height="17" rx="8.5" fill="#ffffff" stroke="#8f8e88" stroke-width="1"/>
+<text x="847.4" y="635.0" font-size="10" font-weight="600" fill="#52514e" text-anchor="middle">not run</text>
+<text x="558.0" y="636.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Remote MCP servers</text>
+<text x="558.0" y="653.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">None. Both tool servers were hosted in the cluster.</text>
+<rect x="896.0" y="614" width="336.0" height="80" rx="8" fill="#e2f5ed" stroke="#1baf7a" stroke-width="1.6" stroke-dasharray="7 4"/>
+<rect x="1166.8" y="623" width="53.2" height="17" rx="8.5" fill="#ffffff" stroke="#1baf7a" stroke-width="1"/>
+<text x="1193.4" y="635.0" font-size="10" font-weight="600" fill="#52514e" text-anchor="middle">stand-in</text>
+<text x="908.0" y="636.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Model providers</text>
+<text x="908.0" y="653.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">An Anthropic-compatible endpoint on the host. The</text>
+<text x="908.0" y="669.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Bedrock binding is written and untested.</text>
+<rect x="32" y="722" width="1216" height="112" rx="12" fill="#f3f2ee" stroke="#d3d2cc" stroke-width="1"/>
+<text x="46.0" y="743.0" font-size="10.5" font-weight="700" fill="#52514e" text-anchor="start" letter-spacing="0.6"></text>
+<text x="48.0" y="750.0" font-size="12.5" font-weight="700" fill="#0b0b0b" text-anchor="start">State and artifacts</text>
+<text x="48.0" y="767.0" font-size="10.5" font-weight="400" fill="#6f6e69" text-anchor="start">Durable data and released</text>
+<text x="48.0" y="780.9" font-size="10.5" font-weight="400" fill="#6f6e69" text-anchor="start">bytes</text>
+<rect x="196.0" y="738" width="248.5" height="80" rx="8" fill="#ffffff" stroke="#8f8e88" stroke-width="1.6" stroke-dasharray="2.5 3"/>
+<rect x="387.2" y="747" width="45.3" height="17" rx="8.5" fill="#ffffff" stroke="#8f8e88" stroke-width="1"/>
+<text x="409.8" y="759.0" font-size="10" font-weight="600" fill="#52514e" text-anchor="middle">not run</text>
+<text x="208.0" y="760.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">CloudNativePG</text>
+<text x="208.0" y="777.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Not installed. Incident and chat state was</text>
+<text x="208.0" y="793.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">held in memory.</text>
+<rect x="458.5" y="738" width="248.5" height="80" rx="8" fill="#ffffff" stroke="#8f8e88" stroke-width="1.6" stroke-dasharray="2.5 3"/>
+<rect x="649.7" y="747" width="45.3" height="17" rx="8.5" fill="#ffffff" stroke="#8f8e88" stroke-width="1"/>
+<text x="672.4" y="759.0" font-size="10" font-weight="600" fill="#52514e" text-anchor="middle">not run</text>
+<text x="470.5" y="760.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">S3 and snapshots</text>
+<text x="470.5" y="777.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">No S3 bucket, and no snapshot restore</text>
+<text x="470.5" y="793.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">was tested.</text>
+<rect x="721.0" y="738" width="248.5" height="80" rx="8" fill="#e2f5ed" stroke="#1baf7a" stroke-width="1.6" stroke-dasharray="7 4"/>
+<rect x="904.3" y="747" width="53.2" height="17" rx="8.5" fill="#ffffff" stroke="#1baf7a" stroke-width="1"/>
+<text x="930.9" y="759.0" font-size="10" font-weight="600" fill="#52514e" text-anchor="middle">stand-in</text>
+<text x="733.0" y="760.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">ECR</text>
+<text x="733.0" y="777.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">A local registry for images and the</text>
+<text x="733.0" y="793.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Sample App chart.</text>
+<rect x="983.5" y="738" width="248.5" height="80" rx="8" fill="#ffffff" stroke="#8f8e88" stroke-width="1.6" stroke-dasharray="2.5 3"/>
+<rect x="1174.7" y="747" width="45.3" height="17" rx="8.5" fill="#ffffff" stroke="#8f8e88" stroke-width="1"/>
+<text x="1197.4" y="759.0" font-size="10" font-weight="600" fill="#52514e" text-anchor="middle">not run</text>
+<text x="995.5" y="760.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">GitLab package registry</text>
+<text x="995.5" y="777.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">No shared package was published.</text>
+<rect x="32" y="846" width="1216" height="234" rx="12" fill="#f3f2ee" stroke="#d3d2cc" stroke-width="1"/>
+<text x="46.0" y="867.0" font-size="10.5" font-weight="700" fill="#52514e" text-anchor="start" letter-spacing="0.6"></text>
+<text x="48.0" y="874.0" font-size="12.5" font-weight="700" fill="#0b0b0b" text-anchor="start">Foundation and</text>
+<text x="48.0" y="890.0" font-size="12.5" font-weight="700" fill="#0b0b0b" text-anchor="start">operations</text>
+<text x="48.0" y="907.0" font-size="10.5" font-weight="400" fill="#6f6e69" text-anchor="start">What the demo ran on</text>
+<rect x="196.0" y="862" width="196.0" height="96" rx="8" fill="#e2f5ed" stroke="#1baf7a" stroke-width="1.6" stroke-dasharray="7 4"/>
+<rect x="326.8" y="871" width="53.2" height="17" rx="8.5" fill="#ffffff" stroke="#1baf7a" stroke-width="1"/>
+<text x="353.4" y="883.0" font-size="10" font-weight="600" fill="#52514e" text-anchor="middle">stand-in</text>
+<text x="208.0" y="884.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">EKS</text>
+<text x="208.0" y="901.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">kind, one node, on one</text>
+<text x="208.0" y="917.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">machine.</text>
+<rect x="406.0" y="862" width="196.0" height="96" rx="8" fill="#ffffff" stroke="#8f8e88" stroke-width="1.6" stroke-dasharray="2.5 3"/>
+<rect x="544.7" y="871" width="45.3" height="17" rx="8.5" fill="#ffffff" stroke="#8f8e88" stroke-width="1"/>
+<text x="567.4" y="883.0" font-size="10" font-weight="600" fill="#52514e" text-anchor="middle">not run</text>
+<text x="418.0" y="884.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Istio, Karpenter</text>
+<text x="418.0" y="901.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">No mesh and no node</text>
+<text x="418.0" y="917.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">provisioning.</text>
+<rect x="616.0" y="862" width="196.0" height="96" rx="8" fill="#e4effc" stroke="#2a78d6" stroke-width="1.6"/>
+<rect x="771.9" y="871" width="28.1" height="17" rx="8.5" fill="#ffffff" stroke="#2a78d6" stroke-width="1"/>
+<text x="785.9" y="883.0" font-size="10" font-weight="600" fill="#52514e" text-anchor="middle">ran</text>
+<text x="628.0" y="884.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Kyverno</text>
+<text x="628.0" y="901.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Four admission policies on</text>
+<text x="628.0" y="917.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">gateway resources.</text>
+<rect x="826.0" y="862" width="196.0" height="96" rx="8" fill="#e4effc" stroke="#2a78d6" stroke-width="1.6"/>
+<rect x="981.9" y="871" width="28.1" height="17" rx="8.5" fill="#ffffff" stroke="#2a78d6" stroke-width="1"/>
+<text x="995.9" y="883.0" font-size="10" font-weight="600" fill="#52514e" text-anchor="middle">ran</text>
+<text x="838.0" y="884.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">OTel collector</text>
+<text x="838.0" y="901.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">One collector for the gateway</text>
+<text x="838.0" y="917.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">and every component.</text>
+<rect x="1036.0" y="862" width="196.0" height="96" rx="8" fill="#e2f5ed" stroke="#1baf7a" stroke-width="1.6" stroke-dasharray="7 4"/>
+<rect x="1166.8" y="871" width="53.2" height="17" rx="8.5" fill="#ffffff" stroke="#1baf7a" stroke-width="1"/>
+<text x="1193.4" y="883.0" font-size="10" font-weight="600" fill="#52514e" text-anchor="middle">stand-in</text>
+<text x="1048.0" y="884.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">New Relic or</text>
+<text x="1048.0" y="900.2" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Dynatrace</text>
+<text x="1048.0" y="918.0" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Grafana, Prometheus, Loki and</text>
+<text x="1048.0" y="933.6" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Tempo.</text>
+<rect x="196.0" y="968" width="196.0" height="96" rx="8" fill="#e2f5ed" stroke="#1baf7a" stroke-width="1.6" stroke-dasharray="7 4"/>
+<rect x="326.8" y="977" width="53.2" height="17" rx="8.5" fill="#ffffff" stroke="#1baf7a" stroke-width="1"/>
+<text x="353.4" y="989.0" font-size="10" font-weight="600" fill="#52514e" text-anchor="middle">stand-in</text>
+<text x="208.0" y="990.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">GitLab CI/CD</text>
+<text x="208.0" y="1007.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">task targets, run from a</text>
+<text x="208.0" y="1023.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">terminal.</text>
+<rect x="406.0" y="968" width="196.0" height="96" rx="8" fill="#e4effc" stroke="#2a78d6" stroke-width="1.6"/>
+<rect x="561.9" y="977" width="28.1" height="17" rx="8.5" fill="#ffffff" stroke="#2a78d6" stroke-width="1"/>
+<text x="575.9" y="989.0" font-size="10" font-weight="600" fill="#52514e" text-anchor="middle">ran</text>
+<text x="418.0" y="990.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Helm and Helmfile</text>
+<text x="418.0" y="1007.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Every release, and the rollback</text>
+<text x="418.0" y="1023.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">itself.</text>
+<rect x="616.0" y="968" width="196.0" height="96" rx="8" fill="#ffffff" stroke="#8f8e88" stroke-width="1.6" stroke-dasharray="2.5 3"/>
+<rect x="754.7" y="977" width="45.3" height="17" rx="8.5" fill="#ffffff" stroke="#8f8e88" stroke-width="1"/>
+<text x="777.4" y="989.0" font-size="10" font-weight="600" fill="#52514e" text-anchor="middle">not run</text>
+<text x="628.0" y="990.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Terraform and</text>
+<text x="628.0" y="1006.2" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">OpenTofu</text>
+<text x="628.0" y="1024.0" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">No AWS resource was created.</text>
+<rect x="826.0" y="968" width="196.0" height="96" rx="8" fill="#e4effc" stroke="#2a78d6" stroke-width="1.6"/>
+<rect x="981.9" y="977" width="28.1" height="17" rx="8.5" fill="#ffffff" stroke="#2a78d6" stroke-width="1"/>
+<text x="995.9" y="989.0" font-size="10" font-weight="600" fill="#52514e" text-anchor="middle">ran</text>
+<text x="838.0" y="990.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Langfuse</text>
+<text x="838.0" y="1007.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Every model call, with its user,</text>
+<text x="838.0" y="1023.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">tokens and cost.</text>
+<rect x="1036.0" y="968" width="196.0" height="96" rx="8" fill="#ffffff" stroke="#8f8e88" stroke-width="1.6" stroke-dasharray="2.5 3"/>
+<rect x="1174.7" y="977" width="45.3" height="17" rx="8.5" fill="#ffffff" stroke="#8f8e88" stroke-width="1"/>
+<text x="1197.4" y="989.0" font-size="10" font-weight="600" fill="#52514e" text-anchor="middle">not run</text>
+<text x="1048.0" y="990.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Stage and prod</text>
+<text x="1048.0" y="1007.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">One environment only: dev.</text>
+<text x="32.0" y="1112.0" font-size="11" font-weight="700" fill="#52514e" text-anchor="start">Evidence</text>
+<rect x="98.3" y="1100" width="26" height="16" rx="4" fill="#e4effc" stroke="#2a78d6" stroke-width="1.6"/>
+<text x="132.3" y="1112.0" font-size="11.5" font-weight="400" fill="#0b0b0b" text-anchor="start">Ran as itself</text>
+<rect x="225.2" y="1100" width="26" height="16" rx="4" fill="#e2f5ed" stroke="#1baf7a" stroke-width="1.6" stroke-dasharray="7 4"/>
+<text x="259.2" y="1112.0" font-size="11.5" font-weight="400" fill="#0b0b0b" text-anchor="start">Stand-in: something else took its place</text>
+<rect x="495.3" y="1100" width="26" height="16" rx="4" fill="#ffffff" stroke="#8f8e88" stroke-width="1.6" stroke-dasharray="2.5 3"/>
+<text x="529.3" y="1112.0" font-size="11.5" font-weight="400" fill="#0b0b0b" text-anchor="start">Not exercised</text>
+</svg>

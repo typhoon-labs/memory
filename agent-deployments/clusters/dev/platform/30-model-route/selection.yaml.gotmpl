@@ -1,0 +1,16 @@
+# The provider the gateway was switched to, when that is not the one
+# model-provider.yaml names. Values for the release `model-route`, applied
+# after model-provider.yaml.
+#
+# `task model -- bedrock` (scripts/provider.sh) keeps the choice in the
+# cluster, as ConfigMap `model-provider-selection` in agentgateway-system, next
+# to the Secret with the AWS credentials. This file reads it back, so that
+# every later apply of the release (`task up`, `task deploy`) keeps the
+# provider that was chosen. `task model -- local` removes the ConfigMap, and a
+# new cluster has none: then this file is empty and model-provider.yaml
+# decides.
+#
+# The read runs kubectl, like the hook in ../10-agentgateway/helmfile.yaml:
+# KUBECONFIG comes from the command line (see Taskfile.yml), and naming the
+# context makes it fail on any kubeconfig but ours.
+{{ exec "kubectl" (list "--context" "kind-agentgateway-demo" "--namespace" "agentgateway-system" "get" "configmap" "model-provider-selection" "--ignore-not-found" "--output" "jsonpath={.data.values}") }}

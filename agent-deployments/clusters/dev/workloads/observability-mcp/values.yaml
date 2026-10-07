@@ -1,5 +1,6 @@
 # What the dev cluster runs of observability-mcp. Anything not set here comes
-# from chart/values.yaml.
+# from chart/values.yaml. Where it is reached, by whom, and which tools callers
+# see is in ../../domains/operations/observability-mcp.yaml.
 
 image:
   # The version that runs.
@@ -8,7 +9,7 @@ image:
 # Grafana's Service in namespace `telemetry` (release kube-prometheus-stack).
 grafanaUrl: http://kube-prometheus-stack-grafana.telemetry.svc.cluster.local
 
-# Where the routes of ./workload-access live (release
+# Where the routes for workloads with a gateway key live (release
 # observability-mcp-workload-access).
 workloadRoutesNamespace: agentgateway-system
 
@@ -23,37 +24,3 @@ toolCategories:
   - dashboard
   - alerting
   - navigation
-
-# The tools callers see, out of the 33 read tools the server registers with the
-# categories above (mcp-grafana 2.0.1, checked with tools/list). Kept short on
-# purpose: every listed tool's description is sent to the model on each turn.
-# All of them only read. Left out: label and trace analysis helpers, dashboard
-# versions and full dashboard JSON, folders, silences, and
-# `alerting_manage_routing`.
-allowedTools:
-  # Data sources: their uids are prometheus, loki and tempo.
-  - list_datasources
-  - get_datasource
-  # Metrics (PromQL)
-  - query_prometheus
-  - query_prometheus_histogram
-  - list_prometheus_metric_names
-  - list_prometheus_label_names
-  - list_prometheus_label_values
-  # Logs (LogQL)
-  - query_loki_logs
-  - query_loki_stats
-  - list_loki_label_names
-  - list_loki_label_values
-  # Traces (TraceQL)
-  - search_tempo_traces
-  - get_tempo_trace
-  - list_tempo_attribute_names
-  - list_tempo_attribute_values
-  # Dashboards and alert rules
-  - search_dashboards
-  - get_dashboard_summary
-  - get_dashboard_panel_queries
-  - alerting_rules_read
-  # A link to Grafana that a person can open, as evidence
-  - generate_deeplink

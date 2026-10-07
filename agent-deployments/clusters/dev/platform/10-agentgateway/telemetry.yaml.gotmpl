@@ -1,5 +1,5 @@
 # Telemetry values for the release `agentgateway` (the controller chart).
-# Owned by the observability workstream (platform/50-observability).
+# Owned by the observability workstream (platform/40-observability).
 #
 # `monitoring.enabled` makes the chart create three things in
 # agentgateway-system:
@@ -10,9 +10,9 @@
 # https://agentgateway.dev/docs/kubernetes/latest/documentation/observability/metrics/overview/
 #
 # The chart does not check that the ServiceMonitor and PodMonitor kinds exist,
-# and they arrive with kube-prometheus-stack (platform/50-observability),
+# and they arrive with kube-prometheus-stack (platform/40-observability),
 # which is installed after the trunk. With the flag simply set to true,
-# `task up` would fail on a new cluster. So the flag follows the cluster: it is
+# `task up:trunk` would fail on a new cluster. So the flag follows the cluster: it is
 # on when both kinds are installed. On a new cluster that is one more apply of
 # this release after kube-prometheus-stack, which `task observability:install`
 # does (`task deploy -- -l name=agentgateway`).

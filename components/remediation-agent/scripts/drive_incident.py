@@ -168,7 +168,7 @@ class Driver:
             service="search-service",
             severity="sev2",
             summary="Every search on the Sample App returns an error",
-            impact="Users cannot search the catalogue; registration is unaffected",
+            impact="Users cannot search the catalog; registration is unaffected",
         )
         check(not is_error, f"incident opened: {incident.get('incident_id')}")
         incident_id = incident["incident_id"]

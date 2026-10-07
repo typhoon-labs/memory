@@ -284,7 +284,7 @@
     {
       "type": "stat",
       "title": "No-result searches, 5 minutes",
-      "description": "Share of answered searches that matched nothing in the catalogue. About 5% with the demo's traffic generator. Read from the Sample App's own /metrics, every 5 seconds. Empty until the Sample App is deployed.",
+      "description": "Share of answered searches that matched nothing in the catalog. About 5% with the demo's traffic generator. Read from the Sample App's own /metrics, every 5 seconds. Empty until the Sample App is deployed.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"

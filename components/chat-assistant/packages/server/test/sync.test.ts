@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { buildIncidentCard } from '../src/card/incident-card.js';
+import { NO_NOTICE, buildIncidentCard, type Notice } from '../src/card/incident-card.js';
 import { clientSurfacesFrom, syncMessages } from '../src/card/sync.js';
 import { newProcessor } from './support/a2ui.js';
 import { VIEWERS, incidentWith } from './support/fixtures.js';
@@ -7,6 +7,7 @@ import { VIEWERS, incidentWith } from './support/fixtures.js';
 const kinds = (messages: Record<string, unknown>[]) => messages.map((m) => Object.keys(m).find((k) => k !== 'version'));
 const paths = (messages: any[]) => messages.filter((m) => m.updateDataModel).map((m) => m.updateDataModel.path);
 const manager = VIEWERS['incident-manager']!;
+const refused: Notice = { slot: 'approve', tone: 'service', title: 'Refused by the service', text: 'The person who proposed a change cannot approve it.', rule: 'approver_is_not_proposer' };
 
 /** A client that has the card for `status` and has typed into it. */
 function clientWith(status: Parameters<typeof incidentWith>[0]) {
@@ -61,6 +62,20 @@ describe('card sync: only what the client is missing', () => {
     expect(syncMessages([diagnosed], a2ui.clientSurfaces())).toEqual([]);
   });
 
+  test('a rebuild carries the notice over too', () => {
+    const a2ui = newProcessor();
+    const developer = VIEWERS.developer!;
+    const undiagnosed = incidentWith('none', { evidence: [], suspected_cause: undefined, recommended_version: undefined });
+    a2ui.apply(syncMessages([buildIncidentCard(undiagnosed, developer, { state: 'failed', at: '2026-10-06T09:15:03Z', message: 'no answer' })], {}));
+    const wrongVersion: Notice = { slot: 'propose', tone: 'service', title: 'Refused by the service', text: 'That is not a retained earlier version of the service.', rule: 'target_is_retained_earlier_version' };
+    a2ui.processor.getSurface('incident-INC-1')!.dataModel.set('/notice', wrongVersion);
+    // The same card, with the version field gone, built in one request with no new outcome.
+    const messages = syncMessages([buildIncidentCard(incidentWith('none'), developer)], a2ui.clientSurfaces(), { 'incident-INC-1': {} });
+    expect(kinds(messages)).toEqual(['deleteSurface', 'createSurface', 'updateComponents', 'updateDataModel']);
+    a2ui.apply(messages);
+    expect(model(a2ui).notice).toEqual(wrongVersion);
+  });
+
   test('when the card loses a component the surface is rebuilt, carrying over what the viewer typed', () => {
     const a2ui = newProcessor();
     const developer = VIEWERS.developer!;
@@ -83,29 +98,37 @@ describe('card sync: only what the client is missing', () => {
     const a2ui = clientWith('proposed');
     const card = buildIncidentCard(incidentWith('proposed'), manager);
     const messages = syncMessages([card], a2ui.clientSurfaces(), {
-      'incident-INC-1': { notice: 'Status update drafted.', draft: 'Draft text' },
+      'incident-INC-1': { notice: refused, draft: 'Draft text' },
     });
     expect(paths(messages)).toEqual(['/notice', '/draft']);
     a2ui.apply(messages);
-    expect(model(a2ui).notice.text).toBe('Status update drafted.');
+    expect(model(a2ui).notice).toEqual(refused);
     expect(model(a2ui).draft.text).toBe('Draft text');
     expect(model(a2ui).reject.reason).toBe('not yet');
   });
 
+  test('an action that went through leaves no notice, and clears the one before it', () => {
+    const a2ui = clientWith('proposed');
+    const card = buildIncidentCard(incidentWith('proposed'), manager);
+    a2ui.apply(syncMessages([card], a2ui.clientSurfaces(), { 'incident-INC-1': { notice: refused } }));
+    a2ui.apply(syncMessages([card], a2ui.clientSurfaces(), { 'incident-INC-1': { notice: NO_NOTICE } }));
+    expect(model(a2ui).notice).toEqual(NO_NOTICE);
+  });
+
   test("when the incident moves on, the outcome of the viewer's earlier action is cleared", () => {
     const a2ui = clientWith('proposed');
-    a2ui.processor.getSurface('incident-INC-1')!.dataModel.set('/notice/text', 'Status update drafted.');
+    a2ui.processor.getSurface('incident-INC-1')!.dataModel.set('/notice', refused);
     const messages = syncMessages([buildIncidentCard(incidentWith('approved'), manager)], a2ui.clientSurfaces());
     expect(paths(messages)).toEqual(['/can', '/meta', '/notice']);
     a2ui.apply(messages);
-    expect(model(a2ui).notice.text).toBe('');
+    expect(model(a2ui).notice).toEqual(NO_NOTICE);
     expect(model(a2ui).draft.text).toBe('my draft');
   });
 
   test('a completed rejection clears the reason field', () => {
     const a2ui = clientWith('proposed');
     const messages = syncMessages([buildIncidentCard(incidentWith('rejected'), manager)], a2ui.clientSurfaces(), {
-      'incident-INC-1': { notice: 'Change rejected.', rejectReason: '' },
+      'incident-INC-1': { notice: NO_NOTICE, rejectReason: '' },
     });
     a2ui.apply(messages);
     expect(model(a2ui).reject.reason).toBe('');

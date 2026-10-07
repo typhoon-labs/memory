@@ -31,6 +31,7 @@
   },
   "devDependencies": {
     "@a2ui/web_core": "0.12.0",
+    "@chat-assistant/ui": "0.1.0",
     "@mastra/express": "1.5.18",
     "@types/express": "5.0.6",
     "@types/node": "24.19.1",

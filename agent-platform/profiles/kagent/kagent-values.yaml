@@ -2,7 +2,7 @@
 # Values for chart oci://ghcr.io/kagent-dev/kagent/helm/kagent, 1.0.0-alpha7.
 #
 # Reusable baseline. What one cluster changes goes in that cluster's own values
-# file, listed after this one (agent-deployments/clusters/<name>/platform/40-kagent/).
+# file, listed after this one (agent-deployments/clusters/<name>/platform/60-kagent/).
 #
 # Three decisions differ from the chart's defaults, all for the same reason:
 # an agent gets only what its own workload directory grants it.
@@ -58,11 +58,14 @@ controller:
     # Keycloak and Okta both carry the login name here; `sub` is an opaque id.
     userIdClaim: preferred_username
 
-# The bundled UI is switched off. In trusted-proxy mode it needs a sign-in
-# proxy in front of it to obtain a token (the chart's `oauth2-proxy`, not
-# installed here); without one every call it makes is refused as
-# unauthenticated. To use it, enable oauth2-proxy against the identity
-# provider and set replicas to 1.
+# The bundled UI is off in this profile. In trusted-proxy mode it needs a
+# sign-in proxy in front of it to obtain a token (the chart's `oauth2-proxy`);
+# without one every call it makes is refused as unauthenticated. The proxy
+# needs an identity provider, and that is a cluster's own, so a cluster that
+# wants the UI turns both on in its own values file: `oauth2-proxy.enabled`
+# with its issuer and client, and `ui.replicas: 1`. The dev cluster does
+# (agent-deployments/clusters/dev/platform/60-kagent/values.yaml). The
+# NetworkPolicy `kagent-ui-callers` at the end of this file is the other half.
 ui:
   replicas: 0
 
@@ -113,7 +116,8 @@ extraObjects:
   #   Substrate's egress     Actors: the runtime stores each turn's task through
   #                          the controller's TaskStoreService
   #   the controller itself  it lists the tools of its own /mcp endpoint
-  #   the UI                 when it is switched on
+  #   the UI                 when it is switched on; `kagent-ui-callers`
+  #                          below decides who reaches the UI
   #
   # Everything else in the cluster is refused, including a pod that presents a
   # token it wrote itself. The kubelet's probes and `kubectl port-forward`
@@ -161,3 +165,38 @@ extraObjects:
                   app.kubernetes.io/name: kagent
                   app.kubernetes.io/instance: '{{ .Release.Name }}'
                   app.kubernetes.io/component: ui
+
+  # Who may open a connection to the UI. Its nginx passes whatever it is sent
+  # on to the controller's port, bearer token included, and the policy above
+  # lets it. Without this one, a pod that cannot reach the controller could
+  # reach it through the UI with a token it wrote itself.
+  #
+  #   the sign-in proxy   the browser's only way in; it verifies the session
+  #                       and attaches the token the identity provider issued
+  #
+  # Nothing else, so the UI's Service must stay ClusterIP and get no route of
+  # its own: publish the proxy. kagent's chart installs no such policy and
+  # says the operator must. It selects no pod while `ui.replicas` is 0.
+  - apiVersion: networking.k8s.io/v1
+    kind: NetworkPolicy
+    metadata:
+      name: kagent-ui-callers
+      namespace: '{{ include "kagent.namespace" . }}'
+    spec:
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: kagent
+          app.kubernetes.io/instance: '{{ .Release.Name }}'
+          app.kubernetes.io/component: ui
+      policyTypes:
+        - Ingress
+      ingress:
+        - ports:
+            - protocol: TCP
+              port: 8080
+          from:
+            # The labels of the chart's oauth2-proxy subchart.
+            - podSelector:
+                matchLabels:
+                  app.kubernetes.io/name: oauth2-proxy
+                  app.kubernetes.io/instance: '{{ .Release.Name }}'

@@ -1,6 +1,6 @@
 import type { AgentCard } from '@a2a-js/sdk';
 import type { Config } from '../config.js';
-import { A2UI_EXTENSION_URI, A2UI_MIME_TYPE, BASIC_CATALOG_ID } from './wire.js';
+import { A2UI_EXTENSION_URI, A2UI_MIME_TYPE, INCIDENT_CATALOG_ID } from './wire.js';
 
 /**
  * The agent card. The A2UI extension is declared under
@@ -26,9 +26,9 @@ export function buildAgentCard(config: Config, url: string): AgentCard {
       extensions: [
         {
           uri: A2UI_EXTENSION_URI,
-          description: 'Renders the incident card as A2UI v0.9.1 with the basic catalog.',
+          description: 'Renders the incident card as A2UI v0.9.1 with the incident catalog: the basic catalog and four components of its own.',
           required: false,
-          params: { supportedCatalogIds: [BASIC_CATALOG_ID], acceptsInlineCatalogs: false },
+          params: { supportedCatalogIds: [INCIDENT_CATALOG_ID], acceptsInlineCatalogs: false },
         },
       ],
     },

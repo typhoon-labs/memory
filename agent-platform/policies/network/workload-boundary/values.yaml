@@ -37,7 +37,7 @@
 # destination unless a rule names it.
 #
 # Not for kagent's agents: they run in Agent Substrate's sandboxes and leave
-# through its egress gateway, which agent-platform/profiles/kagent/ bounds.
+# through its egress gateway, which ../substrate-egress-boundary bounds.
 
 # The gateway's proxy pods, and the port they listen on.
 gateway:

@@ -1,0 +1,13 @@
+# Whose tokens the dev cluster trusts. Keycloak stands in for Okta.
+#
+# One file for the cluster, because the issuer is the cluster's: another
+# cluster trusts another issuer. Read by every gateway policy that validates a
+# bearer token (chart agent-platform/policies/agentgateway/route-auth). The same three values are
+# the component bindings OIDC_ISSUER, OIDC_AUDIENCE and OIDC_JWKS_URL.
+identity:
+  # The `iss` claim. The browser's address of Keycloak, not reachable from a pod.
+  issuer: http://localhost:18081/realms/demo
+  # The `aud` claim of every token meant for something behind the gateway.
+  audience: agentgateway
+  # The same realm's signing keys through the Keycloak Service.
+  jwksUrl: http://keycloak.keycloak.svc.cluster.local:8080/realms/demo/protocol/openid-connect/certs

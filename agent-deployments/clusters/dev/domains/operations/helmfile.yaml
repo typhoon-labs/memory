@@ -1,0 +1,128 @@
+# Gateway routes of the operations domain: delivery-mcp, remediation-agent,
+# comms-agent and chat-assistant (its A2A endpoint and its alert hook), each
+# reachable only through Agentgateway.
+# Picked up by ../../helmfile.yaml (domains/*/helmfile.yaml), after the
+# platform and the workloads.
+#
+# Where each is reached and who may call what is not written here. It is in
+# <name>.yaml next to this file, one file per route, read by two releases:
+#
+#   <name>-route-auth   a valid token, the roles that may call, and the
+#                       caller's token passed on to the backend
+#                       chart: agent-platform/policies/agentgateway/route-auth
+#   <name>-route        the backend and the route; for MCP, also which role
+#                       may use which tool
+#                       chart: mcp-route, a2a-route or http-route in
+#                       agent-platform/profiles/gateway/
+#
+# Releases live in the backend's namespace, which its workload release creates
+# (../../workloads/<name>/helmfile.yaml), so apply the workload first. Apply a
+# route's policy before the route: `needs` orders them in a full `task deploy`,
+# but with `-l name=<release>` only the named release is applied.
+#
+#   task deploy -- -l name=delivery-mcp-route-auth
+#   task deploy -- -l name=delivery-mcp-route
+#
+# `task install` applies all of them in order.
+#
+# diagnosis-agent.yaml is read by ../../workloads/diagnosis-agent/helmfile.yaml,
+# not by this file: kagent's chart renders that route with the agent, and its
+# policy has to be there first.
+commonLabels:
+  layer: routes
+
+# Not inherited from the root helmfile. With any other kubeconfig this context
+# does not exist, and helm fails before it changes anything.
+helmDefaults:
+  kubeContext: kind-agentgateway-demo
+
+releases:
+  # -- delivery-mcp: MCP at /mcp/delivery ----------------------------------
+  - name: delivery-mcp-route-auth
+    namespace: tools
+    chart: ../../../../../agent-platform/policies/agentgateway/route-auth
+    values:
+      - ../../identity.yaml
+      - delivery-mcp.yaml
+      - target:
+          name: delivery-mcp
+
+  - name: delivery-mcp-route
+    namespace: tools
+    chart: ../../../../../agent-platform/profiles/gateway/mcp-route
+    needs:
+      - tools/delivery-mcp-route-auth
+    values:
+      - delivery-mcp.yaml
+
+  # -- remediation-agent: A2A at /a2a/remediation-agent --------------------
+  - name: remediation-agent-route-auth
+    namespace: agents
+    chart: ../../../../../agent-platform/policies/agentgateway/route-auth
+    values:
+      - ../../identity.yaml
+      - remediation-agent.yaml
+      - target:
+          name: remediation-agent
+
+  - name: remediation-agent-route
+    namespace: agents
+    chart: ../../../../../agent-platform/profiles/gateway/a2a-route
+    needs:
+      - agents/remediation-agent-route-auth
+    values:
+      - remediation-agent.yaml
+
+  # -- comms-agent: A2A at /a2a/comms-agent --------------------------------
+  - name: comms-agent-route-auth
+    namespace: agents
+    chart: ../../../../../agent-platform/policies/agentgateway/route-auth
+    values:
+      - ../../identity.yaml
+      - comms-agent.yaml
+      - target:
+          name: comms-agent
+
+  - name: comms-agent-route
+    namespace: agents
+    chart: ../../../../../agent-platform/profiles/gateway/a2a-route
+    needs:
+      - agents/comms-agent-route-auth
+    values:
+      - comms-agent.yaml
+
+  # -- chat-assistant: A2A at /a2a/chat-assistant, called by the Chat UI ---
+  - name: chat-assistant-route-auth
+    namespace: agents
+    chart: ../../../../../agent-platform/policies/agentgateway/route-auth
+    values:
+      - ../../identity.yaml
+      - chat-assistant.yaml
+      - target:
+          name: chat-assistant
+
+  - name: chat-assistant-route
+    namespace: agents
+    chart: ../../../../../agent-platform/profiles/gateway/a2a-route
+    needs:
+      - agents/chat-assistant-route-auth
+    values:
+      - chat-assistant.yaml
+
+  # -- chat-assistant's alert hook: POST /hooks/alert ----------------------
+  - name: chat-assistant-alert-hook-auth
+    namespace: agents
+    chart: ../../../../../agent-platform/policies/agentgateway/route-auth
+    values:
+      - ../../identity.yaml
+      - chat-assistant-alert-hook.yaml
+      - target:
+          name: chat-assistant-alert-hook
+
+  - name: chat-assistant-alert-hook
+    namespace: agents
+    chart: ../../../../../agent-platform/profiles/gateway/http-route
+    needs:
+      - agents/chat-assistant-alert-hook-auth
+    values:
+      - chat-assistant-alert-hook.yaml

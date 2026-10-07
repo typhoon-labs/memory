@@ -44,5 +44,5 @@ groups:
           diagnose: "true"
         annotations:
           summary: 'Search is failing: {{ $value | humanizePercentage }} of requests to search-service {{ $labels.version }} return a server error.'
-          impact: Visitors of the Sample App cannot search the catalogue.
+          impact: Visitors of the Sample App cannot search the catalog.
           description: 'More than 5% of GET /search requests to search-service version {{ $labels.version }} returned HTTP 5xx over the last 30 seconds.'

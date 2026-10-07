@@ -33,7 +33,7 @@
 #
 #      With it the 401 carries the header, and the gateway serves the
 #      protected-resource metadata itself.
-#   b. On the HTTPRoute (chart platform/80-routes/mcp-route has one match), two
+#   b. On the HTTPRoute (chart agent-platform/profiles/gateway/mcp-route has one match), two
 #      more path matches: /.well-known/oauth-protected-resource/mcp/delivery
 #      and /.well-known/oauth-authorization-server/mcp/delivery.
 #   c. An issuer address that the gateway's pod can reach. The gateway builds

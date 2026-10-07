@@ -15,7 +15,7 @@ description: >-
   version, as text ending in one JSON block.
 
 model:
-  # MODEL_ID of the conventions: diagnosis is the one place where the stronger
+  # MODEL_ID of the contracts: diagnosis is the one place where the stronger
   # model earns its cost. The gateway decides whether it is approved.
   id: claude-sonnet-5-5
 

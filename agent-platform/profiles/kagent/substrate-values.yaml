@@ -2,11 +2,11 @@
 # Values for chart oci://ghcr.io/kagent-dev/substrate/helm/substrate, 0.3.0-alpha3.
 #
 # Reusable baseline. What one cluster changes goes in that cluster's own values
-# file, listed after this one (agent-deployments/clusters/<name>/platform/40-kagent/).
+# file, listed after this one (agent-deployments/clusters/<name>/platform/60-kagent/).
 #
 # The chart alone does not give a working install: its pods wait for identity
 # material that only the `kubectl-ate` plugin creates. See
-# agent-deployments/clusters/dev/platform/40-kagent/scripts/bootstrap-identity.sh.
+# agent-deployments/clusters/dev/platform/60-kagent/scripts/bootstrap-identity.sh.
 
 # Which Secrets the egress gateway may read on behalf of an agent.
 #

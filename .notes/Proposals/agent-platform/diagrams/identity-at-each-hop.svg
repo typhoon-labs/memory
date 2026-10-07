@@ -1,0 +1,140 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="857" viewBox="0 0 1280 857" role="img" aria-labelledby="t d" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif">
+<title id="t">Identity at each hop</title>
+<desc id="d">Three parties are kept apart: the human requesting work, the workload performing it and the downstream service that authorizes the operation. A developer client or user reaches Agentgateway with an Okta access token. The gateway forwards permitted tool calls to an MCP server or hosted agent, which calls the service API with a resource-specific credential; the service checks its own permissions. For models, the caller presents a gateway-issued key or an Okta-derived token, and the gateway calls the model provider with a credential only it holds. Two points are open: the credential on a model request (D-4) and the entry point for hosted agents (D-5).</desc>
+<defs>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0.8 L10,5 L0,9.2 z" fill="#52514e"/></marker>
+<marker id="ahd" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0.8 L10,5 L0,9.2 z" fill="#d03b3b"/></marker>
+</defs>
+<rect x="0.5" y="0.5" width="1279" height="856" rx="14" fill="#fcfcfb" stroke="#e4e3df"/>
+<text x="32.0" y="46.0" font-size="19" font-weight="700" fill="#0b0b0b" text-anchor="start">Identity at each hop</text>
+<text x="32.0" y="68.0" font-size="12.5" font-weight="400" fill="#52514e" text-anchor="start">Intended paths. Each connection has its own credential and its own authorizer, and each needs a permitted and a denied test in the pilot.</text>
+<rect x="32" y="88" width="1216" height="114" rx="12" fill="#f3f2ee" stroke="#d3d2cc" stroke-width="1"/>
+<text x="46.0" y="109.0" font-size="10.5" font-weight="700" fill="#52514e" text-anchor="start" letter-spacing="0.6">THREE PARTIES</text>
+<rect x="46.0" y="118" width="386.6666666666667" height="70" rx="8" fill="#ffffff" stroke="#52514e" stroke-width="1.6"/>
+<text x="58.0" y="140.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">The human requesting work</text>
+<text x="58.0" y="157.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Signs in with Okta. An authenticated user may still lack permission</text>
+<text x="58.0" y="173.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">for a tool.</text>
+<rect x="446.6666666666667" y="118" width="386.6666666666667" height="70" rx="8" fill="#e4effc" stroke="#2a78d6" stroke-width="1.6"/>
+<text x="458.7" y="140.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">The workload performing it</text>
+<text x="458.7" y="157.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Runs under its own workload identity. It does not inherit a broad</text>
+<text x="458.7" y="173.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">platform role.</text>
+<rect x="847.3333333333334" y="118" width="386.6666666666667" height="70" rx="8" fill="#ebeae6" stroke="#8f8e88" stroke-width="1.6"/>
+<text x="859.3" y="140.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">The downstream service</text>
+<text x="859.3" y="157.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Authorizes the operation itself, against its own permissions and</text>
+<text x="859.3" y="173.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">tenant data.</text>
+<rect x="32" y="262" width="200" height="214" rx="8" fill="#ffffff" stroke="#52514e" stroke-width="1.6"/>
+<text x="44.0" y="284.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Developer client or user</text>
+<text x="44.0" y="301.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">An existing IDE or CLI client, or</text>
+<text x="44.0" y="317.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">a person or system that uses a</text>
+<text x="44.0" y="333.0" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">hosted agent.</text>
+<rect x="392" y="262" width="216" height="214" rx="8" fill="#e4effc" stroke="#2a78d6" stroke-width="1.6"/>
+<text x="404.0" y="284.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Agentgateway</text>
+<text x="404.0" y="301.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Verifies the caller on every request.</text>
+<text x="404.0" y="317.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Shows only the tools this caller</text>
+<text x="404.0" y="333.0" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">may use. Restricts models and</text>
+<text x="404.0" y="348.7" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">applies budgets. Holds the provider</text>
+<text x="404.0" y="364.3" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">credential.</text>
+<rect x="768" y="262" width="216" height="96" rx="8" fill="#e4effc" stroke="#2a78d6" stroke-width="1.6"/>
+<text x="780.0" y="284.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">MCP server or hosted agent</text>
+<text x="780.0" y="301.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">A tool adapter in front of a service,</text>
+<text x="780.0" y="317.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">or an agent with its own workload</text>
+<text x="780.0" y="333.0" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">identity.</text>
+<rect x="1052" y="262" width="196" height="96" rx="8" fill="#ebeae6" stroke="#8f8e88" stroke-width="1.6"/>
+<text x="1064.0" y="284.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Service API</text>
+<text x="1064.0" y="301.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Decides on tenant ownership,</text>
+<text x="1064.0" y="317.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">limits and idempotency.</text>
+<rect x="768" y="380" width="216" height="96" rx="8" fill="#ffffff" stroke="#52514e" stroke-width="1.6"/>
+<text x="780.0" y="402.0" font-size="13.0" font-weight="700" fill="#0b0b0b" text-anchor="start">Model provider</text>
+<text x="780.0" y="419.8" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">Accepts only the credential that the</text>
+<text x="780.0" y="435.4" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">gateway holds.</text>
+<path d="M132.0,262.0 L132.0,236.0 L876.0,236.0 L876.0,259.0" fill="none" stroke="#52514e" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="2.5 4" marker-end="url(#ah)"/>
+<rect x="216.5" y="222" width="577.0" height="26" rx="6" fill="#fcfcfb"/>
+<text x="224.5" y="240.0" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">A user reaching a hosted agent: through a gateway route, or the runtime's own API?</text>
+<rect x="709.5" y="226.0" width="67.5" height="20" rx="10" fill="#ffffff" stroke="#eb6834" stroke-width="1.1"/>
+<text x="743.2" y="240.0" font-size="10.5" font-weight="600" fill="#0b0b0b" text-anchor="middle">open, D-5</text>
+<path d="M232.0,296.0 L389.0,296.0" fill="none" stroke="#52514e" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#ah)"/>
+<text x="312.0" y="280.0" font-size="11" font-weight="400" fill="#52514e" text-anchor="middle">tools</text>
+<circle cx="312" cy="296" r="9.5" fill="#52514e" stroke="#ffffff" stroke-width="1.6"/>
+<text x="312.0" y="300.0" font-size="11.5" font-weight="700" fill="#ffffff" text-anchor="middle">1</text>
+<path d="M608.0,296.0 L765.0,296.0" fill="none" stroke="#52514e" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#ah)"/>
+<circle cx="688" cy="296" r="9.5" fill="#52514e" stroke="#ffffff" stroke-width="1.6"/>
+<text x="688.0" y="300.0" font-size="11.5" font-weight="700" fill="#ffffff" text-anchor="middle">2</text>
+<path d="M984.0,310.0 L1049.0,310.0" fill="none" stroke="#52514e" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#ah)"/>
+<circle cx="1016" cy="310" r="9.5" fill="#52514e" stroke="#ffffff" stroke-width="1.6"/>
+<text x="1016.0" y="314.0" font-size="11.5" font-weight="700" fill="#ffffff" text-anchor="middle">3</text>
+<path d="M768.0,330.0 L611.0,330.0" fill="none" stroke="#52514e" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#ah)"/>
+<circle cx="688" cy="330" r="9.5" fill="#52514e" stroke="#ffffff" stroke-width="1.6"/>
+<text x="688.0" y="334.0" font-size="11.5" font-weight="700" fill="#ffffff" text-anchor="middle">4</text>
+<path d="M232.0,428.0 L389.0,428.0" fill="none" stroke="#52514e" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#ah)"/>
+<text x="312.0" y="412.0" font-size="11" font-weight="400" fill="#52514e" text-anchor="middle">models</text>
+<circle cx="312" cy="428" r="9.5" fill="#52514e" stroke="#ffffff" stroke-width="1.6"/>
+<text x="312.0" y="432.0" font-size="11.5" font-weight="700" fill="#ffffff" text-anchor="middle">5</text>
+<rect x="278.3" y="444.0" width="67.5" height="20" rx="10" fill="#ffffff" stroke="#eb6834" stroke-width="1.1"/>
+<text x="312.0" y="458.0" font-size="10.5" font-weight="600" fill="#0b0b0b" text-anchor="middle">open, D-4</text>
+<path d="M608.0,428.0 L765.0,428.0" fill="none" stroke="#52514e" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#ah)"/>
+<circle cx="688" cy="428" r="9.5" fill="#52514e" stroke="#ffffff" stroke-width="1.6"/>
+<text x="688.0" y="432.0" font-size="11.5" font-weight="700" fill="#ffffff" text-anchor="middle">6</text>
+<text x="32.0" y="516.0" font-size="13" font-weight="700" fill="#0b0b0b" text-anchor="start">The credential on each connection, and who authorizes it</text>
+<text x="32.0" y="534.0" font-size="11.5" font-weight="400" fill="#52514e" text-anchor="start">From the connection matrix. The pilot records the actual credential, verified principal, audience and decision at each hop.</text>
+<circle cx="42" cy="562.0" r="9.5" fill="#52514e" stroke="#ffffff" stroke-width="1.6"/>
+<text x="42.0" y="566.0" font-size="11.5" font-weight="700" fill="#ffffff" text-anchor="middle">1</text>
+<text x="60.0" y="566.0" font-size="12" font-weight="700" fill="#0b0b0b" text-anchor="start">Developer client to the gateway, for tools</text>
+<text x="60.0" y="584.0" font-size="9" font-weight="700" fill="#6f6e69" text-anchor="start" letter-spacing="0.5">CREDENTIAL</text>
+<text x="156.0" y="584.0" font-size="11.5" font-weight="400" fill="#0b0b0b" text-anchor="start">Okta access token, through the supported MCP OAuth flow.</text>
+<text x="60.0" y="601.6" font-size="9" font-weight="700" fill="#6f6e69" text-anchor="start" letter-spacing="0.5">AUTHORIZED BY</text>
+<text x="156.0" y="601.6" font-size="11.5" font-weight="400" fill="#0b0b0b" text-anchor="start">The gateway. It validates issuer and audience and matches exact entitlements.</text>
+<circle cx="42" cy="627.28" r="9.5" fill="#52514e" stroke="#ffffff" stroke-width="1.6"/>
+<text x="42.0" y="631.3" font-size="11.5" font-weight="700" fill="#ffffff" text-anchor="middle">2</text>
+<text x="60.0" y="631.3" font-size="12" font-weight="700" fill="#0b0b0b" text-anchor="start">Gateway to an MCP server</text>
+<rect x="236.5" y="617.3" width="67.5" height="20" rx="10" fill="#ffffff" stroke="#eb6834" stroke-width="1.1"/>
+<text x="270.2" y="631.3" font-size="10.5" font-weight="600" fill="#0b0b0b" text-anchor="middle">open, D-7</text>
+<text x="60.0" y="649.3" font-size="9" font-weight="700" fill="#6f6e69" text-anchor="start" letter-spacing="0.5">CREDENTIAL</text>
+<text x="156.0" y="649.3" font-size="11.5" font-weight="400" fill="#0b0b0b" text-anchor="start">Explicit backend identity, over TLS or the mesh.</text>
+<text x="60.0" y="666.9" font-size="9" font-weight="700" fill="#6f6e69" text-anchor="start" letter-spacing="0.5">AUTHORIZED BY</text>
+<text x="156.0" y="666.9" font-size="11.5" font-weight="400" fill="#0b0b0b" text-anchor="start">The backend, which accepts the gateway and no other caller. The control is not</text>
+<text x="156.0" y="682.6" font-size="11.5" font-weight="400" fill="#0b0b0b" text-anchor="start">selected.</text>
+<circle cx="42" cy="708.1999999999999" r="9.5" fill="#52514e" stroke="#ffffff" stroke-width="1.6"/>
+<text x="42.0" y="712.2" font-size="11.5" font-weight="700" fill="#ffffff" text-anchor="middle">3</text>
+<text x="60.0" y="712.2" font-size="12" font-weight="700" fill="#0b0b0b" text-anchor="start">MCP server to the service API</text>
+<text x="60.0" y="730.2" font-size="9" font-weight="700" fill="#6f6e69" text-anchor="start" letter-spacing="0.5">CREDENTIAL</text>
+<text x="156.0" y="730.2" font-size="11.5" font-weight="400" fill="#0b0b0b" text-anchor="start">Resource-specific delegated token or application credential.</text>
+<text x="60.0" y="747.8" font-size="9" font-weight="700" fill="#6f6e69" text-anchor="start" letter-spacing="0.5">AUTHORIZED BY</text>
+<text x="156.0" y="747.8" font-size="11.5" font-weight="400" fill="#0b0b0b" text-anchor="start">The service. It checks its own permissions and tenant data.</text>
+<circle cx="670" cy="562.0" r="9.5" fill="#52514e" stroke="#ffffff" stroke-width="1.6"/>
+<text x="670.0" y="566.0" font-size="11.5" font-weight="700" fill="#ffffff" text-anchor="middle">4</text>
+<text x="688.0" y="566.0" font-size="12" font-weight="700" fill="#0b0b0b" text-anchor="start">Hosted agent to tools, back through the gateway</text>
+<text x="688.0" y="584.0" font-size="9" font-weight="700" fill="#6f6e69" text-anchor="start" letter-spacing="0.5">CREDENTIAL</text>
+<text x="784.0" y="584.0" font-size="11.5" font-weight="400" fill="#0b0b0b" text-anchor="start">Verified delegated context or a scoped machine credential.</text>
+<text x="688.0" y="601.6" font-size="9" font-weight="700" fill="#6f6e69" text-anchor="start" letter-spacing="0.5">AUTHORIZED BY</text>
+<text x="784.0" y="601.6" font-size="11.5" font-weight="400" fill="#0b0b0b" text-anchor="start">The gateway and the downstream service.</text>
+<circle cx="670" cy="627.28" r="9.5" fill="#52514e" stroke="#ffffff" stroke-width="1.6"/>
+<text x="670.0" y="631.3" font-size="11.5" font-weight="700" fill="#ffffff" text-anchor="middle">5</text>
+<text x="688.0" y="631.3" font-size="12" font-weight="700" fill="#0b0b0b" text-anchor="start">Client or hosted agent to the model endpoint</text>
+<rect x="974.3" y="617.3" width="67.5" height="20" rx="10" fill="#ffffff" stroke="#eb6834" stroke-width="1.1"/>
+<text x="1008.0" y="631.3" font-size="10.5" font-weight="600" fill="#0b0b0b" text-anchor="middle">open, D-4</text>
+<text x="688.0" y="649.3" font-size="9" font-weight="700" fill="#6f6e69" text-anchor="start" letter-spacing="0.5">CREDENTIAL</text>
+<text x="784.0" y="649.3" font-size="11.5" font-weight="400" fill="#0b0b0b" text-anchor="start">Gateway-issued key or Okta-derived token. Never the provider's own key.</text>
+<text x="688.0" y="666.9" font-size="9" font-weight="700" fill="#6f6e69" text-anchor="start" letter-spacing="0.5">AUTHORIZED BY</text>
+<text x="784.0" y="666.9" font-size="11.5" font-weight="400" fill="#0b0b0b" text-anchor="start">The gateway. It validates the caller, then applies approved models and budgets.</text>
+<circle cx="670" cy="692.56" r="9.5" fill="#52514e" stroke="#ffffff" stroke-width="1.6"/>
+<text x="670.0" y="696.6" font-size="11.5" font-weight="700" fill="#ffffff" text-anchor="middle">6</text>
+<text x="688.0" y="696.6" font-size="12" font-weight="700" fill="#0b0b0b" text-anchor="start">Gateway to the model provider</text>
+<text x="688.0" y="714.6" font-size="9" font-weight="700" fill="#6f6e69" text-anchor="start" letter-spacing="0.5">CREDENTIAL</text>
+<text x="784.0" y="714.6" font-size="11.5" font-weight="400" fill="#0b0b0b" text-anchor="start">Provider credential held by the gateway, through the secret mechanism or workload</text>
+<text x="784.0" y="730.2" font-size="11.5" font-weight="400" fill="#0b0b0b" text-anchor="start">identity.</text>
+<text x="688.0" y="747.8" font-size="9" font-weight="700" fill="#6f6e69" text-anchor="start" letter-spacing="0.5">AUTHORIZED BY</text>
+<text x="784.0" y="747.8" font-size="11.5" font-weight="400" fill="#0b0b0b" text-anchor="start">Provider account policy. The gateway limits models and usage.</text>
+<rect x="32" y="765.5" width="1216" height="34" rx="8" fill="#f3f2ee" stroke="#d3d2cc" stroke-width="1"/>
+<text x="46.0" y="787.5" font-size="12.5" font-weight="700" fill="#0b0b0b" text-anchor="start">Gateway permission never replaces the service's own business authorization.</text>
+<path d="M32.0,827.5 L78.0,827.5" fill="none" stroke="#52514e" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="2.5 4" marker-end="url(#ah)"/>
+<rect x="88.0" y="817.5" width="67.5" height="20" rx="10" fill="#ffffff" stroke="#eb6834" stroke-width="1.1"/>
+<text x="121.7" y="831.5" font-size="10.5" font-weight="600" fill="#0b0b0b" text-anchor="middle">open, D-n</text>
+<text x="163.5" y="831.5" font-size="11.5" font-weight="400" fill="#0b0b0b" text-anchor="start">Not yet decided</text>
+<text x="330.0" y="831.5" font-size="11" font-weight="700" fill="#52514e" text-anchor="start">Status</text>
+<rect x="380.5" y="819.4799999999999" width="26" height="16" rx="4" fill="#ebeae6" stroke="#8f8e88" stroke-width="1.6"/>
+<text x="414.5" y="831.5" font-size="11.5" font-weight="400" fill="#0b0b0b" text-anchor="start">Existing, reused</text>
+<rect x="526.4" y="819.4799999999999" width="26" height="16" rx="4" fill="#e4effc" stroke="#2a78d6" stroke-width="1.6"/>
+<text x="560.4" y="831.5" font-size="11.5" font-weight="400" fill="#0b0b0b" text-anchor="start">New in this platform</text>
+<rect x="693.7" y="819.4799999999999" width="26" height="16" rx="4" fill="#ffffff" stroke="#52514e" stroke-width="1.6"/>
+<text x="727.7" y="831.5" font-size="11.5" font-weight="400" fill="#0b0b0b" text-anchor="start">External system or actor</text>
+</svg>
