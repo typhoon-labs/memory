@@ -117,6 +117,8 @@ async def run_tool(
     try:
         caller = current_caller()
         span.set_attribute("enduser.id", caller.user)
+        if caller.chain:
+            span.set_attribute("delivery.chain", list(caller.chain))
         outcome = action(get_service(), caller)
         payload = await outcome if inspect.isawaitable(outcome) else outcome
     except ServiceError as exc:
@@ -129,6 +131,7 @@ async def run_tool(
                     "tool": tool,
                     "target": target,
                     "user": caller.user if caller else None,
+                    "chain": list(caller.chain) if caller else [],
                     "roles": sorted(caller.roles) if caller else [],
                     "team": caller.team if caller else None,
                     "outcome": error["error"],
@@ -144,6 +147,7 @@ async def run_tool(
                 "tool": tool,
                 "target": target,
                 "user": caller.user,
+                "chain": list(caller.chain),
                 "roles": sorted(caller.roles),
                 "team": caller.team,
                 "outcome": "allowed",

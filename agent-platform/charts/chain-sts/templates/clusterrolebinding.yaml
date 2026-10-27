@@ -1,0 +1,25 @@
+{{- if .Values.authDelegator.enabled }}
+# The service's ServiceAccount, bound to the ClusterRole <release>-token-review
+# (clusterrole.yaml): `create` on tokenreviews and nothing else, for the
+# TokenReview actor check. The chart makes no other RBAC object.
+#
+# The binding keeps the name it had when it bound the built-in ClusterRole
+# system:auth-delegator (chart 0.2.x and before). A binding's roleRef cannot
+# change: on a cluster where this binding still names system:auth-delegator,
+# delete it and sync again, and helm creates it with the new roleRef.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "chain-sts.name" . }}-auth-delegator
+  labels:
+    {{- include "chain-sts.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "chain-sts.name" . }}
+    namespace: {{ .Release.Namespace }}
+# Immutable once created: a binding to another role is a new binding.
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "chain-sts.name" . }}-token-review
+{{- end }}

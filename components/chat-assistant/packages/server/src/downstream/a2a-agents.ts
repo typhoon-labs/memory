@@ -21,6 +21,8 @@ import {
 
 const CARD_TTL_MS = 5 * 60_000;
 const legacyCompat = { enabled: true };
+/** How long one call to an agent may take, unless the agent is given its own limit. */
+export const AGENT_CALL_MS = 180_000;
 
 export class A2aJsonRpcAgent {
   private card?: { value: AgentCard; at: number };
@@ -28,7 +30,7 @@ export class A2aJsonRpcAgent {
   constructor(
     private readonly name: string,
     private readonly url: string,
-    private readonly timeoutMs = 180_000,
+    private readonly timeoutMs = AGENT_CALL_MS,
   ) {}
 
   /** Fetch that carries the caller's token and turns a gateway 401/403 into a Refusal. */

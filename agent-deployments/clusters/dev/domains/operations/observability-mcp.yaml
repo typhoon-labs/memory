@@ -19,6 +19,14 @@
 route:
   path: /mcp/observability
 
+# Which agent may call it on a user's behalf: none. No agent that exchanges
+# tokens at chain-sts calls it; people do (demo/backup/mcp-client.sh), with
+# their own token, and diagnosis-agent, the one agent that reads it, comes in
+# with its gateway key on its own door below. A token with `act` is refused
+# until an agent that needs it is listed here, from `delegation.agents` in
+# ../../identity.yaml.
+actors: []
+
 # Workloads that cannot present a user's token and come in with the key the
 # gateway issued to them instead (agent-platform/profiles/kagent/tool-access).
 # Each gets a door of its own, /workloads/<workload>/mcp/observability:

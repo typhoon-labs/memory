@@ -7,8 +7,9 @@
  *   draft                                    -> comms-agent (A2A)
  *
  * No model decides whether an action runs, and this code does not decide
- * whether it is allowed: the caller's token goes downstream and the gateway
- * and the service answer. A "no" comes back as a Refusal that names its layer.
+ * whether it is allowed: the caller's token (with delegation, the one chain-sts
+ * issues for the caller) goes downstream and the gateway and the service
+ * answer. A "no" comes back as a Refusal that names its layer.
  */
 import type { A2uiAction } from './a2a/wire.js';
 import type { Identity } from './auth.js';

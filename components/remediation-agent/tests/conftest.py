@@ -1,7 +1,11 @@
-"""Test fixtures: a signing key, and stand-ins for delivery-mcp and the model endpoint.
+"""Test fixtures: two issuers, and stand-ins for delivery-mcp, the model endpoint and
+chain-sts's token exchange.
+
+The issuers play Keycloak and chain-sts, each with a key of its own.
 
 Nothing here calls a real model. The stand-ins record what the agent sent them,
-so the tests can check that the caller's token went out on every call.
+so the tests can check which token went out on every call: the caller's, or the
+one chain-sts issued for it.
 """
 
 from __future__ import annotations
@@ -15,7 +19,9 @@ import uuid
 from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs
 
 import httpx
 import jwt
@@ -29,9 +35,13 @@ from remediation_agent.app import create_app
 from remediation_agent.config import load_settings
 
 AUDIENCE = "agentgateway"
+# The agents a delegated token has passed through: the chat assistant, then this one.
+CHAIN = ("chat-assistant", "remediation-agent")
 FAST_MODEL = "test-fast-model"
 # All the time the agent under test gives one model call, retries included.
 MODEL_TIMEOUT_SECONDS = 2.0
+TOKEN_EXCHANGE = "urn:ietf:params:oauth:grant-type:token-exchange"
+JWT_TYPE = "urn:ietf:params:oauth:token-type:jwt"
 
 
 def free_port() -> int:
@@ -57,11 +67,11 @@ def serve_in_thread(app: Any, port: int) -> uvicorn.Server:
 class Issuer:
     """A key generated for the test session, its JWKS, and tokens signed with it."""
 
-    def __init__(self) -> None:
+    def __init__(self, kid: str = "test-key") -> None:
         self.port = free_port()
         self.issuer = f"http://127.0.0.1:{self.port}"
         self.jwks_url = f"{self.issuer}/jwks"
-        self.kid = "test-key"
+        self.kid = kid
         self._key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
 
     def jwks(self) -> dict[str, Any]:
@@ -91,14 +101,48 @@ class Issuer:
             "roles": [user],
         }
         claims.update(overrides)
+        return self.sign(claims)
+
+    def delegated_claims(
+        self, user: str = "platform-engineer", agents: tuple[str, ...] = CHAIN, **overrides: Any
+    ) -> dict[str, Any]:
+        """Claims shaped like chain-sts's: the user's, carried through ``agents``.
+
+        ``client_id`` is the last agent, and ``act`` names every agent, the last
+        outermost.
+        """
+        act: dict[str, Any] | None = None
+        for agent in agents:
+            link = {"sub": f"system:serviceaccount:agents:{agent}", "client_id": agent}
+            act = {**link, "act": act} if act else link
+        now = int(time.time())
+        claims = {
+            "iss": self.issuer,
+            "sub": f"{user}-id",
+            "aud": AUDIENCE,
+            "iat": now,
+            "nbf": now,
+            "exp": now + 300,
+            "jti": uuid.uuid4().hex,
+            "client_id": agents[-1],
+            "preferred_username": user,
+            "roles": [user],
+            "act": act,
+        }
+        claims.update(overrides)
+        return claims
+
+    def delegate(self, user: str = "platform-engineer", **overrides: Any) -> str:
+        """A token as chain-sts issues it, for ``user`` through ``CHAIN``."""
+        return self.sign(self.delegated_claims(user, **overrides))
+
+    def sign(self, claims: dict[str, Any], *, kid: str | None = None) -> str:
+        """Sign exactly these claims, without those set to None."""
         claims = {k: v for k, v in claims.items() if v is not None}
-        return jwt.encode(claims, self._key, algorithm="RS256", headers={"kid": self.kid})
+        return jwt.encode(claims, self._key, algorithm="RS256", headers={"kid": kid or self.kid})
 
 
-@pytest.fixture(scope="session")
-def issuer() -> Iterator[Issuer]:
-    issuer = Issuer()
-
+def _served(issuer: Issuer) -> Iterator[Issuer]:
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:  # noqa: N802
             body = json.dumps(issuer.jwks()).encode()
@@ -115,6 +159,18 @@ def issuer() -> Iterator[Issuer]:
     threading.Thread(target=server.serve_forever, daemon=True).start()
     yield issuer
     server.shutdown()
+
+
+@pytest.fixture(scope="session")
+def issuer() -> Iterator[Issuer]:
+    """Keycloak: the users' own tokens (OIDC_*)."""
+    yield from _served(Issuer())
+
+
+@pytest.fixture(scope="session")
+def chain() -> Iterator[Issuer]:
+    """chain-sts: tokens for an agent acting for a user (DELEGATION_*)."""
+    yield from _served(Issuer(kid="chain-key"))
 
 
 # -- model endpoint ---------------------------------------------------------
@@ -381,32 +437,190 @@ def delivery(_delivery_server: FakeDelivery) -> FakeDelivery:
     return _delivery_server
 
 
-# -- the agent --------------------------------------------------------------
+# -- chain-sts's token exchange ---------------------------------------------
+
+
+@dataclass
+class FakeSTS:
+    """chain-sts's metadata and token endpoint, recording each exchange's form.
+
+    It answers ``refusal`` when one is set. Otherwise it issues a token as
+    chain-sts would, signed with ``chain``'s key, for the subject's user.
+    """
+
+    chain: Issuer
+    url: str = ""
+    # The HTTP status and JSON body to answer instead of a token.
+    refusal: tuple[int, dict[str, Any]] | None = None
+    requests: list[dict[str, list[str]]] = field(default_factory=list)
+    issued: list[str] = field(default_factory=list)
+
+    @property
+    def metadata_url(self) -> str:
+        return f"{self.url}/.well-known/oauth-authorization-server"
+
+    def reset(self) -> None:
+        self.refusal = None
+        self.requests.clear()
+        self.issued.clear()
+
+    def metadata(self) -> dict[str, Any]:
+        return {
+            "issuer": self.chain.issuer,
+            "token_endpoint": f"{self.url}/token",
+            "jwks_uri": self.chain.jwks_url,
+            "grant_types_supported": [TOKEN_EXCHANGE],
+            "token_endpoint_auth_methods_supported": ["none"],
+        }
+
+    def exchange(self, form: dict[str, list[str]]) -> tuple[int, dict[str, Any]]:
+        self.requests.append(form)
+        if self.refusal is not None:
+            return self.refusal
+        (subject,) = form["subject_token"]
+        user = jwt.decode(subject, options={"verify_signature": False})["preferred_username"]
+        token = self.chain.delegate(user)
+        self.issued.append(token)
+        return 200, {
+            "access_token": token,
+            "issued_token_type": "urn:ietf:params:oauth:token-type:access_token",
+            "token_type": "Bearer",
+            "expires_in": 300,
+        }
 
 
 @pytest.fixture(scope="session")
-def agent_url(
-    issuer: Issuer, _delivery_server: FakeDelivery, _model_server: FakeModel
-) -> Iterator[str]:
+def _sts_server(chain: Issuer) -> Iterator[FakeSTS]:
+    fake = FakeSTS(chain)
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:  # noqa: N802
+            if self.path == "/.well-known/oauth-authorization-server":
+                self._answer(200, fake.metadata())
+            else:
+                self._answer(404, {"error": "not_found"})
+
+        def do_POST(self) -> None:  # noqa: N802
+            body = self.rfile.read(int(self.headers.get("Content-Length", "0")))
+            self._answer(*fake.exchange(parse_qs(body.decode(), keep_blank_values=True)))
+
+        def _answer(self, status: int, payload: dict[str, Any]) -> None:
+            data = json.dumps(payload).encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        def log_message(self, *args: Any) -> None:
+            pass
+
     port = free_port()
-    settings = load_settings(
-        {
-            "OIDC_ISSUER": issuer.issuer,
-            "OIDC_JWKS_URL": issuer.jwks_url,
-            "OIDC_AUDIENCE": AUDIENCE,
-            "DELIVERY_MCP_URL": _delivery_server.url,
-            "MODEL_BASE_URL": _model_server.url,
-            "MODEL_ID": "test-default-model",
-            "MODEL_ID_FAST": FAST_MODEL,
-            "PORT": str(port),
-            "MODEL_TIMEOUT_SECONDS": str(MODEL_TIMEOUT_SECONDS),
-            "FOLLOW_INTERVAL_SECONDS": "0.02",
-            "FOLLOW_TIMEOUT_SECONDS": "1",
-        }
-    )
-    server = serve_in_thread(create_app(settings), port)
+    server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    fake.url = f"http://127.0.0.1:{port}"
+    yield fake
+    server.shutdown()
+
+
+@pytest.fixture
+def sts(_sts_server: FakeSTS) -> FakeSTS:
+    _sts_server.reset()
+    return _sts_server
+
+
+@dataclass
+class ActorTokenFile:
+    """This agent's projected service-account token for chain-sts, as the kubelet keeps it."""
+
+    path: Path
+    cluster: Issuer
+    token: str = ""
+
+    def rotate(self) -> str:
+        """Write a new token over the old one, as the kubelet does before it expires."""
+        now = int(time.time())
+        self.token = self.cluster.sign(
+            {
+                "iss": "https://kubernetes.default.svc.cluster.local",
+                "sub": f"system:serviceaccount:agents:{CHAIN[-1]}",
+                "aud": ["chain-sts"],
+                "iat": now,
+                "exp": now + 600,
+                "jti": uuid.uuid4().hex,
+            }
+        )
+        self.path.write_text(self.token)
+        return self.token
+
+
+@pytest.fixture(scope="session")
+def _actor_token_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    return tmp_path_factory.mktemp("chain-sts-token") / "token"
+
+
+@pytest.fixture(scope="session")
+def _cluster() -> Issuer:
+    """The cluster's service-account issuer. Only chain-sts would check its tokens."""
+    return Issuer(kid="cluster-key")
+
+
+@pytest.fixture
+def actor_token_file(_actor_token_path: Path, _cluster: Issuer) -> ActorTokenFile:
+    """A new token in the file the exchanging agent reads, for each test."""
+    actor = ActorTokenFile(_actor_token_path, _cluster)
+    actor.rotate()
+    return actor
+
+
+# -- the agent --------------------------------------------------------------
+
+
+def _serve_agent(env: dict[str, str]) -> Iterator[str]:
+    port = free_port()
+    server = serve_in_thread(create_app(load_settings({**env, "PORT": str(port)})), port)
     yield f"http://127.0.0.1:{port}"
     server.should_exit = True
+
+
+@pytest.fixture(scope="session")
+def _agent_env(
+    issuer: Issuer, chain: Issuer, _delivery_server: FakeDelivery, _model_server: FakeModel
+) -> dict[str, str]:
+    return {
+        "OIDC_ISSUER": issuer.issuer,
+        "OIDC_JWKS_URL": issuer.jwks_url,
+        "OIDC_AUDIENCE": AUDIENCE,
+        "DELEGATION_ISSUER": chain.issuer,
+        "DELEGATION_JWKS_URL": chain.jwks_url,
+        "DELIVERY_MCP_URL": _delivery_server.url,
+        "MODEL_BASE_URL": _model_server.url,
+        "MODEL_ID": "test-default-model",
+        "MODEL_ID_FAST": FAST_MODEL,
+        "MODEL_TIMEOUT_SECONDS": str(MODEL_TIMEOUT_SECONDS),
+        "FOLLOW_INTERVAL_SECONDS": "0.02",
+        "FOLLOW_TIMEOUT_SECONDS": "1",
+    }
+
+
+@pytest.fixture(scope="session")
+def agent_url(_agent_env: dict[str, str]) -> Iterator[str]:
+    """The agent without chain-sts's exchange: the caller's token goes out as it came."""
+    yield from _serve_agent(_agent_env)
+
+
+@pytest.fixture(scope="session")
+def exchanging_agent_url(
+    _agent_env: dict[str, str], _sts_server: FakeSTS, _actor_token_path: Path
+) -> Iterator[str]:
+    """The same agent, exchanging the caller's token at the stand-in for chain-sts."""
+    yield from _serve_agent(
+        {
+            **_agent_env,
+            "DELEGATION_METADATA_URL": _sts_server.metadata_url,
+            "DELEGATION_ACTOR_TOKEN_FILE": str(_actor_token_path),
+        }
+    )
 
 
 @pytest.fixture

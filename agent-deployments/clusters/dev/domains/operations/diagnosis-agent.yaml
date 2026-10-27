@@ -19,6 +19,13 @@ target:
 # alert automation and every signed-in role may ask it.
 allow: []
 
+# Who may call it on a caller's behalf: chat-assistant, which asks it for a
+# diagnosis from the alert hook and from the chat (chain [chat-assistant]).
+# A person or the machine client calling it directly sends their own token,
+# without `act`.
+actors:
+  - chat-assistant
+
 # kagent receives the caller's token and takes the caller's name from it
 # (claim preferred_username). It records that caller as the owner of the
 # conversation and does not verify the token: this policy is the verification.

@@ -31,7 +31,9 @@ tracing:
   # Put the verified caller on every span of a request that carries a token:
   # user.id (the claim preferred_username), user.roles and user.team. `user.id`
   # is the attribute Langfuse reads as a trace's user, so a trace there says
-  # who asked; in Tempo the same attribute finds one person's requests.
+  # who asked; in Tempo the same attribute finds one person's requests. Also
+  # actor.sub and actor.chain, the agents acting for the caller, as described
+  # under `accessLog` below.
   caller: true
   # Put the prompt and the completion of a model call on its span, as
   # gen_ai.prompt and gen_ai.completion. The gateway records no content unless
@@ -40,3 +42,20 @@ tracing:
   # `langfuse.enabled` in its observability settings.yaml; the collector
   # removes both on the way to Tempo.
   llmContent: false
+
+accessLog:
+  # Name the caller and the agents acting for them on every access log line,
+  # the proxy's own and the record sent to the collector, next to the
+  # gateway's own `jwt.sub`:
+  #   user.id       preferred_username
+  #   actor.sub     the newest actor, `act.sub`: the agent that sent the
+  #                 request (a service account, for chain-sts's tokens)
+  #   actor.chain   every agent in the token's nested `act`, by `client_id`
+  #                 (else `sub`), newest first, comma-separated
+  # A token without `act`, a person's or the machine client's own, has no
+  # actor.* fields; a request without a token has none of the three.
+  caller: true
+  # How deep actor.chain reads `act`, here and on spans. CEL has no recursion, so the chain is
+  # written out to this depth; chain-sts's `max_chain` (4 in the dev cluster)
+  # is the most a token can name.
+  chainDepth: 4

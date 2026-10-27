@@ -1,0 +1,86 @@
+{{- if not .Values.networkPolicy.callers }}
+{{- fail "networkPolicy.callers: list the namespaces that may call the service; with none, nothing can" }}
+{{- end }}
+{{- $np := .Values.networkPolicy }}
+# Who may call the service, and what it may reach. Everything else is refused,
+# in both directions. The kubelet's probes come from the pod's own node, which
+# a NetworkPolicy does not stop, so they need no rule.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "chain-sts.name" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "chain-sts.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "chain-sts.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Every pod of the callers' namespaces, on the container's port. Which
+    # agent may do what is the service's own decision, from the actor's token.
+    - from:
+        {{- range $np.callers }}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ . }}
+        {{- end }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.containerPort }}
+  egress:
+    # Cluster DNS.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $np.dns.namespace }}
+          podSelector:
+            matchLabels:
+              {{- toYaml $np.dns.podLabels | nindent 14 }}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # The identity provider, for the keys of the users' tokens.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ required "networkPolicy.identity.namespace is required" $np.identity.namespace }}
+          podSelector:
+            matchLabels:
+              {{- toYaml (required "networkPolicy.identity.podLabels is required" $np.identity.podLabels) | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: {{ $np.identity.port }}
+    # The Kubernetes API server, for TokenReviews or the cluster's keys. Not a
+    # pod, so named by address; a connection to the Service `kubernetes` is
+    # judged by the address and port it is forwarded to.
+    - to:
+        - ipBlock:
+            cidr: {{ required "networkPolicy.apiServer.cidr is required" $np.apiServer.cidr }}
+            {{- with $np.apiServer.except }}
+            except:
+              {{- toYaml . | nindent 14 }}
+            {{- end }}
+      ports:
+        - protocol: TCP
+          port: {{ $np.apiServer.port }}
+    {{- if $np.collector.namespace }}
+    # The telemetry collector.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $np.collector.namespace }}
+          podSelector:
+            matchLabels:
+              {{- toYaml $np.collector.podLabels | nindent 14 }}
+      ports:
+        {{- range $np.collector.ports }}
+        - protocol: TCP
+          port: {{ . }}
+        {{- end }}
+    {{- end }}

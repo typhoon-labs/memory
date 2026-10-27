@@ -1,8 +1,9 @@
 """apply_and_verify: code applies the change and follows it; the model only words the result.
 
 Whether the change is applied is decided by delivery-mcp, from the caller's
-token. Nothing here asks a model whether to act, and nothing here acts under an
-identity other than the caller's.
+token, or from the token chain-sts exchanged it for (delegation.py), which is
+for the same user and names this agent. Nothing here asks a model whether to
+act, and nothing here acts under an identity other than the caller's.
 """
 
 from __future__ import annotations
@@ -31,6 +32,7 @@ from a2a.utils.errors import ServerError
 
 from .auth import caller_token
 from .config import Settings
+from .delegation import ExchangeFailed, token_exchange
 from .delivery import (
     DeliveryClient,
     DeliveryRejected,
@@ -92,6 +94,7 @@ def _find_change(incident: dict[str, Any], change_id: str) -> dict[str, Any] | N
 class RemediationExecutor(AgentExecutor):
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
+        self._exchange = token_exchange(settings)
 
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
         change_id = parse_request(context.message)
@@ -139,6 +142,19 @@ class RemediationExecutor(AgentExecutor):
 
     async def _apply_and_verify(self, updater: TaskUpdater, token: str, change_id: str) -> None:
         await self._working(updater, f"Calling apply_change for {change_id} as the caller.", {})
+        if self._exchange is not None:
+            # Every call of this task carries chain-sts's token, and never the caller's.
+            try:
+                token = await self._exchange.exchange(token)
+            except ExchangeFailed as exc:
+                await self._finish(
+                    updater,
+                    change_id,
+                    outcome="error",
+                    text=f"chain-sts did not exchange the caller's token ({exc.error}),"
+                    f" so apply_change was not called for {change_id}.",
+                )
+                return
         change: dict[str, Any] | None = None
         try:
             async with open_delivery(self._settings.delivery_mcp_url, token) as delivery:

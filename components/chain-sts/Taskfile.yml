@@ -1,0 +1,47 @@
+# chain-sts tasks. Included by the root Taskfile as `chain-sts:` (for example
+# `task chain-sts:test`); also runs on its own from this directory. `task
+# publish` builds and pushes the image with the others.
+#
+#   task test     pytest, with stand-ins for Keycloak, the cluster's keys and the API server
+#   task lint     ruff check and format check
+#   task build    the image localhost:5002/chain-sts:<version>
+#   task push     push it to the local registry
+version: "3"
+
+# Top-level variables are shared by every included Taskfile, so each carries
+# this component's name. REGISTRY is the root Taskfile's; the default applies
+# when this file is run on its own.
+vars:
+  CHAIN_STS_VERSION: '{{.CHAIN_STS_VERSION | default "0.1.2"}}'
+  CHAIN_STS_IMAGE: '{{.REGISTRY | default "localhost:5002"}}/chain-sts:{{.CHAIN_STS_VERSION}}'
+
+tasks:
+  sync:
+    desc: Install the locked dependencies into .venv
+    cmds:
+      - uv sync --frozen
+    sources: [pyproject.toml, uv.lock]
+    generates: [.venv/pyvenv.cfg]
+
+  test:
+    desc: Run the tests (keys and certificates are made for the run; nothing is called outside this machine)
+    deps: [sync]
+    cmds:
+      - .venv/bin/python -m pytest -q {{.CLI_ARGS}}
+
+  lint:
+    desc: ruff check and format check
+    deps: [sync]
+    cmds:
+      - .venv/bin/ruff check src tests
+      - .venv/bin/ruff format --check src tests
+
+  build:
+    desc: Build the image ({{.CHAIN_STS_IMAGE}})
+    cmds:
+      - docker build --build-arg VERSION={{.CHAIN_STS_VERSION}} -t {{.CHAIN_STS_IMAGE}} .
+
+  push:
+    desc: Push the image to the local registry
+    cmds:
+      - docker push {{.CHAIN_STS_IMAGE}}

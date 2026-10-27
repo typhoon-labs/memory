@@ -3,7 +3,8 @@
 The tools are tested the way they are used: over Streamable HTTP, with a real
 signed token on every call. A signing key is generated for the test session and
 kept in memory; its JWKS is served from a local port, and the service fetches
-it from there as it would from Keycloak.
+it from there as it would from Keycloak. A second issuer, with a key of its
+own on another port, plays chain-sts.
 """
 
 from __future__ import annotations
@@ -79,8 +80,7 @@ class Result:
     text: dict[str, Any]
 
 
-@pytest.fixture(scope="session")
-def issuer() -> Iterator[TestIssuer]:
+def _served_issuer() -> Iterator[TestIssuer]:
     port = free_port()
     issuer = TestIssuer(issuer=f"http://127.0.0.1:{port}", audience=AUDIENCE)
     server = serve(issuer, port)
@@ -90,12 +90,26 @@ def issuer() -> Iterator[TestIssuer]:
 
 
 @pytest.fixture(scope="session")
-def server_url(issuer: TestIssuer) -> Iterator[str]:
+def issuer() -> Iterator[TestIssuer]:
+    """Keycloak: the users' own tokens (OIDC_*)."""
+    yield from _served_issuer()
+
+
+@pytest.fixture(scope="session")
+def chain() -> Iterator[TestIssuer]:
+    """chain-sts: tokens for an agent acting for a user (DELEGATION_*)."""
+    yield from _served_issuer()
+
+
+@pytest.fixture(scope="session")
+def server_url(issuer: TestIssuer, chain: TestIssuer) -> Iterator[str]:
     settings = load_settings(
         {
             "OIDC_ISSUER": issuer.issuer,
             "OIDC_JWKS_URL": issuer.jwks_url,  # type: ignore[attr-defined]
             "OIDC_AUDIENCE": AUDIENCE,
+            "DELEGATION_ISSUER": chain.issuer,
+            "DELEGATION_JWKS_URL": chain.jwks_url,  # type: ignore[attr-defined]
         }
     )
     dynamic = DynamicMCPServer(name="delivery-mcp", settings=settings)

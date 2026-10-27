@@ -10,6 +10,8 @@ dependencies = [
     # the OpenTelemetry instrumentation covers. Strands allows 1.23 up to 2.1.
     "mcp>=1.30,<2",
     "pyjwt[crypto]>=2.10,<3",
+    # kagent's Python STS client, for the token exchange at chain-sts (delegation.py).
+    "agentsts-core==1.0.0a16",
     "httpx>=0.28.1,<1.0",
     "uvicorn>=0.34.2,<1.0",
     "opentelemetry-sdk>=1.30.0,<2.0",

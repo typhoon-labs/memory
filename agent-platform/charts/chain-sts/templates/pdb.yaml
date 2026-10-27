@@ -1,0 +1,22 @@
+{{- if gt (int .Values.replicas) 1 }}
+# With more than one replica: a node drain or an upgrade evicts at most
+# podDisruptionBudget.maxUnavailable of the service's pods at a time, so the
+# others keep answering every agent's exchange. It does not help when a node
+# fails; spreading the pods over nodes is the scheduler's.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "chain-sts.name" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "chain-sts.labels" . | nindent 4 }}
+spec:
+  maxUnavailable: {{ .Values.podDisruptionBudget.maxUnavailable }}
+  selector:
+    matchLabels:
+      {{- include "chain-sts.selectorLabels" . | nindent 6 }}
+  # A pod that is not ready answers nothing, so evicting it costs nothing;
+  # under the default, IfHealthyBudget, a crash-looping pod could block a
+  # node drain. The Kubernetes documentation recommends AlwaysAllow.
+  unhealthyPodEvictionPolicy: AlwaysAllow
+{{- end }}

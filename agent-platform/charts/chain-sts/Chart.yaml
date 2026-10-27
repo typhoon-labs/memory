@@ -1,0 +1,7 @@
+apiVersion: v2
+name: chain-sts
+description: The token exchange service that names every agent a request passed through (components/chain-sts), with its policy, its network boundary and, for the TokenReview actor check, a ClusterRole that allows creating TokenReviews and nothing else, and one binding to it
+type: application
+version: 0.3.0
+# The service's own version is its image tag (values: image.tag).
+appVersion: "0.1.0"

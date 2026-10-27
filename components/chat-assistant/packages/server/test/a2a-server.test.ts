@@ -61,6 +61,28 @@ describe('authentication', () => {
     expect(await res.json()).toMatchObject({ error: 'unauthorized' });
   });
 
+  test("the Chat UI's audience is accepted, and any other is not", async () => {
+    // A Chat UI sign-in: Keycloak gives client chat-ui the audience chat-assistant.
+    const chatUi = await rpc(await server.token('developer', { aud: 'chat-assistant' }), syncV1, { 'A2A-Version': '1.0' });
+    expect(chatUi.status).toBe(200);
+    expect(((await chatUi.json()) as any).result.message.parts[0].data.viewer.user).toBe('developer');
+
+    const elsewhere = await rpc(await server.token('developer', { aud: 'comms-agent' }), syncV1);
+    expect(elsewhere.status).toBe(401);
+    expect(await elsewhere.json()).toMatchObject({ error: 'unauthorized', layer: 'chat-assistant' });
+  });
+
+  test('a token that names an acting agent (claim act) is refused, whichever audience it is for', async () => {
+    const act = { sub: 'system:serviceaccount:agents:remediation-agent', client_id: 'remediation-agent' };
+    for (const aud of ['agentgateway', 'chat-assistant']) {
+      const res = await rpc(await server.token('platform-engineer', { aud, act }), syncV1);
+      expect(res.status).toBe(403);
+      const body: any = await res.json();
+      expect(body).toMatchObject({ error: 'forbidden', layer: 'chat-assistant' });
+      expect(body.message).toMatch(/claim act/);
+    }
+  });
+
   test('identity comes only from the token: a header or body field naming another user is ignored', async () => {
     const res = await rpc(
       await server.token('developer'),
@@ -556,6 +578,19 @@ describe('alert hook', () => {
     test('needs the machine identity', async () => {
       expect((await post(s, undefined, alertmanagerPayload())).status).toBe(401);
       expect((await post(s, 'platform-engineer', alertmanagerPayload())).status).toBe(403);
+    });
+
+    test("refuses the machine identity's token when it names an acting agent (claim act), and opens nothing", async () => {
+      const act = { sub: 'system:serviceaccount:agents:chat-assistant', client_id: 'chat-assistant' };
+      const res = await fetch(`${s.url}/hooks/alert`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${await s.token('alert-automation', { act })}` },
+        body: JSON.stringify(alertmanagerPayload('registration-service')),
+      });
+      expect(res.status).toBe(403);
+      expect(await res.json()).toMatchObject({ error: 'forbidden', layer: 'chat-assistant' });
+      const listed = (await s.downstreams.delivery.callTool(await s.token('developer'), 'list_incidents', {})) as any;
+      expect(JSON.stringify(listed)).not.toContain('registration-service');
     });
 
     test('the incident is opened first: the card is there, diagnosing, before the diagnosis arrives; then it fills in, in place', async () => {

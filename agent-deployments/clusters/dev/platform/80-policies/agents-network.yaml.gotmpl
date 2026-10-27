@@ -3,7 +3,8 @@
 # `agents-network-boundary`, chart
 # agent-platform/policies/network/workload-boundary, which explains the rules
 # that hold for every workload: in from the gateway only; out to DNS, the
-# gateway, Keycloak's keys and the collector only.
+# gateway, Keycloak's keys and the collector only, and here also chain-sts
+# (`delegation` below).
 #
 # The three agents call delivery-mcp, each other and the model through the
 # gateway, so they need nothing more on the way out.
@@ -13,6 +14,19 @@
 
 servingPorts:
   - 8080   # A2A, and for chat-assistant also the alert hook and the Chat UI
+
+# chain-sts (platform/90-chain-sts), on its container's port, for every pod of
+# the namespace, as Keycloak's keys are. remediation-agent and comms-agent
+# fetch its keys at /jwks to verify a token it issued (DELEGATION_JWKS_URL),
+# and an agent acting for a user exchanges its token there. A path that does
+# not go through the gateway: what an agent gets there is chain-sts's own
+# decision, from the agent's token and its policy.yaml, and chain-sts's
+# NetworkPolicy lets in only the namespaces it lists (networkPolicy.callers).
+delegation:
+  namespace: chain-sts
+  podLabels:
+    app.kubernetes.io/name: chain-sts
+  port: 8080
 
 # Every entry below is a path that does not go through the gateway.
 exceptions:

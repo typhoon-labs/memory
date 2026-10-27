@@ -45,6 +45,25 @@ spec:
       ports:
         - protocol: TCP
           port: {{ .Values.identity.port }}
+    {{- with .Values.delegation }}
+    {{- if .namespace }}
+    {{- if not .podLabels }}
+    {{- fail "delegation.podLabels: name the token exchange's pods, as for the identity provider" }}
+    {{- end }}
+    # The token exchange, for the keys that verify its tokens and for an
+    # agent's exchange.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .namespace }}
+          podSelector:
+            matchLabels:
+              {{- toYaml .podLabels | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: {{ required "delegation.port is required" .port }}
+    {{- end }}
+    {{- end }}
     # The telemetry collector.
     - to:
         - namespaceSelector:

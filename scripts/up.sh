@@ -35,7 +35,9 @@
 #     every later step passes them, the first time and when it is run again.
 #   - kagent before diagnosis-agent, which is declared in it.
 #   - Images and the Sample App chart are pushed before any release that
-#     pulls them.
+#     pulls them. chain-sts (platform/90-chain-sts) is the one platform
+#     release whose image is built here, so it is installed right after
+#     `task publish` and not with the platform before it.
 #   - Workloads before their routes (a route lives in its backend's
 #     namespace), and a route's policy before the route: `task install` does both.
 #   - The registry's catalog and Langfuse's prices are data, loaded at the end.
@@ -57,14 +59,15 @@ steps='
 6|registry:install|Agentregistry
 7|policies|Controls: network boundaries, Kyverno, the admission rules for gateway resources
 8|publish|Build and push every image and the Sample App chart
-9|install|Sample App, traffic, delivery-mcp, the agents, the chat assistant, their gateway routes
-10|diagnosis-agent:deploy|diagnosis-agent, with its own gateway key
-11|registry:publish|Publish the catalog: 4 agents and 2 tool servers
-12|langfuse:prices|Model prices in Langfuse, so that a call shows its cost
-13|demo:reset|Clean start: search-service 2.0.0, no incident, the alert quiet
-14|demo:preflight|Pre-flight: the go or no-go list
+9|sts:install|chain-sts, the token exchange that names every agent, and its signing key
+10|install|Sample App, traffic, delivery-mcp, the agents, the chat assistant, their gateway routes
+11|diagnosis-agent:deploy|diagnosis-agent, with its own gateway key
+12|registry:publish|Publish the catalog: 4 agents and 2 tool servers
+13|langfuse:prices|Model prices in Langfuse, so that a call shows its cost
+14|demo:reset|Clean start: search-service 2.0.0, no incident, the alert quiet
+15|demo:preflight|Pre-flight: the go or no-go list
 '
-last=14
+last=15
 
 from=1
 case "${1:-}" in

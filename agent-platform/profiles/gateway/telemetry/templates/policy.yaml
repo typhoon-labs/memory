@@ -1,3 +1,21 @@
+{{- /*
+The agents acting for the caller, as CEL attributes. Each is left out of a
+record when its expression fails, as `jwt.act.sub` does on a token without
+`act`. `default` stands in for a deeper `act` that is not there.
+*/ -}}
+{{- define "telemetry.actorAttributes" -}}
+{{- $depth := int .Values.accessLog.chainDepth -}}
+{{- if lt $depth 1 }}{{ fail "accessLog.chainDepth: at least 1" }}{{ end -}}
+{{- $names := list "default(jwt.act.client_id, jwt.act.sub)" -}}
+{{- range $i := untilStep 2 (int (add1 $depth)) 1 -}}
+  {{- $path := printf "jwt%s" (repeat $i ".act") -}}
+  {{- $names = append $names (printf "default(%s.client_id, default(%s.sub, \"\"))" $path $path) -}}
+{{- end -}}
+- name: actor.sub
+  expression: jwt.act.sub
+- name: actor.chain
+  expression: {{ printf "[%s].filter(n, n != \"\").join(\",\")" (join ", " $names) | quote }}
+{{- end -}}
 apiVersion: agentgateway.dev/v1alpha1
 kind: AgentgatewayPolicy
 metadata:
@@ -36,6 +54,8 @@ spec:
             expression: jwt.roles
           - name: user.team
             expression: jwt.team
+          # The agent acting for the caller, and the chain before it.
+          {{- include "telemetry.actorAttributes" . | nindent 10 }}
           {{- end }}
           {{- if .Values.tracing.llmContent }}
           - name: gen_ai.prompt
@@ -46,6 +66,15 @@ spec:
       {{- end }}
     # One log record per request, in addition to the line on the proxy's stdout.
     accessLog:
+      {{- if .Values.accessLog.caller }}
+      # On the stdout line, and on the record sent to the collector, which
+      # takes these when `otlp` sets no attributes of its own.
+      attributes:
+        add:
+          - name: user.id
+            expression: jwt.preferred_username
+          {{- include "telemetry.actorAttributes" . | nindent 10 }}
+      {{- end }}
       otlp:
         backendRef:
           name: {{ .Values.collector.service }}

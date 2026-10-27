@@ -4,7 +4,8 @@
 #   Deployment + Service   the server, MCP over Streamable HTTP at /mcp
 #   AgentgatewayBackend    the server as an MCP backend
 #   HTTPRoute              the gateway path
-#   AgentgatewayPolicy     -auth: a valid Keycloak token is required
+#   AgentgatewayPolicy     -auth: a valid token from Keycloak or chain-sts,
+#                          and which agent may present one for a user
 #                          -tools: the tools that are listed and callable, and
 #                          the server's own token, which the gateway presents
 #   ReferenceGrant         for the routes of workloads with a gateway key
@@ -46,10 +47,25 @@ route:
 workloadRoutesNamespace: ""
 
 # Whose tokens are trusted: agent-deployments/clusters/dev/identity.yaml.
+# `identity` is Keycloak. `delegation` is optional: chain-sts, for an agent
+# acting for a user; with an empty `issuer`, Keycloak alone is trusted.
 identity:
   issuer: ""
   audience: ""
   jwksUrl: ""
+delegation:
+  issuer: ""
+  audience: ""
+  jwksUrl: ""
+  # Agent name -> the `sub` chain-sts writes for it in `act`.
+  agents: {}
+
+# Which agent may call the route on a user's behalf: a token with an `act`
+# claim is let in only when `delegation.issuer` signed it and its newest actor
+# (`jwt.act.sub`) is one of these, named as in `delegation.agents`. Empty: no token with `act`. A token without
+# `act` needs only to be valid. The workloads' doors (gateway keys) are other
+# routes and are not affected.
+actors: []
 
 # The tools the gateway lists and lets through, for any caller with a valid
 # token. A tool that is not named here is hidden from everyone, so a new

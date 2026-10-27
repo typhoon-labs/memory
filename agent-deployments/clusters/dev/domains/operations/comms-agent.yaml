@@ -21,6 +21,13 @@ backend:
 allow:
   - '"incident-manager" in jwt.roles'
 
-# The agent receives the caller's own token and uses it, unchanged, to read
-# the incident from delivery-mcp and to call the model route.
+# Who may call it on a user's behalf: only chat-assistant, which hands it an
+# incident manager's Draft button (chain [chat-assistant]). An incident
+# manager calling it directly sends their own token, without `act`.
+actors:
+  - chat-assistant
+
+# The gateway passes the caller's token on. The agent exchanges it at
+# chain-sts for one that adds comms-agent to `act`, and reads the incident
+# from delivery-mcp and calls the model route with that one only.
 passthrough: true

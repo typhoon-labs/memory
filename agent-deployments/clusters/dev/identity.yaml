@@ -1,9 +1,14 @@
 # Whose tokens the dev cluster trusts. Keycloak stands in for Okta.
 #
-# One file for the cluster, because the issuer is the cluster's: another
-# cluster trusts another issuer. Read by every gateway policy that validates a
-# bearer token (chart agent-platform/policies/agentgateway/route-auth). The same three values are
-# the component bindings OIDC_ISSUER, OIDC_AUDIENCE and OIDC_JWKS_URL.
+# One file for the cluster, because the issuers are the cluster's: another
+# cluster trusts other issuers. Read by every gateway policy that validates a
+# bearer token (chart agent-platform/policies/agentgateway/route-auth, and the
+# route of workloads/observability-mcp), which accepts a token from either
+# issuer below and applies the same rules on its claims to both.
+#
+# `identity`: the users' and the machine client's own tokens. The same three
+# values are the component bindings OIDC_ISSUER, OIDC_AUDIENCE and
+# OIDC_JWKS_URL.
 identity:
   # The `iss` claim. The browser's address of Keycloak, not reachable from a pod.
   issuer: http://localhost:18081/realms/demo
@@ -11,3 +16,29 @@ identity:
   audience: agentgateway
   # The same realm's signing keys through the Keycloak Service.
   jwksUrl: http://keycloak.keycloak.svc.cluster.local:8080/realms/demo/protocol/openid-connect/certs
+
+# `delegation`: tokens chain-sts (platform/90-chain-sts) issues to an agent
+# acting for a user. Each carries the user's `sub`, preferred_username, roles
+# and team, and a nested `act` naming every agent the request passed through,
+# so a route's rules on roles hold for it as for the user's own token, and
+# the route's `actors` say which agent may present it.
+# The component bindings are DELEGATION_ISSUER and DELEGATION_JWKS_URL; the
+# audience is the same as above, OIDC_AUDIENCE.
+delegation:
+  # The `iss` claim: chain-sts's address, which is also the issuer it signs as.
+  issuer: http://chain-sts.chain-sts.svc.cluster.local
+  # The audience chain-sts issues for (its policy.yaml): the gateway.
+  audience: agentgateway
+  # Its signing keys through its Service. Its NetworkPolicy lets in namespace
+  # agentgateway-system, whose controller fetches the keys for the gateway,
+  # and namespaces `agents` and `tools`, whose services fetch them too.
+  jwksUrl: http://chain-sts.chain-sts.svc.cluster.local/jwks
+  # The agents chain-sts lets act for a user (its policy.yaml), each with the
+  # `sub` it writes for that agent in `act`: its service account. A route
+  # names the agents that may call it on a user's behalf as `actors`, from
+  # this map, and the gateway compares the token's newest actor,
+  # `jwt.act.sub`, with theirs.
+  agents:
+    chat-assistant: system:serviceaccount:agents:chat-assistant
+    remediation-agent: system:serviceaccount:agents:remediation-agent
+    comms-agent: system:serviceaccount:agents:comms-agent

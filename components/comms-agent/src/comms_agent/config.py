@@ -33,6 +33,13 @@ class Settings:
     oidc_issuer: str
     oidc_jwks_url: str
     oidc_audience: str
+    # chain-sts, whose tokens name the agents acting for a user. Both or neither.
+    delegation_issuer: str | None
+    delegation_jwks_url: str | None
+    # chain-sts's token exchange, which the caller's token goes through before
+    # any call out (delegation.py). Both or neither, whatever the two above are.
+    delegation_metadata_url: str | None
+    delegation_actor_token_file: str | None
 
     delivery_mcp_url: str
 
@@ -42,6 +49,13 @@ class Settings:
     model_timeout_seconds: float
 
     max_words: int
+
+    def trusted_issuers(self) -> dict[str, str]:
+        """Each issuer whose tokens are accepted, with the URL of its keys."""
+        issuers = {self.oidc_issuer: self.oidc_jwks_url}
+        if self.delegation_issuer and self.delegation_jwks_url:
+            issuers[self.delegation_issuer] = self.delegation_jwks_url
+        return issuers
 
 
 def load_settings(env: Mapping[str, str] | None = None) -> Settings:
@@ -53,6 +67,19 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     missing = [name for name in REQUIRED if not get(name)]
     if missing:
         raise ConfigError("missing required environment variables: " + ", ".join(missing))
+
+    def both_or_neither(*names: str) -> dict[str, str]:
+        values = {n: get(n) for n in names}
+        if any(values.values()) and not all(values.values()):
+            given = next(n for n, v in values.items() if v)
+            absent = next(n for n, v in values.items() if not v)
+            raise ConfigError(f"{given} is set and {absent} is not: set both, or neither")
+        return values
+
+    delegation = both_or_neither("DELEGATION_ISSUER", "DELEGATION_JWKS_URL")
+    exchange = both_or_neither("DELEGATION_METADATA_URL", "DELEGATION_ACTOR_TOKEN_FILE")
+    if delegation["DELEGATION_ISSUER"] and delegation["DELEGATION_ISSUER"] == get("OIDC_ISSUER"):
+        raise ConfigError("DELEGATION_ISSUER must differ from OIDC_ISSUER")
 
     port = int(get("PORT", "8080"))
     return Settings(
@@ -66,6 +93,10 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         oidc_issuer=get("OIDC_ISSUER"),
         oidc_jwks_url=get("OIDC_JWKS_URL"),
         oidc_audience=get("OIDC_AUDIENCE"),
+        delegation_issuer=delegation["DELEGATION_ISSUER"] or None,
+        delegation_jwks_url=delegation["DELEGATION_JWKS_URL"] or None,
+        delegation_metadata_url=exchange["DELEGATION_METADATA_URL"] or None,
+        delegation_actor_token_file=exchange["DELEGATION_ACTOR_TOKEN_FILE"] or None,
         delivery_mcp_url=get("DELIVERY_MCP_URL"),
         model_base_url=get("MODEL_BASE_URL").rstrip("/"),
         # The draft is written with MODEL_ID. MODEL_ID_FAST is read so that the

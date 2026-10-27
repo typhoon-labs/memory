@@ -5,8 +5,8 @@
 #   from the host   http://localhost:18080/mcp/delivery
 #
 # Values for two releases in the helmfile.yaml next to this file:
-# `delivery-mcp-route` (route, backend, tools) and `delivery-mcp-route-auth`
-# (allow, passthrough). Apply a change with
+# `delivery-mcp-route` (route, backend, tools, toolActors) and
+# `delivery-mcp-route-auth` (allow, actors, passthrough). Apply a change with
 # `task deploy -- -l name=delivery-mcp-route` or `-l name=delivery-mcp-route-auth`.
 
 route:
@@ -23,8 +23,18 @@ backend:
 # audience `agentgateway`. What they may do then is the table below.
 allow: []
 
-# delivery-mcp receives the caller's own token. It checks every role again and
-# applies the rules only it can know (team ownership, approval, and so on).
+# Which agent may open a session on a user's behalf: the three that call
+# delivery-mcp with a token chain-sts issued, whose newest actor is the agent
+# itself. What each may then do is `toolActors` below.
+actors:
+  - chat-assistant
+  - remediation-agent
+  - comms-agent
+
+# delivery-mcp receives the caller's token: a user's own, or the one chain-sts
+# issued to the agent calling it. It checks every role again, records the
+# chain of agents, and applies the rules only it can know (team ownership,
+# approval, and so on).
 passthrough: true
 
 # Tool -> the roles that may see it in tools/list and call it. "*" is any
@@ -43,3 +53,30 @@ tools:
   post_status_update: [incident-manager]
   apply_change: [platform-engineer]
   restart_workload: [platform-engineer]
+
+# Tool -> the agents that may see it and call it on a caller's behalf: a token
+# with an `act` claim gets the tool only when its newest actor is one of these,
+# and the caller's roles above still apply. A token without `act`, a person's
+# or the alert's own (`task demo:drive`, `task token`), gets the tools of its
+# roles as before. A tool not listed here is not offered to any token with
+# `act`. Names are those of `delegation.agents` in ../../identity.yaml.
+# Who calls what, from the agents' code:
+#   chat-assistant     the card and the chat read; the alert hook opens the
+#                      incident and records the diagnosis; the Propose,
+#                      Approve, Reject, Restart and Post buttons call their
+#                      tools (packages/server/src/actions.ts). Apply and Draft
+#                      go to the two agents instead.
+#   remediation-agent  apply_change, then get_incident until it is applied.
+#   comms-agent        get_incident only; it drafts, and posting is the Post
+#                      button's, through chat-assistant.
+toolActors:
+  list_incidents: [chat-assistant, remediation-agent, comms-agent]
+  get_incident: [chat-assistant, remediation-agent, comms-agent]
+  open_incident: [chat-assistant]
+  record_diagnosis: [chat-assistant]
+  propose_change: [chat-assistant]
+  approve_change: [chat-assistant]
+  reject_change: [chat-assistant]
+  post_status_update: [chat-assistant]
+  apply_change: [remediation-agent]
+  restart_workload: [chat-assistant]

@@ -37,7 +37,7 @@ export function buildAgentCard(config: Config, url: string): AgentCard {
         scheme: {
           $case: 'openIdConnectSecurityScheme',
           value: {
-            description: `Bearer access token for audience "${config.oidc.audience}", carrying preferred_username, roles and team.`,
+            description: `Bearer access token for audience ${config.oidc.acceptedAudiences.map((a) => `"${a}"`).join(' or ')}, carrying preferred_username, roles and team, and no act claim: the caller's own token.`,
             openIdConnectUrl: `${config.ui.oidcIssuer}/.well-known/openid-configuration`,
           },
         },

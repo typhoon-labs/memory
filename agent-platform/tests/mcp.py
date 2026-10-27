@@ -6,9 +6,10 @@
 
 IDENTITY is passed to the command in PLATFORM_TOKEN_CMD, which prints an access
 token for it (for the dev cluster: a user or `alert-automation`), or is `-` to
-send no token. The session is opened first (`initialize`), and a
-session id is carried when the route gives one: /mcp/observability does,
-/mcp/delivery is stateless.
+send no token, or `@-` to send the token read from standard input (one a check
+holds, such as a token chain-sts issued). The session is opened first
+(`initialize`), and a session id is carried when the route gives one:
+/mcp/observability does, /mcp/delivery is stateless.
 
 Prints one JSON object and exits 0 whatever the server answered; what was
 refused, and by whom, is in the object:
@@ -62,7 +63,9 @@ def refusal(status: int, body: str) -> dict:
 def main() -> int:
     url, identity, action, *rest = sys.argv[1:]
     headers = {"Accept": "application/json, text/event-stream"}
-    if identity != "-":
+    if identity == "@-":
+        headers["Authorization"] = f"Bearer {sys.stdin.read().strip()}"
+    elif identity != "-":
         token = subprocess.run(
             [os.environ["PLATFORM_TOKEN_CMD"], identity], capture_output=True, text=True, check=True
         ).stdout.strip()

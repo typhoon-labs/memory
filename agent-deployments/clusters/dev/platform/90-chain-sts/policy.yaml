@@ -1,0 +1,56 @@
+# The dev cluster's chain-sts policy: which agent may act for a user, which
+# may follow which, and what an issued token carries. The keys are the
+# service's own (components/chain-sts/config.example.yaml describes each); the
+# chart writes them into the service's configuration as they are. A key the
+# service does not know stops it from starting.
+#
+# Agents are named by their service account. An agent that is not listed is
+# refused (`unauthorized_client`): diagnosis-agent runs in Agent Substrate's
+# shared worker pool without a token of its own, so it is not here.
+policy:
+  agents:
+    # The first agent: it may exchange a user's own token, and the alert
+    # hook's (alert-automation's). It alone may exchange a Chat UI sign-in,
+    # whose audience is chat-assistant (Keycloak client chat-ui); every other
+    # agent takes a user's token only for the gateway's audience, so a Chat
+    # UI token cannot be used past chat-assistant, not even exchanged.
+    chat-assistant:
+      service_account: system:serviceaccount:agents:chat-assistant
+      act_for_users: true
+      subject_audiences: [agentgateway, chat-assistant]
+    # On a token chat-assistant got, which gives the chain
+    # [<agent>, chat-assistant]; and on a user's own token, for a user who
+    # calls the agent directly through its gateway route, as
+    # demo/scenarios/drive.py and demo/backup/registry-down.sh do, which gives
+    # the chain [<agent>]. The route decides who may call the agent at all.
+    remediation-agent:
+      service_account: system:serviceaccount:agents:remediation-agent
+      act_for_users: true
+      after: [chat-assistant]
+    comms-agent:
+      service_account: system:serviceaccount:agents:comms-agent
+      act_for_users: true
+      after: [chat-assistant]
+
+  # The most agents one token may name.
+  max_chain: 4
+
+  # Seconds an issued token lives; never longer than the user's token.
+  token_ttl_seconds: 300
+
+  # The audiences it issues for: everything behind the gateway.
+  audiences:
+    - agentgateway
+
+  # The user's claims each issued token carries on, as the gateway and the
+  # tools read them (docs/contracts.md).
+  carry_claims:
+    - preferred_username
+    - roles
+    - team
+    - email
+    - name
+
+  # Keycloak writes `may_act` only through consent, which the scripted logins
+  # (`task token`) cannot give; the agents above decide the first agent.
+  require_may_act: false

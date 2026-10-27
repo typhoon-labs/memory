@@ -17,6 +17,11 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version }}
 {{- end -}}
 
+{{/* Where projectedToken is mounted: mountPath, else /var/run/secrets/<audience>. */}}
+{{- define "agent.projectedTokenPath" -}}
+{{- default (printf "/var/run/secrets/%s" .Values.projectedToken.audience) .Values.projectedToken.mountPath -}}
+{{- end -}}
+
 {{/* The ServiceAccount the pod runs as. */}}
 {{- define "agent.serviceAccountName" -}}
 {{- if .Values.serviceAccount.create -}}

@@ -6,7 +6,7 @@
 #
 # Values for two releases in the helmfile.yaml next to this file:
 # `chat-assistant-route` (route, backend, cors, timeouts) and
-# `chat-assistant-route-auth` (allow, passthrough).
+# `chat-assistant-route-auth` (extraAudiences, allow, actors, passthrough).
 
 route:
   name: chat-assistant
@@ -16,15 +16,29 @@ backend:
   host: chat-assistant.agents.svc.cluster.local
   port: 8080
 
+# The audience of a Chat UI sign-in (Keycloak client chat-ui), accepted here
+# besides `agentgateway`, which `task token` and the alert's machine client
+# get. Every other route accepts `agentgateway` alone, so a Chat UI token
+# works only here; chat-assistant exchanges it at chain-sts for one for the
+# gateway before every call, and chain-sts lets only chat-assistant do so.
+extraAudiences:
+  - chat-assistant
+
 # Who may call it: CEL expressions on the verified token, any one of which
 # allows the caller. Empty: anyone with a valid token for audience
-# `agentgateway`. Chatting and reading the incident card are for every
-# signed-in role; each button's action is then decided where it lands, at the
-# delivery-mcp route or at the other agents' routes.
+# `agentgateway` or `chat-assistant`. Chatting and reading the incident card
+# are for every signed-in role; each button's action is then decided where it
+# lands, at the delivery-mcp route or at the other agents' routes.
 allow: []
 
-# The assistant receives the caller's own token and uses it, unchanged, for
-# every call it makes: delivery-mcp, the other agents and the model route.
+# Who may call it on a user's behalf: nobody. People sign in to it and call it
+# with their own token; no agent calls it. A token with `act` is refused,
+# whoever signed it. chat-assistant refuses one too.
+actors: []
+
+# The assistant receives the caller's own token, verifies it again, and
+# exchanges it at chain-sts for every call it makes: delivery-mcp, the other
+# agents and the model route.
 passthrough: true
 
 # The Chat UI is served from http://localhost:18083 and calls this route from

@@ -173,12 +173,12 @@
       "optionalClientScopes": [],
       "protocolMappers": [
         {
-          "name": "audience-agentgateway",
+          "name": "audience-chat-assistant",
           "protocol": "openid-connect",
           "protocolMapper": "oidc-audience-mapper",
           "consentRequired": false,
           "config": {
-            "included.custom.audience": "agentgateway",
+            "included.custom.audience": "chat-assistant",
             "access.token.claim": "true",
             "id.token.claim": "false",
             "introspection.token.claim": "true"

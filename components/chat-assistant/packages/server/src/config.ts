@@ -1,7 +1,8 @@
 /**
  * Every binding comes from the environment (see docs/contracts.md).
- * Nothing here is a secret: the server holds no credentials of its own and only
- * ever forwards the caller's bearer token.
+ * Nothing here is a secret. The server forwards the caller's bearer token or,
+ * with delegation, exchanges it at chain-sts, proving itself with its pod's
+ * service-account token, which the kubelet keeps in a file.
  */
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,7 +11,12 @@ export interface Config {
   host: string;
   port: number;
   appVersion: string;
-  oidc: { issuer: string; jwksUrl: string; audience: string };
+  /**
+   * `audience`: the gateway's, asked for at chain-sts for what goes downstream.
+   * `acceptedAudiences`: what a caller's token may carry, one being enough
+   * (OIDC_ACCEPTED_AUDIENCES, else `audience` alone).
+   */
+  oidc: { issuer: string; jwksUrl: string; audience: string; acceptedAudiences: string[] };
   /** `timeoutMs`: all the time one chat answer may take, tool calls included. There is no retry. */
   model: { baseUrl: string; id: string; timeoutMs: number };
   downstream: {
@@ -18,6 +24,16 @@ export interface Config {
     remediationAgentUrl: string;
     commsAgentUrl: string;
     diagnosisAgentUrl: string;
+  };
+  /**
+   * chain-sts, where the caller's token is exchanged before every downstream
+   * call (see downstream/delegation.ts). Unset: the caller's own token goes downstream.
+   */
+  delegation?: {
+    /** RFC 8414 metadata; the exchange goes to its `token_endpoint` as given. */
+    metadataUrl: string;
+    /** This pod's projected service-account token for audience chain-sts, read again for every exchange. */
+    actorTokenFile: string;
   };
   /** Use in-memory fakes for delivery-mcp and the three agents. */
   stubDownstreams: boolean;
@@ -60,10 +76,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const selfUrl = `http://localhost:${port}`;
 
   const issuer = devTestIssuer ? `${selfUrl}/dev/issuer` : (env.OIDC_ISSUER ?? '');
+  const audience = env.OIDC_AUDIENCE ?? 'agentgateway';
+  const accepted = list(env.OIDC_ACCEPTED_AUDIENCES);
   const oidc = {
     issuer,
     jwksUrl: devTestIssuer ? `${selfUrl}/dev/issuer/jwks` : (env.OIDC_JWKS_URL ?? ''),
-    audience: env.OIDC_AUDIENCE ?? 'agentgateway',
+    audience,
+    acceptedAudiences: accepted.length ? accepted : [audience],
   };
   if (!oidc.issuer || !oidc.jwksUrl) {
     throw new Error('OIDC_ISSUER and OIDC_JWKS_URL are required (or set DEV_TEST_ISSUER=1 for local testing).');
@@ -80,6 +99,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     throw new Error('DELIVERY_MCP_URL is required unless STUB_DOWNSTREAMS=1.');
   }
 
+  const metadataUrl = env.DELEGATION_METADATA_URL ?? '';
+  const actorTokenFile = env.DELEGATION_ACTOR_TOKEN_FILE ?? '';
+  if (!metadataUrl !== !actorTokenFile) {
+    // Half a delegation would forward the caller's token where an exchanged one is expected.
+    throw new Error('DELEGATION_METADATA_URL and DELEGATION_ACTOR_TOKEN_FILE are set together or not at all.');
+  }
+  if (metadataUrl && !URL.canParse(metadataUrl)) {
+    throw new Error(`DELEGATION_METADATA_URL is not a URL: ${metadataUrl}`);
+  }
+
   return {
     host: env.HOST ?? '0.0.0.0',
     port,
@@ -91,6 +120,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       timeoutMs: Number(env.MODEL_TIMEOUT_SECONDS ?? 60) * 1000,
     },
     downstream,
+    delegation: metadataUrl ? { metadataUrl, actorTokenFile } : undefined,
     stubDownstreams,
     stub: {
       seed: env.STUB_SEED === undefined ? true : flag(env.STUB_SEED),

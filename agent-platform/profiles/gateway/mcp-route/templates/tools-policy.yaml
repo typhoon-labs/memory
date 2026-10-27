@@ -4,25 +4,50 @@ One clause per tool: the tool's name, and the roles that may use it. A tool
 whose roles include "*" needs only a valid token, which the route's own policy
 has already required.
 */ -}}
+{{- /*
+And the agents that may use it on a caller's behalf: a token without `act`
+(`has` is false when the claim is absent), or one whose newest actor is
+listed. Without that test `jwt.act.sub` would be an error on a caller's own
+token, which the gateway counts as false.
+*/ -}}
+{{- range $tool, $_ := .Values.toolActors -}}
+  {{- if not (hasKey $.Values.tools $tool) -}}
+    {{- fail (printf "toolActors.%s: not a tool in `tools`" $tool) -}}
+  {{- end -}}
+{{- end -}}
 {{- $clauses := list -}}
 {{- range $tool, $roles := .Values.tools -}}
+  {{- $subs := list -}}
+  {{- range (index ($.Values.toolActors | default dict) $tool | default list) -}}
+    {{- $sub := index ($.Values.delegation.agents | default dict) . -}}
+    {{- if not $sub -}}
+      {{- fail (printf "toolActors.%s: %q is not in delegation.agents" $tool .) -}}
+    {{- end -}}
+    {{- $subs = append $subs $sub -}}
+  {{- end -}}
+  {{- $act := "!has(jwt.act)" -}}
+  {{- if $subs -}}
+    {{- $issuer := required "delegation.issuer: the issuer whose `act` names the agents" ($.Values.delegation.issuer | default "") -}}
+    {{- $act = printf "!has(jwt.act) || (jwt.iss == %q && jwt.act.sub in %s)" $issuer (toJson $subs) -}}
+  {{- end -}}
   {{- if has "*" $roles -}}
-    {{- $clauses = append $clauses (printf "mcp.tool.name == %q" $tool) -}}
+    {{- $clauses = append $clauses (printf "(mcp.tool.name == %q && (%s))" $tool $act) -}}
   {{- else if $roles -}}
     {{- $holders := list -}}
     {{- range $roles -}}
       {{- $holders = append $holders (printf "%q in jwt.roles" .) -}}
     {{- end -}}
-    {{- $clauses = append $clauses (printf "(mcp.tool.name == %q && (%s))" $tool (join " || " $holders)) -}}
+    {{- $clauses = append $clauses (printf "(mcp.tool.name == %q && (%s) && (%s))" $tool (join " || " $holders) $act) -}}
   {{- end -}}
 {{- end -}}
 {{- if not $clauses -}}
   {{- fail "tools: list at least one tool with a role; with none, every tool would be hidden from everyone" -}}
 {{- end -}}
-# Which role may use which tool. The gateway enforces it on tools/list (a tool
-# the caller's role lacks is not listed) and on tools/call (the call is
-# refused before it reaches the server). The server applies the same roles
-# again, and the rules only it can know.
+# Which role, and which agent acting for a caller, may use which tool. The
+# gateway enforces it on tools/list (a tool the caller may not use is not
+# listed) and on tools/call (the call is refused before it reaches the
+# server). The server applies the same roles again, and the rules only it can
+# know.
 apiVersion: agentgateway.dev/v1alpha1
 kind: AgentgatewayPolicy
 metadata:

@@ -40,6 +40,30 @@ def test_the_service_does_not_start_without_identity_bindings():
             load_settings(env)
 
 
+DELEGATION = {
+    "DELEGATION_ISSUER": "http://chain-sts.chain-sts.svc.cluster.local",
+    "DELEGATION_JWKS_URL": "http://chain-sts.chain-sts.svc.cluster.local/jwks",
+}
+
+
+def test_chain_sts_is_trusted_only_with_both_of_its_bindings():
+    settings = load_settings(IDENTITY)
+    assert settings.delegation_issuer is None and settings.delegation_jwks_url is None
+    settings = load_settings({**IDENTITY, **DELEGATION})
+    assert settings.delegation_issuer == DELEGATION["DELEGATION_ISSUER"]
+    assert settings.delegation_jwks_url == DELEGATION["DELEGATION_JWKS_URL"]
+    issuer, jwks_url = DELEGATION
+    for given, absent in ((issuer, jwks_url), (jwks_url, issuer)):
+        with pytest.raises(ConfigError, match=f"{given} is set and {absent} is not"):
+            load_settings({**IDENTITY, given: DELEGATION[given]})
+
+
+def test_chain_sts_is_not_keycloak():
+    same = {**DELEGATION, "DELEGATION_ISSUER": IDENTITY["OIDC_ISSUER"]}
+    with pytest.raises(ConfigError, match="DELEGATION_ISSUER must differ from OIDC_ISSUER"):
+        load_settings({**IDENTITY, **same})
+
+
 def test_helm_applier_needs_a_chart_and_a_search_url():
     with pytest.raises(ConfigError, match="HELM_CHART_REF"):
         load_settings({**IDENTITY, "APPLIER": "helm"})
@@ -334,3 +358,58 @@ def test_a_status_change_names_the_status_it_leaves():
     # Not approved, so it cannot be taken into applying.
     assert not store.transition_change(change["change_id"], "applying", only_from=("approved",))
     assert store.get_change(change["change_id"])["status"] == "proposed"  # type: ignore[index]
+
+
+def test_a_database_from_before_the_chain_gets_its_columns(tmp_path):
+    """A file written by 0.1.2, without the *_via columns, opens and reads as direct calls."""
+    import sqlite3
+
+    path = tmp_path / "old.db"
+    db = sqlite3.connect(path)
+    db.executescript(
+        """
+        CREATE TABLE incidents (seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT UNIQUE,
+            service TEXT NOT NULL, severity TEXT NOT NULL, summary TEXT NOT NULL,
+            impact TEXT NOT NULL, status TEXT NOT NULL, opened_by TEXT NOT NULL,
+            opened_at TEXT NOT NULL, resolved_at TEXT, diagnosis TEXT);
+        CREATE TABLE changes (seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT UNIQUE,
+            incident_id TEXT NOT NULL, service TEXT NOT NULL, target_version TEXT NOT NULL,
+            previous_version TEXT, status TEXT NOT NULL, operation_id TEXT NOT NULL UNIQUE,
+            proposed_by TEXT NOT NULL, proposed_at TEXT NOT NULL, approved_by TEXT,
+            approved_at TEXT, rejected_by TEXT, rejected_at TEXT, reject_reason TEXT,
+            applied_by TEXT, applied_at TEXT, detail TEXT, history TEXT NOT NULL);
+        CREATE TABLE status_updates (seq INTEGER PRIMARY KEY AUTOINCREMENT,
+            incident_id TEXT NOT NULL, text TEXT NOT NULL, posted_by TEXT NOT NULL,
+            posted_at TEXT NOT NULL);
+        INSERT INTO incidents (id, service, severity, summary, impact, status, opened_by,
+            opened_at) VALUES ('INC-0001', 'search-service', 'sev2', 's', 'i', 'open',
+            'alert', 't');
+        INSERT INTO changes (id, incident_id, service, target_version, status, operation_id,
+            proposed_by, proposed_at, history) VALUES ('CHG-0001', 'INC-0001',
+            'search-service', '2.0.0', 'proposed', 'op-1', 'developer', 't', '[]');
+        INSERT INTO status_updates (incident_id, text, posted_by, posted_at)
+            VALUES ('INC-0001', 'x', 'incident-manager', 't');
+        """
+    )
+    db.commit()
+    db.close()
+
+    store = Store(str(path))
+    incident = store.get_incident("INC-0001")
+    assert incident is not None and incident["opened_via"] == []
+    assert incident["status_updates"][0]["posted_via"] == []
+    change = incident["changes"][0]
+    assert (change["proposed_via"], change["approved_via"]) == ([], None)
+    assert store.transition_change(
+        "CHG-0001",
+        "approved",
+        only_from=("proposed",),
+        by="im",
+        via=("chat-assistant",),
+        approved_by="im",
+        approved_via=["chat-assistant"],
+    )
+    assert store.get_change("CHG-0001")["approved_via"] == ["chat-assistant"]  # type: ignore[index]
+    store.close()
+    # Opened again: nothing left to add.
+    Store(str(path)).close()

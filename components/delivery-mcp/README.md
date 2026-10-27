@@ -14,12 +14,45 @@ The tools, roles and rules are the contract in
 | `POST /mcp` | MCP over Streamable HTTP. Stateless: no session id, each request stands alone. A bearer token is required; without one that verifies the answer is 401. |
 | `GET /healthz` | Liveness. No token. |
 
-The token's signature (keys from `OIDC_JWKS_URL`, RS256), issuer, audience and
-expiry are checked on every request, and `nbf` when the token carries one. A
-token with no `exp` is refused. The user is `preferred_username` (without one:
-`client_id`, `azp` or `sub`, the first that is there); roles are the top-level
-`roles` array; the team is `team`. A claim of the wrong type counts as absent.
+The token's signature (RS256), issuer, audience and expiry are checked on
+every request, and `nbf` when the token carries one. A token with no `exp` is
+refused. Two issuers may be trusted: Keycloak (`OIDC_ISSUER`, keys from
+`OIDC_JWKS_URL`), and chain-sts (`DELEGATION_ISSUER`, keys from
+`DELEGATION_JWKS_URL`), whose tokens carry a user's claims for an agent acting
+for them and name the agents in `act`. A token is verified against the keys of
+the issuer its `iss` names, and with an `iss` that is neither it is refused.
+Both audiences are `OIDC_AUDIENCE`. The dev cluster trusts both since version
+0.1.2: its release sets the two `DELEGATION_` values to `delegation` in
+`agent-deployments/clusters/dev/identity.yaml`.
+
+The user is `preferred_username` (without one: `client_id`, `azp` or `sub`,
+the first that is there; in a token with `act`, where `client_id` and `azp`
+name the agent, `sub`); roles are the top-level `roles` array; the team is
+`team`. A chain-sts token carries the user's, so an agent acting for a user has
+that user's roles and no others. A claim of the wrong type counts as absent.
 Nothing is read from arguments or other headers.
+
+**The chain.** In a token with `act`, the agents that acted for the user are
+read from its nested `act`, newest (outermost) first, each by its
+`client_id`, else its `sub`: `["remediation-agent", "chat-assistant"]` for a
+platform engineer's Apply button. A token without `act`, the user's own, has
+the chain `[]`. The chain decides nothing here (which agent may call which
+tool is the gateway's rule, `toolActors` in
+`agent-deployments/clusters/dev/domains/operations/delivery-mcp.yaml`); it is
+recorded next to the user wherever a user is, since version 0.1.3:
+
+| Record | User | Chain |
+|---|---|---|
+| Incident | `opened_by` | `opened_via` |
+| Diagnosis | `recorded_by` | `recorded_via` |
+| Change | `proposed_by`, `approved_by`, `rejected_by`, `applied_by` | `proposed_via`, `approved_via`, `rejected_via`, `applied_via` (`null` until that step) |
+| Change `history` entry | `by` | `via` (`null`, like `by`, for a step the service takes itself: `verifying`, `applied`, `failed`) |
+| Status update | `posted_by` | `posted_via` |
+| `restart_workload`'s answer | `restarted_by` | `restarted_via` |
+
+A database file from an earlier version gets the new columns when it is
+opened; what it held reads as direct calls (`[]`), or `null` for a step not
+taken.
 
 ## Results and refusals
 
@@ -86,7 +119,9 @@ is marked `applied` with a detail that says so.
 |---|---|---|
 | `OIDC_ISSUER` | required | The `iss` every token must carry |
 | `OIDC_JWKS_URL` | required | Where the signing keys are fetched |
-| `OIDC_AUDIENCE` | required | The `aud` every token must carry |
+| `OIDC_AUDIENCE` | required | The `aud` every token must carry, from either issuer |
+| `DELEGATION_ISSUER` | | chain-sts's `iss`. Set with `DELEGATION_JWKS_URL` or not at all; unset, only Keycloak's tokens are accepted |
+| `DELEGATION_JWKS_URL` | | Where chain-sts's signing keys are fetched |
 | `APP_VERSION` | `0.1.0` | `service.version` |
 | `DEPLOYMENT_ENVIRONMENT` | `dev` | `deployment.environment` |
 | `HOST`, `PORT` | `127.0.0.1`, `8080` | The image binds `0.0.0.0:8080` |
@@ -111,10 +146,14 @@ is marked `applied` with a detail that says so.
 | `LOG_LEVEL` | `INFO` | |
 
 With `helm`, the service does not start without `HELM_CHART_REF` and
-`VERIFY_SEARCH_URL`. It never starts without the three `OIDC_` values.
+`VERIFY_SEARCH_URL`. It never starts without the three `OIDC_` values, nor
+with one of the two `DELEGATION_` values without the other, nor with
+`DELEGATION_ISSUER` equal to `OIDC_ISSUER`.
 
 Each tool call writes one JSON line to the logger `delivery.audit`: tool,
-target, user, roles, team, outcome and rule.
+target, user, chain (agent names, newest first; `[]` for the user's own
+token), roles, team, outcome and rule. The tool call's span carries
+`enduser.id` and, for a chain, `delivery.chain`.
 
 ## Run and test
 
@@ -134,7 +173,8 @@ task push          # push it to the local registry
 
 The test issuer (`scripts/test_issuer.py`) generates its signing key when it
 starts and keeps it in memory. It mints tokens for the identities in the
-contracts and for `test-two-roles`, which exists in no realm.
+contracts and for `test-two-roles`, which exists in no realm. In the tests a
+second one, with a key of its own, plays chain-sts.
 
 ## kmcp
 

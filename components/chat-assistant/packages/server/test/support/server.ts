@@ -1,6 +1,7 @@
 /**
  * Starts the real server in-process on a free port: stub downstreams, a test
- * issuer with a key generated for this run, and a fake model endpoint.
+ * issuer with a key generated for this run, and a fake model endpoint. With
+ * `delegation`, wired as main.ts wires it.
  */
 import type { AddressInfo } from 'node:net';
 import { createApp } from '../../src/app.js';
@@ -8,6 +9,7 @@ import { createTokenVerifier } from '../../src/auth.js';
 import { createChat } from '../../src/chat/agent.js';
 import { loadConfig } from '../../src/config.js';
 import { createTestIssuer } from '../../src/dev/test-issuer.js';
+import { createTokenExchange, delegated } from '../../src/downstream/delegation.js';
 import { createStubDownstreams } from '../../src/downstream/stub.js';
 import type { Downstreams } from '../../src/downstream/types.js';
 import { startFakeAnthropic, type FakeAnthropic } from './fake-anthropic.js';
@@ -15,10 +17,12 @@ import { startFakeAnthropic, type FakeAnthropic } from './fake-anthropic.js';
 export interface TestServer {
   url: string;
   model: FakeAnthropic;
+  /** The stubs themselves, not wrapped for delegation. */
   downstreams: Downstreams;
   /** Resolves when every diagnosis the alert hook started has ended. */
   alertsSettled(): Promise<void>;
-  token(subject: string): Promise<string>;
+  /** `extra` adds or replaces claims, `aud` included. */
+  token(subject: string, extra?: Record<string, unknown>): Promise<string>;
   close(): Promise<void>;
 }
 
@@ -31,6 +35,8 @@ export async function startTestServer(
     /** How long the fake diagnosis takes, or what the diagnosis agent does instead of answering. */
     diagnosisMs?: number;
     diagnosis?: 'fails' | 'not-configured';
+    /** chain-sts's metadata URL and the actor token file. */
+    delegation?: { metadataUrl: string; actorTokenFile: string };
   } = {},
 ): Promise<TestServer> {
   const model = await startFakeAnthropic();
@@ -40,6 +46,8 @@ export async function startTestServer(
     OIDC_ISSUER: issuerUrl,
     OIDC_JWKS_URL: `${issuerUrl}/certs`,
     OIDC_AUDIENCE: 'agentgateway',
+    // As in the dev cluster: the gateway's audience, and the Chat UI's sign-in.
+    OIDC_ACCEPTED_AUDIENCES: 'agentgateway,chat-assistant',
     STUB_DOWNSTREAMS: '1',
     MODEL_BASE_URL: model.url,
     MODEL_ID: 'claude-haiku-4-5-20251001',
@@ -47,6 +55,9 @@ export async function startTestServer(
     APP_VERSION: 'test',
     CORS_ALLOWED_ORIGINS: options.cors ?? '',
     UI_DIST_DIR: '/nonexistent',
+    ...(options.delegation
+      ? { DELEGATION_METADATA_URL: options.delegation.metadataUrl, DELEGATION_ACTOR_TOKEN_FILE: options.delegation.actorTokenFile }
+      : {}),
   });
   const issuer = await createTestIssuer({ issuer: issuerUrl, audience: 'agentgateway' });
   const downstreams = createStubDownstreams({
@@ -74,11 +85,13 @@ export async function startTestServer(
       },
     };
   }
+  const tokenFor = config.delegation && createTokenExchange({ ...config.delegation, audience: config.oidc.audience });
+  const sent = tokenFor ? delegated(downstreams, tokenFor) : downstreams;
   const app = createApp({
     config,
-    verify: createTokenVerifier({ issuer: issuerUrl, audience: 'agentgateway', keys: issuer.keys }),
-    downstreams,
-    chat: createChat(config, downstreams),
+    verify: createTokenVerifier({ issuer: issuerUrl, audiences: config.oidc.acceptedAudiences, keys: issuer.keys }),
+    downstreams: sent,
+    chat: createChat(config, sent, tokenFor),
     progressIntervalMs: 100,
   });
   const listener = app.listen(0, '127.0.0.1');
@@ -88,7 +101,7 @@ export async function startTestServer(
     model,
     downstreams,
     alertsSettled: () => app.locals.alertHook.settled(),
-    token: (subject) => issuer.accessToken(subject),
+    token: (subject, extra) => issuer.accessToken(subject, undefined, extra),
     async close() {
       listener.closeAllConnections();
       await new Promise((resolve) => listener.close(resolve));

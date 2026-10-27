@@ -22,8 +22,12 @@ image:
   # the incident, and status and severity take the color of what they say.
   # 0.1.9 lists the incidents beside the card, so that an earlier one can be
   # put back on it; the list and the chat each have a button on their edge
-  # that closes them, and the window scrolls the incident.
-  tag: 0.1.9
+  # that closes them, and the window scrolls the incident. 0.1.10 exchanges
+  # the caller's token at chain-sts before every call it makes, and never
+  # sends the caller's own (DELEGATION_* below). 0.1.11 also takes a Chat UI
+  # sign-in, whose audience is chat-assistant (OIDC_ACCEPTED_AUDIENCES), and
+  # refuses a token that names an acting agent (claim act).
+  tag: 0.1.11
 
 port: 8080
 
@@ -32,14 +36,30 @@ env:
 
   # Whose tokens are trusted: the same three values as
   # agent-deployments/clusters/dev/identity.yaml. The server verifies the caller's
-  # token on every request and forwards that same token on every call below.
+  # token on every request, and exchanges it at chain-sts (below) before every
+  # call below.
   OIDC_ISSUER: http://localhost:18081/realms/demo
   OIDC_AUDIENCE: agentgateway
   OIDC_JWKS_URL: http://keycloak.keycloak.svc.cluster.local:8080/realms/demo/protocol/openid-connect/certs
+  # The audiences a caller's token may carry: the gateway's, as `task token`
+  # and the alert's machine client get it, and chat-assistant's own, which
+  # Keycloak gives a Chat UI sign-in (client chat-ui) and which no other route
+  # accepts. What goes downstream is still exchanged for OIDC_AUDIENCE. A
+  # token with an `act` claim is refused either way.
+  OIDC_ACCEPTED_AUDIENCES: agentgateway,chat-assistant
+
+  # chain-sts (platform/90-chain-sts): before each call below, the caller's
+  # token, the alert hook's too, is exchanged there for one that names
+  # chat-assistant in its `act` claim, for the audience OIDC_AUDIENCE, and
+  # only that one is sent. The actor token is projectedToken below. A refused
+  # or failed exchange stops the call; the caller's own token is never sent.
+  # The boundary of `agents` (platform/80-policies) lets the pod reach it.
+  DELEGATION_METADATA_URL: http://chain-sts.chain-sts.svc.cluster.local/.well-known/oauth-authorization-server
+  DELEGATION_ACTOR_TOKEN_FILE: /var/run/secrets/chain-sts/token
 
   # Everything the assistant calls goes through the gateway.
   # The model route; chat text is posted to <MODEL_BASE_URL>/v1/messages with
-  # the caller's token as `Authorization: Bearer`.
+  # the exchanged token as `Authorization: Bearer`.
   MODEL_BASE_URL: http://agentgateway-proxy.agentgateway-system.svc.cluster.local
   MODEL_ID: claude-sonnet-5-5
   # All the time one chat answer may take, tool calls included, with no retry.
@@ -123,3 +143,12 @@ serviceAccount:
   # The assistant calls nothing in the cluster's API; the account carries no rights.
   create: true
   name: chat-assistant
+
+# The account's token for the audience chain-sts, at
+# /var/run/secrets/chain-sts/token (DELEGATION_ACTOR_TOKEN_FILE above): how
+# chat-assistant proves to chain-sts who it is. chain-sts asks the API server
+# about it with a TokenReview. The kubelet replaces it before it expires.
+projectedToken:
+  audience: chain-sts
+  expirationSeconds: 600
+  mountPath: /var/run/secrets/chain-sts

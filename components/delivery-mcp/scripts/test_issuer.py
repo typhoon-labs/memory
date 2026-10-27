@@ -13,6 +13,9 @@ disk, and tokens from one run are worthless in the next.
 
 The issuer value is http://127.0.0.1:<port>; the audience is "agentgateway".
 It binds to 127.0.0.1 only.
+
+A second instance, on another port, stands in for chain-sts in the tests:
+``delegate`` mints the tokens chain-sts issues to an agent acting for a user.
 """
 
 from __future__ import annotations
@@ -30,6 +33,10 @@ import jwt
 from cryptography.hazmat.primitives.asymmetric import rsa
 
 AUDIENCE = "agentgateway"
+
+# The agents a delegated token passes through unless a test names others:
+# the chat assistant, then the agent it called.
+CHAIN = ("chat-assistant", "remediation-agent")
 
 # The identities in docs/contracts.md. The last one exists in
 # no realm: it holds two roles so that the rule "the approver is not the
@@ -108,6 +115,51 @@ class TestIssuer:
         claims.update(overrides)
         claims = {k: v for k, v in claims.items() if v is not None}
         return self.sign(claims)
+
+    def delegated_claims(
+        self,
+        identity: str,
+        agents: tuple[str, ...] = CHAIN,
+        *,
+        ttl_seconds: int = 300,
+        **overrides: Any,
+    ) -> dict[str, Any]:
+        """Claims shaped like chain-sts's: the user's, carried through ``agents``.
+
+        ``client_id`` is the last agent, and ``act`` names every agent, the last
+        outermost. Each agent is a service account in namespace ``agents``.
+        """
+        spec = IDENTITIES[identity]
+        now = int(time.time())
+        act: dict[str, Any] | None = None
+        for agent in agents:
+            link: dict[str, Any] = {
+                "sub": f"system:serviceaccount:agents:{agent}",
+                "client_id": agent,
+            }
+            if act is not None:
+                link["act"] = act
+            act = link
+        claims: dict[str, Any] = {
+            "iss": self.issuer,
+            "sub": str(uuid.uuid5(uuid.NAMESPACE_URL, f"keycloak/{identity}")),
+            "aud": self.audience,
+            "iat": now,
+            "nbf": now,
+            "exp": now + ttl_seconds,
+            "jti": uuid.uuid4().hex,
+            "client_id": agents[-1],
+            "preferred_username": spec.get("username", identity),
+            "roles": list(spec["roles"]),
+            "team": spec.get("team"),
+            "act": act,
+        }
+        claims.update(overrides)
+        return {k: v for k, v in claims.items() if v is not None}
+
+    def delegate(self, identity: str, *agents: str, **overrides: Any) -> str:
+        """A token as chain-sts issues it, for ``identity`` through ``agents``."""
+        return self.sign(self.delegated_claims(identity, agents or CHAIN, **overrides))
 
 
 def _handler(issuer: TestIssuer) -> type[BaseHTTPRequestHandler]:

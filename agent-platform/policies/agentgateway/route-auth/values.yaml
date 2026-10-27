@@ -1,5 +1,5 @@
 # One AgentgatewayPolicy for one route: the caller must present a bearer token
-# from the trusted issuer with the expected audience. Install it in the route's
+# from a trusted issuer with the expected audience. Install it in the route's
 # namespace, before or together with the route.
 #
 # Schema: Agentgateway 1.6, AgentgatewayPolicy `traffic.jwtAuthentication` and
@@ -27,9 +27,43 @@ identity:
   # issuer URL is the browser's address and is not reachable from a pod.
   jwksUrl: ""
 
+# Optional: further audiences a token from `identity`'s issuer may carry on
+# this route instead of identity.audience, for a client whose tokens are meant
+# for this route's backend alone (the Chat UI's, for chat-assistant). One
+# matching audience is enough. Every other route keeps identity.audience
+# alone, so such a token works nowhere else. Not used for `delegation`.
+extraAudiences: []
+
+# Optional: a second trusted issuer, a token exchange (chain-sts) that issues
+# tokens to an agent acting for a user. Same three keys, from the same
+# identity.yaml. Its tokens carry the user's claims, so the rules in `allow`
+# apply to them unchanged. Empty `issuer`: the issuer above alone is trusted.
+# Checked with Agentgateway 1.6.0: while one issuer's keys have never been
+# fetched (its service is not installed yet), its tokens are refused with 401
+# and the other issuer's are accepted. The controller retries about every 15
+# seconds.
+delegation:
+  issuer: ""
+  audience: ""
+  jwksUrl: ""
+  # The agents that may act for a user, by name, each with the `sub` the
+  # token exchange writes for it in `act` (its Kubernetes service account).
+  # `actors` below names agents from this map.
+  agents: {}
+
+# Which agent may call this route on a user's behalf. A token whose `act`
+# claim names an acting agent is let in only when `delegation.issuer` signed
+# it and its newest actor (the outermost `act`, `jwt.act.sub`) is one of
+# these agents, looked up in `delegation.agents`; the inner `act` claims, the
+# agents before it, are not read. A token without `act`, the user's or the machine client's own, is
+# decided by `allow` alone. Empty: no token with `act` is let in, whichever
+# issuer signed it. This holds in addition to `allow`, never instead.
+actors: []
+
 # Optional rules on the verified claims, as CEL expressions. The request is
-# allowed when any one expression is true. Empty means any caller with a valid
-# token. Example: '"incident-manager" in jwt.roles'
+# allowed when any one expression is true and `actors` above lets it in.
+# Empty means any caller with a valid token, as far as `actors` allows.
+# Example: '"incident-manager" in jwt.roles'
 allow: []
 
 # true: the backend receives the caller's validated token as

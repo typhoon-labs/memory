@@ -14,3 +14,15 @@ target:
 #   - '"developer" in jwt.roles'
 #   - '"alert-automation" in jwt.roles'
 allow: []
+
+# Which agent may call it on a user's behalf: the three that exchange their
+# caller's token at chain-sts and then ask the model, each as the newest
+# actor of its own token: chat-assistant for a chat answer,
+# remediation-agent for its report and comms-agent for its draft. A caller's
+# own token, without `act` (`task smoke`), is decided by `allow` alone.
+# diagnosis-agent reaches the model with its gateway key on a route of its
+# own (the release diagnosis-agent-model-access), which this does not touch.
+actors:
+  - chat-assistant
+  - remediation-agent
+  - comms-agent

@@ -4,6 +4,11 @@ One connection, one lock. The service runs as a single replica, and every
 write that a rule depends on is a single statement or a single transaction, so
 two concurrent calls cannot both win: the unique index allows one unresolved
 incident per service, and a status change names the status it expects to leave.
+
+Next to every user a record names (``opened_by``, ``proposed_by``, a history
+entry's ``by`` and so on) is the chain of agents that acted for them, newest
+first, as a list: ``opened_via``, ``proposed_via``, ``via``. It is empty for a
+call made with the user's own token. The ``*_via`` columns hold it as JSON.
 """
 
 from __future__ import annotations
@@ -25,6 +30,7 @@ CREATE TABLE IF NOT EXISTS incidents (
     impact       TEXT NOT NULL,
     status       TEXT NOT NULL,
     opened_by    TEXT NOT NULL,
+    opened_via   TEXT NOT NULL DEFAULT '[]',
     opened_at    TEXT NOT NULL,
     resolved_at  TEXT,
     diagnosis    TEXT
@@ -42,13 +48,17 @@ CREATE TABLE IF NOT EXISTS changes (
     status           TEXT NOT NULL,
     operation_id     TEXT NOT NULL UNIQUE,
     proposed_by      TEXT NOT NULL,
+    proposed_via     TEXT NOT NULL DEFAULT '[]',
     proposed_at      TEXT NOT NULL,
     approved_by      TEXT,
+    approved_via     TEXT,
     approved_at      TEXT,
     rejected_by      TEXT,
+    rejected_via     TEXT,
     rejected_at      TEXT,
     reject_reason    TEXT,
     applied_by       TEXT,
+    applied_via      TEXT,
     applied_at       TEXT,
     detail           TEXT,
     history          TEXT NOT NULL
@@ -59,9 +69,23 @@ CREATE TABLE IF NOT EXISTS status_updates (
     incident_id TEXT NOT NULL,
     text        TEXT NOT NULL,
     posted_by   TEXT NOT NULL,
+    posted_via  TEXT NOT NULL DEFAULT '[]',
     posted_at   TEXT NOT NULL
 );
 """
+
+# Columns added after the first release, for a database file an earlier
+# version created: table -> (column, its definition).
+ADDED_COLUMNS = {
+    "incidents": (("opened_via", "TEXT NOT NULL DEFAULT '[]'"),),
+    "changes": (
+        ("proposed_via", "TEXT NOT NULL DEFAULT '[]'"),
+        ("approved_via", "TEXT"),
+        ("rejected_via", "TEXT"),
+        ("applied_via", "TEXT"),
+    ),
+    "status_updates": (("posted_via", "TEXT NOT NULL DEFAULT '[]'"),),
+}
 
 CHANGE_FIELDS = (
     "id",
@@ -72,30 +96,44 @@ CHANGE_FIELDS = (
     "status",
     "operation_id",
     "proposed_by",
+    "proposed_via",
     "proposed_at",
     "approved_by",
+    "approved_via",
     "approved_at",
     "rejected_by",
+    "rejected_via",
     "rejected_at",
     "reject_reason",
     "applied_by",
+    "applied_via",
     "applied_at",
     "detail",
     "history",
 )
 
+# Change columns that hold a chain, as JSON.
+CHAIN_FIELDS = ("proposed_via", "approved_via", "rejected_via", "applied_via")
+
 # Columns a status change may set alongside the status itself.
 _SETTABLE = frozenset(
     {
         "approved_by",
+        "approved_via",
         "approved_at",
         "rejected_by",
+        "rejected_via",
         "rejected_at",
         "reject_reason",
         "applied_by",
+        "applied_via",
         "applied_at",
     }
 )
+
+
+def _chain(value: str | None) -> list[str] | None:
+    return json.loads(value) if value is not None else None
 
 
 def now_iso() -> str:
@@ -113,6 +151,11 @@ class Store:
         self._db.row_factory = sqlite3.Row
         with self._lock:
             self._db.executescript(SCHEMA)
+            for table, columns in ADDED_COLUMNS.items():
+                present = {r["name"] for r in self._db.execute(f"PRAGMA table_info({table})")}
+                for name, definition in columns:
+                    if name not in present:
+                        self._db.execute(f"ALTER TABLE {table} ADD COLUMN {name} {definition}")
 
     def close(self) -> None:
         with self._lock:
@@ -121,15 +164,30 @@ class Store:
     # -- incidents ---------------------------------------------------------
 
     def create_incident(
-        self, *, service: str, severity: str, summary: str, impact: str, opened_by: str
+        self,
+        *,
+        service: str,
+        severity: str,
+        summary: str,
+        impact: str,
+        opened_by: str,
+        opened_via: Iterable[str] = (),
     ) -> dict[str, Any]:
         with self._lock:
             self._db.execute("BEGIN IMMEDIATE")
             try:
                 cur = self._db.execute(
                     "INSERT INTO incidents (service, severity, summary, impact, status,"
-                    " opened_by, opened_at) VALUES (?, ?, ?, ?, 'open', ?, ?)",
-                    (service, severity, summary, impact, opened_by, now_iso()),
+                    " opened_by, opened_via, opened_at) VALUES (?, ?, ?, ?, 'open', ?, ?, ?)",
+                    (
+                        service,
+                        severity,
+                        summary,
+                        impact,
+                        opened_by,
+                        json.dumps(list(opened_via)),
+                        now_iso(),
+                    ),
                 )
                 incident_id = f"INC-{cur.lastrowid:04d}"
                 self._db.execute(
@@ -162,7 +220,7 @@ class Store:
                 "SELECT * FROM changes WHERE incident_id = ? ORDER BY seq", (incident_id,)
             ).fetchall()
             updates = self._db.execute(
-                "SELECT text, posted_by, posted_at FROM status_updates"
+                "SELECT text, posted_by, posted_via, posted_at FROM status_updates"
                 " WHERE incident_id = ? ORDER BY seq",
                 (incident_id,),
             ).fetchall()
@@ -174,11 +232,14 @@ class Store:
                 "impact": row["impact"],
                 "status": row["status"],
                 "opened_by": row["opened_by"],
+                "opened_via": _chain(row["opened_via"]),
                 "opened_at": row["opened_at"],
                 "resolved_at": row["resolved_at"],
                 "diagnosis": json.loads(row["diagnosis"]) if row["diagnosis"] else None,
                 "changes": [self._change(c) for c in changes],
-                "status_updates": [dict(u) for u in updates],
+                "status_updates": [
+                    {**dict(u), "posted_via": _chain(u["posted_via"])} for u in updates
+                ],
             }
 
     def list_incidents(self) -> list[dict[str, Any]]:
@@ -211,12 +272,14 @@ class Store:
             )
             return cur.rowcount == 1
 
-    def add_status_update(self, incident_id: str, text: str, posted_by: str) -> None:
+    def add_status_update(
+        self, incident_id: str, text: str, posted_by: str, posted_via: Iterable[str] = ()
+    ) -> None:
         with self._lock:
             self._db.execute(
-                "INSERT INTO status_updates (incident_id, text, posted_by, posted_at)"
-                " VALUES (?, ?, ?, ?)",
-                (incident_id, text, posted_by, now_iso()),
+                "INSERT INTO status_updates (incident_id, text, posted_by, posted_via, posted_at)"
+                " VALUES (?, ?, ?, ?, ?)",
+                (incident_id, text, posted_by, json.dumps(list(posted_via)), now_iso()),
             )
 
     # -- changes -----------------------------------------------------------
@@ -225,6 +288,8 @@ class Store:
     def _change(row: sqlite3.Row) -> dict[str, Any]:
         change = {name: row[name] for name in CHANGE_FIELDS if name != "id"}
         change["history"] = json.loads(change["history"])
+        for name in CHAIN_FIELDS:
+            change[name] = _chain(change[name])
         return {"change_id": row["id"], **change}
 
     def create_change(
@@ -236,16 +301,18 @@ class Store:
         previous_version: str | None,
         operation_id: str,
         proposed_by: str,
+        proposed_via: Iterable[str] = (),
     ) -> dict[str, Any]:
         at = now_iso()
-        history = [{"status": "proposed", "at": at, "by": proposed_by, "detail": None}]
+        via = list(proposed_via)
+        history = [{"status": "proposed", "at": at, "by": proposed_by, "via": via, "detail": None}]
         with self._lock:
             self._db.execute("BEGIN IMMEDIATE")
             try:
                 cur = self._db.execute(
                     "INSERT INTO changes (incident_id, service, target_version,"
-                    " previous_version, status, operation_id, proposed_by, proposed_at, history)"
-                    " VALUES (?, ?, ?, ?, 'proposed', ?, ?, ?, ?)",
+                    " previous_version, status, operation_id, proposed_by, proposed_via,"
+                    " proposed_at, history) VALUES (?, ?, ?, ?, 'proposed', ?, ?, ?, ?, ?)",
                     (
                         incident_id,
                         service,
@@ -253,6 +320,7 @@ class Store:
                         previous_version,
                         operation_id,
                         proposed_by,
+                        json.dumps(via),
                         at,
                         json.dumps(history),
                     ),
@@ -279,14 +347,18 @@ class Store:
         *,
         only_from: Iterable[str],
         by: str | None = None,
+        via: Iterable[str] | None = None,
         detail: str | None = None,
-        **fields: str | None,
+        **fields: str | list[str] | None,
     ) -> bool:
         """Move a change to ``to_status`` if it is in one of ``only_from``.
 
         Returns False, and changes nothing, when the change is in any other
         status. That is what makes ``apply_change`` safe to call twice: only one
         call can take a change out of ``approved``.
+
+        ``by`` and ``via`` are the user and the chain who moved it, for its
+        history; a move the service makes by itself has neither.
         """
         unknown = set(fields) - _SETTABLE
         if unknown:
@@ -305,12 +377,15 @@ class Store:
                     self._db.execute("ROLLBACK")
                     return False
                 history = json.loads(row["history"])
-                history.append({"status": to_status, "at": at, "by": by, "detail": detail})
+                chain = list(via) if via is not None else ([] if by is not None else None)
+                history.append(
+                    {"status": to_status, "at": at, "by": by, "via": chain, "detail": detail}
+                )
                 assignments = ["status = ?", "detail = ?", "history = ?"]
                 values: list[Any] = [to_status, detail, json.dumps(history)]
                 for name, value in fields.items():
                     assignments.append(f"{name} = ?")
-                    values.append(value)
+                    values.append(json.dumps(value) if isinstance(value, list) else value)
                 self._db.execute(
                     f"UPDATE changes SET {', '.join(assignments)} WHERE id = ?",
                     (*values, change_id),

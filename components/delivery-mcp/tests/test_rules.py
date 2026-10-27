@@ -440,6 +440,7 @@ async def test_post_status_update_permitted_for_incident_manager(call, incident)
         {
             "text": "We are rolling search back to 2.0.0.",
             "posted_by": "incident-manager",
+            "posted_via": [],
             "posted_at": result.data["status_updates"][0]["posted_at"],
         }
     ]

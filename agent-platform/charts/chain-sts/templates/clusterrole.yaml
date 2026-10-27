@@ -1,0 +1,18 @@
+{{- if .Values.authDelegator.enabled }}
+# The service's one permission in the Kubernetes API, for the TokenReview
+# actor check (actor.verifyWith: token_review): `create` on tokenreviews, and
+# nothing else. The built-in ClusterRole system:auth-delegator would also
+# allow `create` on subjectaccessreviews, which ask what any user may do and
+# which the service never makes. A TokenReview is not namespaced, so only a
+# ClusterRole and a ClusterRoleBinding (clusterrolebinding.yaml) can grant it.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "chain-sts.name" . }}-token-review
+  labels:
+    {{- include "chain-sts.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["authentication.k8s.io"]
+    resources: ["tokenreviews"]
+    verbs: ["create"]
+{{- end }}

@@ -21,6 +21,15 @@ describe('how a refusal is worded', () => {
     expect(refusalText(refusal)).toBe('Refused by the gateway (HTTP 403): authorization failed');
     expect(refusalWords(refusal)).toEqual({ title: 'Refused by the gateway (HTTP 403)', reason: 'Authorization failed.' });
   });
+
+  test("chain-sts declining to exchange the caller's token names the RFC 6749 error code", () => {
+    const refusal = { layer: 'gateway' as const, status: 400, oauthError: 'invalid_request', detail: 'actor_token did not verify: ExpiredSignatureError' };
+    expect(refusalText(refusal)).toBe('Refused by the token exchange (invalid_request): actor_token did not verify: ExpiredSignatureError');
+    expect(refusalWords(refusal)).toEqual({
+      title: 'Refused by the token exchange (invalid_request)',
+      reason: 'Actor_token did not verify: ExpiredSignatureError.',
+    });
+  });
 });
 
 describe('Apply on a change that is not approved', () => {

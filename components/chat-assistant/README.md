@@ -20,10 +20,25 @@ The chat assistant and the Chat UI of the demo, in one image.
   mitigated and for a refusal by the service, green for resolved. The theme
   is in `packages/ui/src/index.css`.
 
-The server holds no credential. It verifies the caller's bearer token on every
-request and forwards that same token on every call it makes: to `delivery-mcp`,
-to the other agents and to the model route. Who may do what is decided by the
-gateway and by `delivery-mcp`, never here.
+The server holds no credential of its own, other than, with
+[delegation](#delegation), the service-account token its pod is given. It
+verifies the caller's bearer token on every request, and every call it makes,
+to `delivery-mcp`, to the other agents and to the model route, acts as that
+caller: by default with that same token, and with delegation only with a token
+`chain-sts` issues for the caller in exchange, which names `chat-assistant` in
+its `act` claim. Who may do what is decided by the gateway and by
+`delivery-mcp`, never here.
+
+**Whose tokens it takes.** A token from `OIDC_ISSUER` for one of
+`OIDC_ACCEPTED_AUDIENCES`: in the dev cluster `agentgateway`, the audience of
+`task token` and of the alert's machine client, and `chat-assistant`, the
+audience of a Chat UI sign-in (Keycloak client `chat-ui`), which no other
+route of the gateway accepts. Without the variable, `OIDC_AUDIENCE` alone.
+A token that verifies but carries `act`, so names an agent acting for the
+caller, is refused with 403 (`{"error": "forbidden", "layer":
+"chat-assistant"}`), on the A2A endpoint and on the alert hook alike: nobody
+calls this agent on a person's behalf, and the gateway's routes refuse such a
+token too. Since version 0.1.11.
 
 ## What it serves
 
@@ -231,7 +246,10 @@ did.
   the gateway does not offer the caller (it answers HTTP 400, `Unknown tool`).
   An agent's report that its own tool call was turned away before it reached
   the service (`outcome: rejected`) is shown the same way, and so is a 401 or
-  403 from the model route on a chat answer.
+  403 from the model route on a chat answer. With delegation, `chain-sts`
+  declining to exchange the caller's token is shown in red too, headed
+  **Refused by the token exchange** with its RFC 6749 error code, for example
+  "Refused by the token exchange (unauthorized_client)".
 - **Refused by the service** (amber): `delivery-mcp`'s own rule, in plain
   words with the rule's name after them. The words for each rule are in
   `src/downstream/types.ts`; a rule without words there is shown with the
@@ -279,9 +297,61 @@ diagnosis is recorded.
 ## Chat
 
 Chat text goes to a Mastra agent on the model at `MODEL_BASE_URL` (Anthropic
-Messages API), called with the user's token as `Authorization: Bearer`. The
-agent can read incidents (`list_incidents`, `get_incident`) and ask
-`diagnosis-agent`. It has no tool that changes anything.
+Messages API), called with the user's token, or with delegation the exchanged
+one, as `Authorization: Bearer`. The agent can read incidents
+(`list_incidents`, `get_incident`) and ask `diagnosis-agent`. It has no tool
+that changes anything.
+
+## Delegation
+
+With `DELEGATION_METADATA_URL` and `DELEGATION_ACTOR_TOKEN_FILE` set, the
+caller's token never leaves this process. Before a call to `delivery-mcp`, to
+an agent or to the model route, the server exchanges it at
+[`chain-sts`](../chain-sts/README.md) (RFC 8693, as kagent's STS clients ask)
+and sends the issued token instead: a token for the same user, with the same
+`preferred_username`, `roles` and `team`, whose `act` claim names
+`chat-assistant`. The alert hook's token is exchanged the same way. The code is
+`packages/server/src/downstream/delegation.ts`.
+
+- **The request.** A form POST to the `token_endpoint` that
+  `DELEGATION_METADATA_URL` (RFC 8414 metadata) names, used as given, with no
+  client authentication: `grant_type`
+  `urn:ietf:params:oauth:grant-type:token-exchange`, the caller's token as
+  `subject_token`, this pod's service-account token as `actor_token` (both of
+  type `urn:ietf:params:oauth:token-type:jwt`), and `audience` set to
+  `OIDC_AUDIENCE` (`agentgateway`), which every route checks.
+- **The actor token** is a projected service-account token for audience
+  `chain-sts`, at `DELEGATION_ACTOR_TOKEN_FILE`. The file is read again for
+  every exchange, since the kubelet replaces it before it expires.
+- **Kept, not asked for every time.** The metadata is read once, and again
+  after an exchange that could not reach `chain-sts`. An issued token is kept
+  per caller token (by its SHA-256, at most 200) and reused while it stays
+  valid for 30 more seconds (from `expires_in`, else its `exp`), so the card's
+  2-second poll does not exchange every time and `delivery-mcp`'s sessions,
+  kept per token, last; they move to a new session when the token changes.
+  Concurrent calls for one caller share one exchange. Two kinds of call need
+  the token for longer: a chat answer for `MODEL_TIMEOUT_SECONDS`, and a call
+  to an agent for 3 minutes, as long as an A2A call may, since the agent goes
+  on using the token for its own exchanges and calls. For those, a kept token
+  that does not last that long is replaced by a new one. `chain-sts` issues
+  tokens for 5 minutes in the dev cluster, and never past the caller's own
+  token's expiry.
+- **No fallback.** When the exchange fails, the call is not made, and the
+  caller's own token is never sent instead. `chain-sts`'s refusal (an RFC 6749
+  `{error, error_description}` with an HTTP 4xx) is shown as "Refused by the
+  token exchange (`error`)" with its description, in red like a gateway's
+  refusal: on the card, in the chat pane, and as a rejected chat answer. A
+  `chain-sts` that answers 5xx (`temporarily_unavailable`, `server_error`) or
+  cannot be reached, and an actor token file that is missing or empty, make
+  the call fail ("chain-sts: …"). The alert hook answers a refusal with 403
+  and a failure with 502, which Alertmanager retries. Nothing here logs a
+  token.
+
+Neither variable set: the caller's own token is forwarded, as before, for
+local runs and the tests. Only one set stops the server at start. The dev
+cluster sets both since version 0.1.10, with the token file mounted by the
+shared chart's `projectedToken` (audience `chain-sts`, 600 seconds) at
+`/var/run/secrets/chain-sts/token`.
 
 ## Settings
 
@@ -291,13 +361,16 @@ All settings are environment variables (`packages/server/src/config.ts`).
 |---|---|---|
 | `PORT`, `HOST` | Where the server listens | `8080`, `0.0.0.0` |
 | `APP_VERSION` | Reported in `/healthz`, the agent card and telemetry | `0.0.0-dev` |
-| `OIDC_ISSUER`, `OIDC_JWKS_URL`, `OIDC_AUDIENCE` | Whose tokens are trusted. The issuer is what tokens say; the keys may be fetched from another address | Required, unless `DEV_TEST_ISSUER=1`; audience `agentgateway` |
+| `OIDC_ISSUER`, `OIDC_JWKS_URL`, `OIDC_AUDIENCE` | Whose tokens are trusted. The issuer is what tokens say; the keys may be fetched from another address. `OIDC_AUDIENCE` is also the audience asked for at `chain-sts` | Required, unless `DEV_TEST_ISSUER=1`; audience `agentgateway` |
+| `OIDC_ACCEPTED_AUDIENCES` | Comma-separated audiences a caller's token may carry, one being enough; in the dev cluster `agentgateway,chat-assistant` | `OIDC_AUDIENCE` |
 | `MODEL_BASE_URL`, `MODEL_ID` | The model route and the chat model | `http://localhost:7070`, `claude-sonnet-5-5` |
 | `MODEL_TIMEOUT_SECONDS` | All the time one chat answer may take | `60` |
 | `DELIVERY_MCP_URL` | `delivery-mcp`. A URL with a path is used as given; without one, `/mcp` is added | Required unless stubs |
 | `REMEDIATION_AGENT_URL`, `COMMS_AGENT_URL` | The agents' A2A URLs | Empty |
 | `DIAGNOSIS_AGENT_URL` | `diagnosis-agent`'s A2A URL. Empty: no diagnosis is attempted | Empty |
 | `DIAGNOSIS_TIMEOUT_SECONDS` | How long one diagnosis may take | `60` |
+| `DELEGATION_METADATA_URL` | `chain-sts`'s RFC 8414 metadata; in the dev cluster `http://chain-sts.chain-sts.svc.cluster.local/.well-known/oauth-authorization-server`. Set together with the next, or neither: see [Delegation](#delegation) | Empty: the caller's own token is forwarded |
+| `DELEGATION_ACTOR_TOKEN_FILE` | This pod's projected service-account token for audience `chain-sts`, read for every exchange | Empty |
 | `A2A_PUBLIC_URL` | The address written in the agent card | `http://localhost:<PORT>` |
 | `CORS_ALLOWED_ORIGINS` | Origins a browser may call from, comma-separated, or `*`. Empty when a gateway in front answers CORS | Empty |
 | `UI_A2A_URL` | The A2A URL the UI is told to use. Empty: the origin the UI was loaded from | Empty |
@@ -319,7 +392,7 @@ From the repository root, `mise exec -- task chat-assistant:<task>`:
 
 | Task | Does |
 |---|---|
-| `test` | Type checks and the tests. They use the stubs, a test issuer and a fake model; nothing outside this machine is called |
+| `test` | Type checks and the tests. They use the stubs, a test issuer, a fake model and a fake `chain-sts`; nothing outside this machine is called |
 | `install` | The locked packages (`npm ci`); the other tasks run it when they need it |
 | `run-local` | Server on `:18193` and UI on `:18194`, with stubs and the test issuer unless variables say otherwise (`scripts/local.sh`). The chat model is the fast one, `claude-haiku-4-5-20251001`, unless `MODEL_ID` or `MODEL_ID_FAST` is set |
 | `stop-local` | Stops them |

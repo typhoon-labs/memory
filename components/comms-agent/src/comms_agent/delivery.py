@@ -1,9 +1,9 @@
 """Reading an incident from delivery-mcp as the caller.
 
-One MCP session over Streamable HTTP, opened with the caller's bearer token and
-with nothing else: the agent has no identity of its own at delivery-mcp. The
-client can call ``get_incident`` and no other tool, so there is no path in this
-process to ``post_status_update``.
+One MCP session over Streamable HTTP, opened with the caller's bearer token, or
+the token chain-sts exchanged it for, and with nothing else: the agent has no
+credential of its own at delivery-mcp. The client can call ``get_incident`` and
+no other tool, so there is no path in this process to ``post_status_update``.
 """
 
 from __future__ import annotations

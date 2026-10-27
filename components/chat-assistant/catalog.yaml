@@ -12,16 +12,17 @@ metadata:
   labels:
     built-with: mastra
     runs-in: agents
-    version: 0.1.9
+    version: 0.1.11
 spec:
   title: Chat assistant
   description: >-
     The chat agent behind the Chat UI (http://localhost:18083). It shows an
     incident as a card with the buttons of the signed-in role, lists the other
     incidents beside it, answers questions about the incident, and carries a
-    button's action to the tool or agent that performs it, always with the
-    caller's own token. A2A 1.0 and 0.3
-    over JSON-RPC with the A2UI extension v0.9.1. Gateway route
+    button's action to the tool or agent that performs it, always as the
+    caller: with the caller's own token or, with delegation, a token chain-sts
+    issues for the caller that names chat-assistant in its act claim. A2A 1.0
+    and 0.3 over JSON-RPC with the A2UI extension v0.9.1. Gateway route
     /a2a/chat-assistant, for any signed-in role. Its alert hook, POST
     /hooks/alert on the gateway, takes the firing alert from Alertmanager (role
     alert-automation only), opens the incident and asks diagnosis-agent. Calls

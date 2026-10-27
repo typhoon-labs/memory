@@ -9,6 +9,10 @@
 #                                 does not carry the audience `agentgateway`
 #                                 (Keycloak's built-in admin-cli client); for
 #                                 checks that the gateway refuses it
+#   token.sh developer --chat-ui  the token a browser gets when the user signs
+#                                 in to the Chat UI: client chat-ui, code flow
+#                                 with PKCE (chat_ui_login.py), audience
+#                                 chat-assistant
 #
 # Users: developer, developer-other-team, incident-manager, platform-engineer.
 # The passwords and the client secret are demo-only values; they are read from
@@ -23,6 +27,16 @@ token_url="${keycloak_url}/realms/demo/protocol/openid-connect/token"
 
 who="${1:-developer}"
 mode="${2:-}"
+
+if [ "${mode}" = "--chat-ui" ]; then
+  password="$(jq -r --arg u "${who}" '.users[] | select(.username == $u) | .credentials[0].value // empty' "${realm_file}")"
+  if [ -z "${password}" ]; then
+    echo "unknown user '${who}'. Users: $(jq -r '[.users[] | select(.credentials) | .username] | join(", ")' "${realm_file}")" >&2
+    exit 2
+  fi
+  printf '%s\n' "${password}" | KEYCLOAK_URL="${keycloak_url}" python3 "${here}/chat_ui_login.py" "${who}"
+  exit
+fi
 
 if [ "${who}" = "alert-automation" ]; then
   secret="$(jq -r '.clients[] | select(.clientId == "alert-automation") | .secret' "${realm_file}")"

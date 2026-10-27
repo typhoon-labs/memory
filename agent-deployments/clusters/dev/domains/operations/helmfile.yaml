@@ -7,11 +7,12 @@
 # Where each is reached and who may call what is not written here. It is in
 # <name>.yaml next to this file, one file per route, read by two releases:
 #
-#   <name>-route-auth   a valid token, the roles that may call, and the
-#                       caller's token passed on to the backend
+#   <name>-route-auth   a valid token, the roles that may call, the agent
+#                       that may call for a user, and the caller's token
+#                       passed on to the backend
 #                       chart: agent-platform/policies/agentgateway/route-auth
 #   <name>-route        the backend and the route; for MCP, also which role
-#                       may use which tool
+#                       and which agent may use which tool
 #                       chart: mcp-route, a2a-route or http-route in
 #                       agent-platform/profiles/gateway/
 #
@@ -53,6 +54,8 @@ releases:
     needs:
       - tools/delivery-mcp-route-auth
     values:
+      # For `delegation.agents`, which `toolActors` names.
+      - ../../identity.yaml
       - delivery-mcp.yaml
 
   # -- remediation-agent: A2A at /a2a/remediation-agent --------------------

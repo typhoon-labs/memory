@@ -1,0 +1,147 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "chain-sts.name" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "chain-sts.labels" . | nindent 4 }}
+spec:
+  # The replicas share the signing keys and keep no state. With more than
+  # one, a PodDisruptionBudget (pdb.yaml) limits voluntary evictions.
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      {{- include "chain-sts.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "chain-sts.labels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        # The service reads its configuration once, at start: a changed
+        # policy rolls the pod.
+        checksum/config: {{ include "chain-sts.config" . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "chain-sts.name" . }}
+      # The pod's own token and the cluster's CA, at the standard path: the
+      # bearer and the trust anchor of its TokenReviews, or of fetching the
+      # cluster's keys.
+      automountServiceAccountToken: true
+      securityContext:
+        runAsNonRoot: true
+        # The image's user. The signing key is readable by this group only.
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: {{ include "chain-sts.name" . }}
+          image: "{{ required "image.repository is required" .Values.image.repository }}:{{ required "image.tag is required" .Values.image.tag }}"
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - name: http
+              containerPort: {{ .Values.containerPort }}
+              protocol: TCP
+          env:
+            - name: CHAIN_STS_CONFIG
+              value: {{ printf "%s/config.yaml" (include "chain-sts.configDir" .) | quote }}
+            - name: PORT
+              value: {{ .Values.containerPort | quote }}
+            - name: APP_VERSION
+              value: {{ .Values.image.tag | quote }}
+            {{- if not (hasKey .Values.env "OTEL_SERVICE_NAME") }}
+            - name: OTEL_SERVICE_NAME
+              value: {{ include "chain-sts.name" . | quote }}
+            {{- end }}
+            {{- range $name, $value := .Values.env }}
+            {{- if has $name (list "CHAIN_STS_CONFIG" "PORT" "APP_VERSION") }}
+            {{- fail (printf "env.%s: the chart sets this variable" $name) }}
+            {{- end }}
+            - name: {{ $name }}
+              value: {{ if kindIs "string" $value }}{{ $value | quote }}{{ else }}{{ $value | toJson | quote }}{{ end }}
+            {{- end }}
+          volumeMounts:
+            - name: config
+              mountPath: {{ include "chain-sts.configDir" . }}
+              readOnly: true
+            - name: signing-key
+              mountPath: {{ include "chain-sts.keyDir" . }}
+              readOnly: true
+            {{- range $role := list "next" "previous" }}
+            {{- if index $.Values.signingKey $role }}
+            - name: {{ $role }}-key
+              mountPath: {{ include (printf "chain-sts.%sKeyDir" $role) $ }}
+              readOnly: true
+            {{- end }}
+            {{- end }}
+            # The root file system is read-only; Python and uvicorn may still
+            # want a temporary directory.
+            - name: tmp
+              mountPath: /tmp
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 2
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+            failureThreshold: 3
+          {{- with .Values.preStopSleepSeconds }}
+          # Serves on while the Service stops sending it connections; then
+          # SIGTERM, and uvicorn finishes the requests it has.
+          lifecycle:
+            preStop:
+              sleep:
+                seconds: {{ . }}
+          {{- end }}
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "chain-sts.name" . }}
+        - name: signing-key
+          secret:
+            secretName: {{ required "signingKey.secretName is required: a Secret created outside Git" .Values.signingKey.secretName }}
+            items:
+              - key: {{ .Values.signingKey.key }}
+                path: {{ .Values.signingKey.key }}
+            # Owner and group only; the group is fsGroup, the service's.
+            defaultMode: 0440
+        {{- range $role := list "next" "previous" }}
+        {{- with index $.Values.signingKey $role }}
+        # The {{ $role }} key, during a rotation: published, never signs.
+        - name: {{ $role }}-key
+          secret:
+            secretName: {{ . }}
+            items:
+              - key: {{ $.Values.signingKey.key }}
+                path: {{ $.Values.signingKey.key }}
+            defaultMode: 0440
+        {{- end }}
+        {{- end }}
+        - name: tmp
+          emptyDir:
+            sizeLimit: 16Mi

@@ -3,6 +3,7 @@ import { createTokenVerifier } from './auth.js';
 import { createChat } from './chat/agent.js';
 import { loadConfig } from './config.js';
 import { createTestIssuer, type TestIssuer } from './dev/test-issuer.js';
+import { createTokenExchange } from './downstream/delegation.js';
 import { createDownstreams } from './downstream/index.js';
 
 const config = loadConfig();
@@ -17,19 +18,22 @@ if (config.devTestIssuer) {
 
 const verify = createTokenVerifier({
   issuer: config.oidc.issuer,
-  audience: config.oidc.audience,
+  audiences: config.oidc.acceptedAudiences,
   jwksUrl: config.oidc.jwksUrl,
   keys: testIssuer?.keys,
 });
 
-const downstreams = createDownstreams(config);
-const app = createApp({ config, verify, downstreams, chat: createChat(config, downstreams), testIssuer });
+// With delegation, the model and every downstream get a token chain-sts issued for the caller, never the caller's own.
+const tokenFor = config.delegation && createTokenExchange({ ...config.delegation, audience: config.oidc.audience });
+const downstreams = createDownstreams(config, tokenFor);
+const app = createApp({ config, verify, downstreams, chat: createChat(config, downstreams, tokenFor), testIssuer });
 
 const server = app.listen(config.port, config.host, () => {
   console.log(
     `[chat-assistant] ${config.appVersion} listening on ${config.host}:${config.port}; ` +
       `downstreams: ${config.stubDownstreams ? 'in-memory stubs' : 'real'}; model: ${config.model.id} at ${config.model.baseUrl}; ` +
-      `issuer: ${config.oidc.issuer}`,
+      `issuer: ${config.oidc.issuer}, audiences: ${config.oidc.acceptedAudiences.join(', ')}; ` +
+      `sent downstream: ${config.delegation ? `a token exchanged at ${config.delegation.metadataUrl}` : "the caller's own token"}`,
   );
 });
 

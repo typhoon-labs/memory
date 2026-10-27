@@ -114,6 +114,14 @@ function noticeFor(action: A2uiAction, outcome: ActionOutcome): Notice {
     : { slot, tone: 'failed', title: 'Failed', text: outcome.text, rule: '' };
 }
 
+/** A Refusal in an error chain: chain-sts declining to exchange the caller's token for the model call. */
+function refusalIn(err: unknown): Refusal | undefined {
+  for (let e: any = err, depth = 0; e && depth < 6; e = e.cause, depth++) {
+    if (e instanceof Refusal) return e;
+  }
+  return undefined;
+}
+
 /** An HTTP status buried in an error chain (the model provider's errors carry `statusCode`). */
 function httpStatusOf(err: unknown): number | undefined {
   for (let e: any = err, depth = 0; e && depth < 6; e = e.cause, depth++) {
@@ -399,10 +407,11 @@ export class ChatAssistantExecutor implements AgentExecutor {
       if (abort.signal.aborted) return;
       if (deadline.aborted) return timedOut();
       const status = httpStatusOf(err);
-      if (status === 401 || status === 403) {
-        const refusal = { layer: 'gateway' as const, status, detail: 'the model call was not allowed for you' };
+      const refused = refusalIn(err);
+      if (refused || status === 401 || status === 403) {
+        const refusal = refused ?? { layer: 'gateway' as const, status, detail: 'the model call was not allowed for you' };
         this.status(rc, bus, TaskState.TASK_STATE_REJECTED, [textPart(refusalText(refusal))], {
-          refusal: { layer: refusal.layer, status, message: refusal.detail, ...refusalWords(refusal) },
+          refusal: { layer: refusal.layer, status: refusal.status, message: refusal.detail, ...refusalWords(refusal) },
         });
       } else {
         this.status(rc, bus, TaskState.TASK_STATE_FAILED, [

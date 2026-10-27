@@ -21,6 +21,15 @@ backend:
 allow:
   - '"platform-engineer" in jwt.roles'
 
-# The agent receives the caller's own token and uses it, unchanged, to call
-# delivery-mcp and the model route. It has no identity of its own.
+# Who may call it on a user's behalf: only chat-assistant, which hands it a
+# platform engineer's Apply button with a token chain-sts issued
+# (chain [chat-assistant]). A platform engineer calling it directly sends
+# their own token, without `act`, which `allow` alone decides. A token whose
+# newest actor is another agent, or remediation-agent itself, is refused.
+actors:
+  - chat-assistant
+
+# The gateway passes the caller's token on. The agent exchanges it at
+# chain-sts for one that adds remediation-agent to `act`, and calls
+# delivery-mcp and the model route with that one only.
 passthrough: true

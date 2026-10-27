@@ -10,6 +10,8 @@
 #   task demo:break     ship search-service 2.1.0, the release that starts the incident
 #   task demo:drive     drive the incident end to end through the gateway, with real tokens
 #   task demo:alert     fallback: deliver the alert by hand when Alertmanager does not
+#   task demo:chain     one Apply from a Chat UI sign-in, followed through chain-sts, the
+#                       gateway and delivery-mcp, with what each recorded; then demo:reset
 #
 # After demo:break nothing else is needed: about 25 seconds later Alertmanager
 # posts the alert to the chat assistant's hook, the incident card appears in
@@ -40,6 +42,10 @@
 #   task demo:backup:telemetry-down       the collector scaled to zero: the Sample App and the gateway still answer
 #   task demo:backup:mcp-client           access without hosting: a developer's MCP client uses both tool servers
 #   task demo:backup:mcp-oauth-check      why a real MCP client cannot sign in by itself yet, step by step
+#   task demo:backup:chain-gateway        a token chain-sts issued, replayed by the wrong agent: refused
+#   task demo:backup:chain-exchange       chain-sts refuses an unknown actor, a wrong order, a long chain
+#   task demo:backup:chain-network        the Sample App cannot reach chain-sts; agents and tools can
+#   task demo:backup:sts-down             chain-sts scaled to zero: the agents fail closed; restored
 #
 # Every kubectl and helm command names the repo-local kubeconfig and the
 # context itself, as the root Taskfile's header requires. This file defines no
@@ -87,6 +93,16 @@ tasks:
       # python3 and the tools drive.py starts (helm, kubectl, curl, jq), before the break.
       - task: :tools-check
       - python3 "{{.ROOT_DIR}}/demo/scenarios/drive.py" {{.CLI_ARGS}}
+
+  chain:
+    desc: "Follow one Apply, pressed on the card with a Chat UI sign-in, through chat-assistant, remediation-agent and delivery-mcp, and show what chain-sts, the gateway and delivery-mcp recorded of it (about 2 minutes; ends with demo:reset). Start from demo:reset. `-- --alert manual` posts the alert by hand"
+    silent: true
+    cmds:
+      - task: :tools-check
+      # The drill ships 2.1.0 and applies a rollback; demo:reset puts the
+      # demo back afterwards, also when a check fails.
+      - defer: { task: reset }
+      - python3 "{{.ROOT_DIR}}/demo/scenarios/chain.py" {{.CLI_ARGS}}
 
   model-fault:
     desc: "Drill: cut the agents and the chat assistant off from the model, `-- down` (refused at once) or `-- slow` (never answers). Undo with demo:model-restore"
@@ -172,3 +188,34 @@ tasks:
     cmds:
       - task: :tools-check
       - '"{{.ROOT_DIR}}/demo/backup/mcp-oauth-check.sh"'
+
+  # The token exchange (chain-sts): three of the platform's checks in
+  # agent-platform/tests/, which `task sts:check` runs together, and a drill.
+
+  backup:chain-gateway:
+    desc: "Backup: tokens chain-sts issued, replayed where the gateway expects another agent or none, a Chat UI sign-in past chat-assistant, a forged token: each refused, next to its allowed twin (reads only)"
+    silent: true
+    cmds:
+      - task: :tools-check
+      - '"{{.ROOT_DIR}}/agent-platform/tests/chain-gateway.sh"'
+
+  backup:chain-exchange:
+    desc: "Backup: chain-sts refuses no actor, the wrong audience, an unknown account, a deleted pod's token, a wrong order, a chain past max_chain and a Chat UI sign-in for the wrong agent (under a minute; two pods made and deleted)"
+    silent: true
+    cmds:
+      - task: :tools-check
+      - '"{{.ROOT_DIR}}/agent-platform/tests/chain-exchange.sh"'
+
+  backup:chain-network:
+    desc: "Backup: a pod of the Sample App cannot reach chain-sts; pods in agents and tools can (reads only)"
+    silent: true
+    cmds:
+      - task: :tools-check
+      - '"{{.ROOT_DIR}}/agent-platform/tests/chain-network.sh"'
+
+  backup:sts-down:
+    desc: "Backup: chain-sts scaled to zero; chat-assistant, the alert hook, remediation-agent and comms-agent fail closed and nothing reaches delivery-mcp; restored to the release's replicas (about 45 seconds)"
+    silent: true
+    cmds:
+      - task: :tools-check
+      - '"{{.ROOT_DIR}}/demo/backup/sts-down.sh"'

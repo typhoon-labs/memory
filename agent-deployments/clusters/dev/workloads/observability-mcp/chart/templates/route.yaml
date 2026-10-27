@@ -1,4 +1,18 @@
 {{- $name := include "observability-mcp.name" . -}}
+{{- /* The rule on `act`, as agent-platform/policies/agentgateway/route-auth writes it. */ -}}
+{{- $subs := list -}}
+{{- range .Values.actors -}}
+  {{- $sub := index ($.Values.delegation.agents | default dict) . -}}
+  {{- if not $sub -}}
+    {{- fail (printf "actors: %q is not in delegation.agents" .) -}}
+  {{- end -}}
+  {{- $subs = append $subs $sub -}}
+{{- end -}}
+{{- $act := "!has(jwt.act)" -}}
+{{- if $subs -}}
+  {{- $issuer := required "delegation.issuer: the issuer whose `act` names the agents" ($.Values.delegation.issuer | default "") -}}
+  {{- $act = printf "!has(jwt.act) || (jwt.iss == %q && jwt.act.sub in %s)" $issuer (toJson $subs) -}}
+{{- end -}}
 apiVersion: agentgateway.dev/v1alpha1
 kind: AgentgatewayBackend
 metadata:
@@ -35,8 +49,9 @@ spec:
           kind: AgentgatewayBackend
           name: {{ $name }}
 ---
-# Who is a valid caller. The caller's token stops at the gateway: the server
-# reads Grafana with its own Viewer credential, the same for every caller.
+# Who is a valid caller, and which agent may call for one. The caller's token
+# stops at the gateway: the server reads Grafana with its own Viewer
+# credential, the same for every caller.
 apiVersion: agentgateway.dev/v1alpha1
 kind: AgentgatewayPolicy
 metadata:
@@ -59,6 +74,25 @@ spec:
             remote:
               url: {{ required "identity.jwksUrl" .Values.identity.jwksUrl | quote }}
               cacheDuration: 5m
+        {{- with .Values.delegation }}
+        {{- if .issuer }}
+        # chain-sts's tokens for an agent acting for a user. A token is
+        # checked by the provider whose issuer is its `iss`.
+        - issuer: {{ .issuer | quote }}
+          audiences:
+            - {{ required "delegation.audience" .audience | quote }}
+          jwks:
+            remote:
+              url: {{ required "delegation.jwksUrl" .jwksUrl | quote }}
+              cacheDuration: 5m
+        {{- end }}
+        {{- end }}
+    authorization:
+      action: Allow
+      policy:
+        matchExpressions:
+          # A token without `act`, or one whose newest actor is in `actors`.
+          - {{ $act | quote }}
 ---
 # What holds for the backend, whichever route leads to it: the credential the
 # gateway presents to the server, and which tools exist for callers. The tool
@@ -87,9 +121,11 @@ spec:
         action: Allow
         policy:
           # No condition on who calls: every caller a route has let in may
-          # read. That is any valid Keycloak token on the route above (the
-          # three human roles and the machine client `alert-automation`), and
-          # the workloads with a gateway key on theirs.
+          # read. That is any valid token on the route above, Keycloak's (the
+          # three human roles and the machine client `alert-automation`) or
+          # chain-sts's for an agent acting for one of them when `actors`
+          # names that agent, and the workloads
+          # with a gateway key on theirs.
           matchExpressions:
             - {{ printf "mcp.tool.name in %s" (toJson (required "allowedTools: at least one tool" .Values.allowedTools)) | quote }}
 

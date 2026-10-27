@@ -1,0 +1,14 @@
+# Which Secret holds chain-sts's signing key, and, during a rotation, the next
+# or the previous key: the chart's signingKey.secretName, .next and .previous.
+# Values for release `chain-sts`, after values.yaml.
+#
+# Read from the cluster each time the release is rendered, from the label
+# `signing-key-role` (sign, next, previous) on the key Secrets in namespace
+# chain-sts, which only scripts/signing-key.sh and the `task sts:rotate:*`
+# steps change. No tracked file names a key, so a sync after a rotation
+# renders the keys the cluster has, and a new cluster gets one,
+# `chain-sts-signing-key`, made by the presync hook. The script stops the
+# render when the labels make no sense, or the API server does not answer.
+#
+# A template only to read the cluster; see scripts/signing-key.sh.
+{{ exec "./scripts/signing-key.sh" (list "values") }}

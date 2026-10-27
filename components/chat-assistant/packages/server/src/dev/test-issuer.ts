@@ -30,8 +30,8 @@ const TOKEN_TTL_SECONDS = 3600;
 export interface TestIssuer {
   router: Router;
   keys: JWTVerifyGetKey;
-  /** Mints an access token directly (used by tests). */
-  accessToken(subject: string, clientId?: string): Promise<string>;
+  /** Mints an access token directly (used by tests); `extra` adds or replaces claims, `aud` included. */
+  accessToken(subject: string, clientId?: string, extra?: Record<string, unknown>): Promise<string>;
 }
 
 function localRedirect(uri: string | undefined): URL | undefined {
@@ -53,7 +53,7 @@ export async function createTestIssuer(options: { issuer: string; audience: stri
   const jwks = { keys: [jwk] };
   const codes = new Map<string, { user: string; clientId: string; redirectUri: string; challenge: string; nonce?: string; at: number }>();
 
-  const sign = (claims: Record<string, unknown>, audience: string) =>
+  const sign = (claims: Record<string, unknown>, audience: string | string[]) =>
     new SignJWT(claims)
       .setProtectedHeader({ alg: 'RS256', kid, typ: 'JWT' })
       .setIssuer(options.issuer)
@@ -63,15 +63,17 @@ export async function createTestIssuer(options: { issuer: string; audience: stri
       .setJti(randomBytes(8).toString('hex'))
       .sign(privateKey);
 
-  async function accessToken(subject: string, clientId = 'chat-ui'): Promise<string> {
+  async function accessToken(subject: string, clientId = 'chat-ui', extra: Record<string, unknown> = {}): Promise<string> {
+    const { aud, ...more } = extra;
+    const audience = (aud as string | string[] | undefined) ?? options.audience;
     const machine = MACHINE_CLIENTS[subject];
     if (machine) {
       const name = `service-account-${subject}`;
-      return sign({ sub: name, preferred_username: name, roles: machine.roles, azp: subject }, options.audience);
+      return sign({ sub: name, preferred_username: name, roles: machine.roles, azp: subject, ...more }, audience);
     }
     const user = TEST_USERS[subject];
     if (!user) throw new Error(`unknown test user ${subject}`);
-    return sign({ sub: subject, preferred_username: subject, roles: user.roles, team: user.team, azp: clientId }, options.audience);
+    return sign({ sub: subject, preferred_username: subject, roles: user.roles, team: user.team, azp: clientId, ...more }, audience);
   }
 
   const router = Router();

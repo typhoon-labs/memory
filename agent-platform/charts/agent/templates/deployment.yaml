@@ -83,3 +83,26 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+          {{- if .Values.projectedToken.audience }}
+          volumeMounts:
+            - name: projected-token
+              mountPath: {{ include "agent.projectedTokenPath" . | quote }}
+              readOnly: true
+          {{- end }}
+      {{- with .Values.projectedToken }}
+      {{- if .audience }}
+      {{- if lt (int .expirationSeconds) 600 }}
+      {{- fail "projectedToken.expirationSeconds must be at least 600 (Kubernetes' minimum)" }}
+      {{- end }}
+      volumes:
+        # The pod's ServiceAccount token for audience {{ .audience }}, file
+        # `token`; the kubelet replaces it before it expires.
+        - name: projected-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  audience: {{ .audience | quote }}
+                  expirationSeconds: {{ int .expirationSeconds }}
+                  path: token
+      {{- end }}
+      {{- end }}

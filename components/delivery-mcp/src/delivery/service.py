@@ -3,6 +3,11 @@
 Every public method takes the caller first. The role a tool needs is checked
 before anything else, then the rule that depends on state. A rule that says no
 raises :class:`Refusal`; nothing is written when one is raised.
+
+What is written names the user and, next to them, the chain of agents that
+acted for them (``Caller.chain``, newest first; empty for the user's own
+token). The chain decides nothing here: who may call through which agent is
+the gateway's rule.
 """
 
 from __future__ import annotations
@@ -148,6 +153,7 @@ class DeliveryService:
                 summary=summary,
                 impact=impact,
                 opened_by=caller.user,
+                opened_via=caller.chain,
             )
         except DuplicateOpenIncidentError:
             existing = self._store.unresolved_incident_for(service)
@@ -186,6 +192,7 @@ class DeliveryService:
                 "evidence": evidence,
                 "recommended_version": recommended_version,
                 "recorded_by": caller.user,
+                "recorded_via": list(caller.chain),
                 "recorded_at": now_iso(),
             },
         )
@@ -243,6 +250,7 @@ class DeliveryService:
             previous_version=current,
             operation_id=f"op-{uuid.uuid4()}",
             proposed_by=caller.user,
+            proposed_via=caller.chain,
         )
         self._store.set_incident_status(incident["incident_id"], "mitigating", only_from=("open",))
         return change
@@ -260,7 +268,9 @@ class DeliveryService:
             "approved",
             only_from=("proposed",),
             by=caller.user,
+            via=caller.chain,
             approved_by=caller.user,
+            approved_via=list(caller.chain),
             approved_at=now_iso(),
         )
         if not moved:
@@ -281,8 +291,10 @@ class DeliveryService:
             "rejected",
             only_from=("proposed", "approved"),
             by=caller.user,
+            via=caller.chain,
             detail=reason,
             rejected_by=caller.user,
+            rejected_via=list(caller.chain),
             rejected_at=now_iso(),
             reject_reason=reason,
         )
@@ -314,7 +326,9 @@ class DeliveryService:
             "applying",
             only_from=("approved",),
             by=caller.user,
+            via=caller.chain,
             applied_by=caller.user,
+            applied_via=list(caller.chain),
             applied_at=now_iso(),
         )
         if claimed:
@@ -404,6 +418,7 @@ class DeliveryService:
             "label_selector": result.label_selector,
             "pods_deleted": result.pods_deleted,
             "restarted_by": caller.user,
+            "restarted_via": list(caller.chain),
             "restarted_at": now_iso(),
         }
 
@@ -411,5 +426,5 @@ class DeliveryService:
         self._require_role(caller, "post_status_update")
         incident = self._incident(incident_id)
         text = _text("text", text, limit=2000)
-        self._store.add_status_update(incident["incident_id"], text, caller.user)
+        self._store.add_status_update(incident["incident_id"], text, caller.user, caller.chain)
         return self._incident(incident["incident_id"])

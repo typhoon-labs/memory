@@ -1,0 +1,206 @@
+# chain-sts: an RFC 8693 token exchange that takes a user's token and the
+# calling agent's Kubernetes service-account token, and issues a token for the
+# same user that names every agent in a nested `act`. The service is
+# components/chain-sts; its README says what it does, and its
+# config.example.yaml describes every key of the configuration this chart
+# writes. Install it once per cluster, in a namespace of its own.
+#
+# What the chart makes, all named after the release:
+#   ServiceAccount       the service's identity
+#   ClusterRole          <release>-token-review, only with
+#                        authDelegator.enabled: `create` on tokenreviews
+#                        (authentication.k8s.io), and nothing else
+#   ClusterRoleBinding   <release>-auth-delegator, only with
+#                        authDelegator.enabled: the ServiceAccount, bound to
+#                        that ClusterRole, for the TokenReview actor check.
+#                        The chart makes no other RBAC object.
+#   ConfigMap            the service's configuration (config.yaml): its
+#                        issuer, whose user tokens it accepts, how it checks
+#                        the actor, and the policy
+#   Deployment           `replicas` replicas, non-root, read-only root file
+#                        system, GET /healthz as startup, readiness and
+#                        liveness probe, and a pause before it stops
+#                        (preStopSleepSeconds)
+#   PodDisruptionBudget  only with more than one replica
+#   Service              port 80 to the container's port
+#   NetworkPolicy        who may call it, and what it may reach
+#
+# The signing keys are not made here: each is a Secret created outside Git
+# (signingKey below), so that no key passes through a values file.
+#
+# THE ACTOR CHECK (actor.verifyWith). The service checks an agent's token in
+# one of two ways (components/chain-sts, "The actor"):
+#   token_review   it asks the API server with a TokenReview, which checks the
+#                  token's signature, expiry and audience, and also refuses a
+#                  token whose pod is gone. The service's account needs
+#                  `create` on `tokenreviews`: authDelegator.enabled makes a
+#                  ClusterRole that grants that alone, and binds it.
+#   jwks           the default, needing no permission: the token's signature,
+#                  issuer, expiry and audience are checked here, against the
+#                  keys the API server publishes at /openid/v1/jwks. The
+#                  service fetches them with the pod's own token and the
+#                  cluster's CA; every service account may read them through
+#                  the default ClusterRoleBinding
+#                  system:service-account-issuer-discovery, which this chart
+#                  neither creates nor changes. The cost: a token stays valid
+#                  until it expires (one hour at most for a projected token),
+#                  even after its pod is gone.
+
+image:
+  # Required, for example localhost:5002/chain-sts
+  repository: ""
+  # Required. The version that runs; also the value of APP_VERSION.
+  tag: ""
+
+# The port the container listens on (PORT). The Service listens on service.port.
+containerPort: 8080
+
+service:
+  port: 80
+
+# The `iss` of every token the service issues, and the base URL agents reach
+# it at (the token endpoint and the JWKS URL in its metadata are built from
+# it). Empty: the Service's own address,
+# http://<release>.<namespace>.svc.cluster.local.
+issuer: ""
+publicUrl: ""
+
+# The service's keys: one Secret per key, in the release namespace, created
+# outside Git, each with an RSA private key (PEM) in data key `key`. The
+# chart only mounts them; /jwks publishes every one, and one signs.
+#
+# A rotation never writes to the Secret of a key in use: the new key gets a
+# Secret of its own, and the old key's Secret is deleted at the end. Each step
+# is a change to `secretName`, `next` and `previous` (the component's
+# README, "The signing keys"):
+#   1. next: <new Secret>                    published, does not sign yet
+#   2. secretName: <new Secret>, previous: <old Secret>, next: ""
+#                                            the new key signs; the old one
+#                                            stays published
+#   3. previous: ""                          the old key is gone
+# With `next` and `previous` empty the service's configuration names the one
+# key as `signing_key_file`, as before; with either set, as `signing_keys`,
+# each key named after its Secret. Every change of role rolls the pods.
+signingKey:
+  # Required. The Secret whose key signs every token.
+  secretName: ""
+  # The data key that holds the PEM, in every key's Secret.
+  key: key.pem
+  # The Secret of the next key: published before it signs, so that every
+  # verifier has it by the time it does.
+  next: ""
+  # The Secret of the previous key: published after it stopped signing,
+  # until every token it signed has expired.
+  previous: ""
+
+# How many pods run. They share the signing keys and keep no state, so any
+# number works. With more than one, a PodDisruptionBudget lets a node drain
+# or an upgrade evict at most podDisruptionBudget.maxUnavailable at a time.
+replicas: 1
+
+podDisruptionBudget:
+  # A number or a percentage of `replicas`. 0 would block every voluntary
+  # eviction, node drains included.
+  maxUnavailable: 1
+
+# Seconds a stopping pod goes on serving before it is sent SIGTERM: a preStop
+# `sleep` (stable since Kubernetes 1.34). A pod that stops leaves the
+# Service's endpoints at the same time as the kubelet starts stopping it, and
+# each node's kube-proxy takes a moment to stop sending it new connections.
+# Without the wait uvicorn closes its socket first, and an exchange sent in
+# that moment is refused. It counts against the pod's 30-second grace
+# period. 0: no hook.
+preStopSleepSeconds: 5
+
+# Whose user tokens are accepted as the subject. The same three keys as a
+# cluster's agent-deployments/clusters/<cluster>/identity.yaml, which the
+# release passes in as a values file.
+identity:
+  # The token's `iss`, exactly.
+  issuer: ""
+  # The token's `aud` must contain this.
+  audience: ""
+  # Where the service fetches the issuer's keys, from inside the cluster.
+  jwksUrl: ""
+
+# How the calling agent is proven: its service-account token (see THE ACTOR
+# CHECK above).
+actor:
+  # `token_review` or `jwks`. token_review needs the permission
+  # authDelegator.enabled grants, or the same binding made outside this
+  # chart; without it every exchange answers 503 temporarily_unavailable.
+  verifyWith: jwks
+  # The audiences an agent's token may carry. `chain-sts`: a token minted for
+  # this service alone (`kubectl create token ... --audience chain-sts`, or a
+  # projected volume). The API server's own audience would accept the token
+  # mounted in every pod, which anything it is sent to can replay.
+  audiences:
+    - chain-sts
+  # Only for jwks. The cluster's service-account issuer: the `iss` of its
+  # tokens (`kubectl get --raw /.well-known/openid-configuration`).
+  serviceAccountIssuer: https://kubernetes.default.svc.cluster.local
+  # Only for jwks. Where the API server publishes the issuer's keys, from
+  # inside a pod.
+  jwksUrl: https://kubernetes.default.svc/openid/v1/jwks
+
+# The service's one permission in the Kubernetes API, for the token_review
+# actor check: ClusterRole <release>-token-review, which allows `create` on
+# tokenreviews and nothing else, and ClusterRoleBinding
+# <release>-auth-delegator from the release's ServiceAccount to it. The
+# binding keeps the name it had when it bound the built-in ClusterRole
+# system:auth-delegator (chart 0.2.x), which also allows `create` on
+# subjectaccessreviews; a binding's roleRef cannot change, so on such a
+# cluster delete the binding before the upgrade (clusterrolebinding.yaml). A
+# TokenReview is not namespaced, so only cluster-wide RBAC can grant it.
+# Off: the chart makes no RBAC object at all.
+authDelegator:
+  enabled: false
+
+# The policy: which agent may act for users, which may follow which, and what
+# an issued token carries. Written into the configuration as it is, with the
+# service's own key names (components/chain-sts/config.example.yaml):
+# token_ttl_seconds, max_chain, audiences, carry_claims, require_may_act and
+# agents. A key the service does not know stops it from starting.
+policy:
+  agents: {}
+
+# Plain environment variables, KEY: value, such as the OpenTelemetry exporter.
+env: {}
+
+# Container resources, as in a pod spec.
+resources: {}
+
+# Extra labels and annotations for the pod.
+podLabels: {}
+podAnnotations: {}
+
+# The NetworkPolicy. In: only from the namespaces listed, on the container's
+# port. The kubelet's probes come from the pod's own node, which a
+# NetworkPolicy does not stop. Out: only what the service needs.
+networkPolicy:
+  # Namespaces whose pods may call the service: the agents, and whoever reads
+  # its keys at /jwks (a gateway). Every pod in them.
+  callers: []
+  # Cluster DNS.
+  dns:
+    namespace: kube-system
+    podLabels:
+      k8s-app: kube-dns
+  # The identity provider, for the keys of the users' tokens (identity.jwksUrl).
+  identity:
+    namespace: ""
+    podLabels: {}
+    port: 8080
+  # The Kubernetes API server, for TokenReviews (token_review) or the
+  # cluster's keys (jwks). It is not a pod, so it is named by address: a
+  # CIDR, addresses inside it to leave out, and the port it listens on
+  # behind the Service `kubernetes`.
+  apiServer:
+    cidr: ""
+    except: []
+    port: 6443
+  # The telemetry collector (OTEL_EXPORTER_OTLP_ENDPOINT). Empty namespace: none.
+  collector:
+    namespace: ""
+    podLabels: {}
+    ports: [4317, 4318]

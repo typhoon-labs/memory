@@ -1,0 +1,105 @@
+# chain-sts: the token exchange that names every agent a request passed
+# through (components/chain-sts). Picked up by ../../helmfile.yaml
+# (platform/*/helmfile.yaml).
+#
+#   chain-sts   namespace `chain-sts`: ServiceAccount, ConfigMap, Deployment
+#               (two replicas), PodDisruptionBudget, Service and
+#               NetworkPolicy, all named `chain-sts`; ClusterRole
+#               `chain-sts-token-review` and ClusterRoleBinding
+#               `chain-sts-auth-delegator` (chart agent-platform/charts/chain-sts)
+#
+#   Address     http://chain-sts.chain-sts.svc.cluster.local (port 80); this
+#               is also the issuer of its tokens. Keys: <address>/jwks.
+#
+# Values:
+#   ../../identity.yaml   whose user tokens it accepts: the cluster's Keycloak
+#   policy.yaml           who may act for users, who may follow whom, the
+#                         chain's length, the tokens' lifetime and claims
+#   values.yaml           the image, resources, telemetry, who may call it,
+#                         the actor check and its permission
+#   network.yaml.gotmpl   the addresses of this kind cluster's API server
+#   keys.yaml.gotmpl      which Secret signs, and the next or previous key
+#                         during a rotation: read from the Secrets' labels in
+#                         the cluster, never from a file
+#
+# The image must be in the registry first: `task publish`, or
+# `task chain-sts:build chain-sts:push` for this one alone.
+#
+# THE SIGNING KEYS are Secrets in namespace chain-sts, one per key, never in a
+# file. Before each sync scripts/signing-key.sh creates the first,
+# `chain-sts-signing-key`, if there is no key at all. Each Secret's label
+# `signing-key-role` (sign, next, previous) says what it does, and
+# keys.yaml.gotmpl reads the labels into the chart's values at every render.
+# A rotation is `task sts:rotate:new`, `sts:rotate:promote` and
+# `sts:rotate:drop`, with the waits `task sts:rotate:check` counts down: the
+# runbook is README.md here, and why each wait is as long as it is,
+# components/chain-sts/README.md, "Rotating the key".
+#
+# Apply it:   task sts:install    (or task deploy -- -l name=chain-sts)
+#             `task up` runs task sts:install right after task publish.
+#
+# THE ACTOR CHECK IS A TOKENREVIEW. An agent proves who it is with a
+# service-account token for the audience `chain-sts`, and the service asks
+# the API server about it with a TokenReview, its own pod's token as the
+# bearer. The API server checks the signature, the expiry and the audience,
+# and refuses a token bound to a pod that is gone. For that the service's
+# account may create TokenReviews: ClusterRoleBinding
+# `chain-sts-auth-delegator` binds ServiceAccount chain-sts/chain-sts to the
+# ClusterRole `chain-sts-token-review`, which allows `create` on tokenreviews
+# (authentication.k8s.io) and nothing else. It is the service's one
+# permission in the API. The binding keeps the name it had when it bound the
+# built-in system:auth-delegator, which also allows subjectaccessreviews; a
+# binding's roleRef cannot change, so a cluster made before chart 0.3.0 needs
+# `kubectl delete clusterrolebinding chain-sts-auth-delegator` (with this
+# repository's kubeconfig and context) right before `task sts:install`, which
+# creates it again; exchanges fail with 503 in between (about a second when
+# this cluster was moved). A new cluster gets the new binding from the start. The chart's other check, `jwks`, needs no
+# permission, but accepts a token until it expires.
+#
+# The gateway trusts its tokens on every route that takes a user's token: the
+# issuer and the keys are `delegation` in ../../identity.yaml. The gateway's
+# controller fetches the keys from /jwks, which this release's NetworkPolicy
+# lets namespace agentgateway-system reach.
+#
+# The boundaries of namespaces `agents` and `tools` (80-policies, `delegation`)
+# let their pods reach the service on its container's port, and this
+# release's NetworkPolicy lets both namespaces in.
+#
+# delivery-mcp, remediation-agent and comms-agent trust its tokens too
+# (DELEGATION_ISSUER and DELEGATION_JWKS_URL in their releases).
+#
+# chat-assistant, remediation-agent and comms-agent exchange their caller's
+# token here before every call they make (DELEGATION_METADATA_URL and
+# DELEGATION_ACTOR_TOKEN_FILE in their releases), each with a token of its
+# ServiceAccount for the audience chain-sts that the shared chart mounts
+# (projectedToken). They fail closed: while this service is down, none of the
+# three sends anything to a tool, an agent or the model.
+commonLabels:
+  layer: platform
+
+# Not inherited from the root helmfile. With any other kubeconfig this context
+# does not exist, and helm fails before it changes anything.
+helmDefaults:
+  kubeContext: kind-agentgateway-demo
+
+releases:
+  - name: chain-sts
+    namespace: chain-sts
+    createNamespace: true
+    # A platform chart, version in its Chart.yaml.
+    chart: ../../../../../agent-platform/charts/chain-sts
+    values:
+      - ../../identity.yaml
+      - policy.yaml
+      - values.yaml
+      - network.yaml.gotmpl
+      # Last: it alone sets signingKey.secretName, .next and .previous.
+      - keys.yaml.gotmpl
+    wait: true
+    timeout: 120
+    hooks:
+      # The first signing key, if there is no key at all. The script names
+      # the repo-local kubeconfig and the context itself.
+      - events: ["presync"]
+        showlogs: true
+        command: ./scripts/signing-key.sh

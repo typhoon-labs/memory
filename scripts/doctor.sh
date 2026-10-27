@@ -156,11 +156,11 @@ if [ "${quiet}" = 0 ]; then
   fi
   if [ "${dev}" = 1 ]; then
     absent=""
-    for packages in chat-assistant/node_modules sample-app/web/ui/node_modules delivery-mcp/.venv remediation-agent/.venv comms-agent/.venv; do
+    for packages in chat-assistant/node_modules sample-app/web/ui/node_modules delivery-mcp/.venv remediation-agent/.venv comms-agent/.venv chain-sts/.venv; do
       [ -d "${repo}/components/${packages}" ] || absent="${absent}${absent:+, }${packages%%/*}"
     done
     if [ -z "${absent}" ]; then
-      note "Component packages" "installed for chat-assistant, sample-app, delivery-mcp, remediation-agent and comms-agent"
+      note "Component packages" "installed for chat-assistant, sample-app, delivery-mcp, remediation-agent, comms-agent and chain-sts"
     else
       note "Component packages" "not installed yet: ${absent}" \
         "A component's tasks install them when they need them. To have them now: task setup -- --dev"

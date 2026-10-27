@@ -1,0 +1,19 @@
+# The Kubernetes API server's address, for chain-sts's NetworkPolicy: the
+# service sends its TokenReviews there. Values for release `chain-sts`.
+#
+# The API server is not a pod, so the policy names it by address, as the
+# exception of delivery-mcp in ../80-policies/tools-network.yaml.gotmpl does:
+# the node's Docker network on port 6443, which is where a connection to the
+# Service `kubernetes` (https://kubernetes.default.svc) is forwarded. The
+# network's gateway is left out: it is this machine. On EKS this would be the
+# cluster's API endpoint.
+#
+# A template only to read this kind cluster's addresses; see local/kind/addresses.sh.
+{{- $kind := exec "../../../../../local/kind/addresses.sh" (list) | fromJson }}
+
+networkPolicy:
+  apiServer:
+    cidr: {{ $kind.nodeNetwork }}
+    except:
+      - {{ $kind.host }}/32
+    port: 6443

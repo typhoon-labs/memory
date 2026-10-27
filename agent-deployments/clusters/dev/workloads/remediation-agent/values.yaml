@@ -6,7 +6,10 @@ image:
   repository: localhost:5002/remediation-agent
   # The version that runs. 0.1.1 is the first that starts with tracing on
   # (OTEL_EXPORTER_OTLP_ENDPOINT below); 0.1.0 stopped at start-up with it.
-  tag: 0.1.1
+  # 0.1.2 also trusts chain-sts's tokens, for an agent acting for a user
+  # (DELEGATION_* below). 0.1.3 exchanges the caller's token at chain-sts
+  # before it calls out, and never sends the caller's own.
+  tag: 0.1.3
 
 port: 8080
 
@@ -15,10 +18,25 @@ env:
 
   # Whose tokens are trusted: the same three values as
   # agent-deployments/clusters/dev/identity.yaml. The agent verifies the caller's
-  # token, then forwards that same token on both of the calls below.
+  # token, then exchanges it at chain-sts (DELEGATION_METADATA_URL below) and
+  # sends only the issued token on both of the calls below.
   OIDC_ISSUER: http://localhost:18081/realms/demo
   OIDC_AUDIENCE: agentgateway
   OIDC_JWKS_URL: http://keycloak.keycloak.svc.cluster.local:8080/realms/demo/protocol/openid-connect/certs
+  # The second issuer, chain-sts: `delegation` in the same file. Its tokens
+  # carry the user's claims for an agent acting for that user; their audience
+  # is OIDC_AUDIENCE above. The boundary of `agents` (platform/80-policies)
+  # lets the pod fetch the keys.
+  DELEGATION_ISSUER: http://chain-sts.chain-sts.svc.cluster.local
+  DELEGATION_JWKS_URL: http://chain-sts.chain-sts.svc.cluster.local/jwks
+  # And the exchange there: once per task, before the first call, the
+  # caller's token (a user's own, or one chat-assistant got) for one that
+  # adds remediation-agent to its `act` claim, for the audience
+  # OIDC_AUDIENCE. The actor token is projectedToken below. A refused or
+  # failed exchange fails the task before anything is called; the caller's
+  # own token is never sent.
+  DELEGATION_METADATA_URL: http://chain-sts.chain-sts.svc.cluster.local/.well-known/oauth-authorization-server
+  DELEGATION_ACTOR_TOKEN_FILE: /var/run/secrets/chain-sts/token
 
   # delivery-mcp through the gateway's MCP route
   # (agent-deployments/clusters/dev/domains/operations/delivery-mcp.yaml).
@@ -60,3 +78,13 @@ serviceAccount:
   # The agent calls nothing in the cluster's API; the account carries no rights.
   create: true
   name: remediation-agent
+
+# The account's token for the audience chain-sts, at
+# /var/run/secrets/chain-sts/token (DELEGATION_ACTOR_TOKEN_FILE above): how
+# remediation-agent proves to chain-sts who it is. chain-sts asks the API
+# server about it with a TokenReview. The kubelet replaces it before it
+# expires.
+projectedToken:
+  audience: chain-sts
+  expirationSeconds: 600
+  mountPath: /var/run/secrets/chain-sts

@@ -13,7 +13,7 @@ version: "3"
 # this component's name. REGISTRY is the root Taskfile's; the default applies
 # when this file is run on its own.
 vars:
-  COMMS_AGENT_VERSION: '{{.COMMS_AGENT_VERSION | default "0.1.1"}}'
+  COMMS_AGENT_VERSION: '{{.COMMS_AGENT_VERSION | default "0.1.3"}}'
   COMMS_AGENT_IMAGE: '{{.REGISTRY | default "localhost:5002"}}/comms-agent:{{.COMMS_AGENT_VERSION}}'
 
 tasks:

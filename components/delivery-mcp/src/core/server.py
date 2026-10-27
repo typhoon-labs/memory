@@ -77,7 +77,8 @@ class DynamicMCPServer:
         setup_telemetry(SERVICE_NAME, self.settings.app_version, self.settings.environment)
 
         # Update global FastMCP instance. The verifier checks signature, issuer,
-        # audience and expiry on every request to /mcp.
+        # audience and expiry on every request to /mcp, against Keycloak's keys
+        # or chain-sts's, whichever issuer the token names.
         mcp = FastMCP(
             name=self.name,
             instructions=INSTRUCTIONS,

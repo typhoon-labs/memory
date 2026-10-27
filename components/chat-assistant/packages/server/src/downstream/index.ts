@@ -1,5 +1,6 @@
 import type { Config } from '../config.js';
 import { createCommsAgent, createDiagnosisAgent, createRemediationAgent } from './a2a-agents.js';
+import { delegated, type DownstreamToken } from './delegation.js';
 import { createDeliveryMcp } from './delivery-mcp.js';
 import { normalizeIncident, normalizeIncidentList } from './normalize.js';
 import { createStubDownstreams } from './stub.js';
@@ -16,17 +17,18 @@ export function mcpEndpoint(url: string): string {
   return u.toString();
 }
 
-export function createDownstreams(config: Config): Downstreams {
-  if (config.stubDownstreams) {
-    return createStubDownstreams({ seed: config.stub.seed, phaseMs: config.stub.phaseMs, diagnosisMs: config.stub.diagnosisMs });
-  }
-  return {
-    delivery: createDeliveryMcp(mcpEndpoint(config.downstream.deliveryMcpUrl), config.appVersion),
-    remediation: createRemediationAgent(config.downstream.remediationAgentUrl),
-    comms: createCommsAgent(config.downstream.commsAgentUrl),
-    // The one place that picks diagnosis-agent's transport (JSON-RPC today).
-    diagnosis: createDiagnosisAgent(config.downstream.diagnosisAgentUrl, config.diagnosisTimeoutMs),
-  };
+/** With `tokenFor` (delegation), every downstream is called with the token it returns instead of the caller's own. */
+export function createDownstreams(config: Config, tokenFor?: DownstreamToken): Downstreams {
+  const d = config.stubDownstreams
+    ? createStubDownstreams({ seed: config.stub.seed, phaseMs: config.stub.phaseMs, diagnosisMs: config.stub.diagnosisMs })
+    : {
+        delivery: createDeliveryMcp(mcpEndpoint(config.downstream.deliveryMcpUrl), config.appVersion),
+        remediation: createRemediationAgent(config.downstream.remediationAgentUrl),
+        comms: createCommsAgent(config.downstream.commsAgentUrl),
+        // The one place that picks diagnosis-agent's transport (JSON-RPC today).
+        diagnosis: createDiagnosisAgent(config.downstream.diagnosisAgentUrl, config.diagnosisTimeoutMs),
+      };
+  return tokenFor ? delegated(d, tokenFor) : d;
 }
 
 export async function getIncident(d: Downstreams, token: string, incidentId: string): Promise<Incident> {

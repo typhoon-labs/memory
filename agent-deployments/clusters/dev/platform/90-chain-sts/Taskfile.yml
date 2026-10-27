@@ -1,0 +1,127 @@
+# chain-sts in the dev cluster. Included by the root Taskfile as `sts:`; the
+# component's own tasks (test, build, push) are `chain-sts:`.
+#
+#   task sts:install       the first signing key if there is none, then the
+#                          release with the keys the Secrets' labels name;
+#                          waits until the service answers its probe
+#   task sts:signing-key   only the first key (safe to re-run, never replaces one)
+#   task sts:status        the pods, the Service, the NetworkPolicy, the key
+#                          Secrets and their roles, the ClusterRoleBinding, and
+#                          the last audit lines of every pod
+#   task sts:check         the denied paths around the exchange, each next to
+#                          its allowed twin: the gateway's rules on chain
+#                          tokens, chain-sts's own rules, and who may reach it
+#                          (agent-platform/tests/chain-*.sh; under a minute)
+#
+# Rotating the signing key, one task per step (scripts/signing-key.sh; the
+# steps and waits are in components/chain-sts/README.md, "Rotating the key"):
+#
+#   task sts:rotate:new [-- NAME]  1. a new key's Secret (default
+#                                     chain-sts-signing-key-<UTC time>), published
+#                                     as `next`; prints its kid
+#   task sts:rotate:check          2. and 4. the roles, each pod's /healthz, the
+#                                     gateway's copy of /jwks, and how long until
+#                                     the next step; exit 0 when it may run
+#   task sts:rotate:promote        3. the next key signs, the old one is `previous`
+#                                     (360 s after step 1's rollout, and once
+#                                     the gateway has the new kid)
+#   task sts:rotate:drop           5. the old key is no longer published, then its
+#                                     Secret is deleted (420 s after step 3's
+#                                     rollout)
+#
+# Each step refuses to run early or out of order, and each is safe to run
+# again after it stopped halfway.
+#
+# Every kubectl and helmfile command names the repo-local kubeconfig and the
+# context itself, as the root Taskfile requires. This file defines no
+# top-level variables.
+version: "3"
+
+tasks:
+  install:
+    desc: "Install or upgrade chain-sts in namespace chain-sts (the image must be pushed: `task chain-sts:build chain-sts:push`)"
+    cmds:
+      - task: guard
+      # The release's presync hook runs scripts/signing-key.sh first.
+      - KUBECONFIG="{{.ROOT_DIR}}/local/kind/kubeconfig" helmfile --kubeconfig "{{.ROOT_DIR}}/local/kind/kubeconfig" --kube-context kind-agentgateway-demo --file "{{.TASKFILE_DIR}}/helmfile.yaml" sync
+      - kubectl --kubeconfig "{{.ROOT_DIR}}/local/kind/kubeconfig" --context kind-agentgateway-demo -n chain-sts rollout status deployment/chain-sts --timeout=120s
+      - task: status
+
+  signing-key:
+    desc: Create the first signing key's Secret if there is no key (never replaces one)
+    cmds:
+      - task: guard
+      - "{{.TASKFILE_DIR}}/scripts/signing-key.sh"
+
+  check:
+    desc: "The exchange's denied paths: the gateway's rules on chain tokens, chain-sts's own rules, who reaches it (agent-platform/tests/chain-gateway.sh, chain-exchange.sh, chain-network.sh; all three run, exit status is how many failed)"
+    silent: true
+    cmds:
+      - task: guard
+      - task: :tools-check
+      # Each check takes the cluster and the token source from the root
+      # Taskfile's environment (PLATFORM_KUBECONFIG, PLATFORM_CONTEXT,
+      # PLATFORM_TOKEN_CMD), as agent-platform/tests/lib.sh says.
+      - |
+        failed=0
+        for check in chain-gateway chain-exchange chain-network; do
+          "{{.ROOT_DIR}}/agent-platform/tests/${check}.sh" || failed=$((failed + 1))
+          echo
+        done
+        echo "task sts:check: ${failed} of 3 checks not as expected"
+        exit "${failed}"
+
+  rotate:new:
+    desc: "Rotation step 1: create a new signing key as the next key and publish it (`-- NAME`, default chain-sts-signing-key-<UTC time>)"
+    cmds:
+      - task: guard
+      # The key comes from `python -m chain_sts.rotate new-key`, in the component's .venv.
+      - task: :chain-sts:sync
+      - '"{{.TASKFILE_DIR}}/scripts/signing-key.sh" new {{.CLI_ARGS}}'
+      - task: install
+      - cmd: '"{{.TASKFILE_DIR}}/scripts/signing-key.sh" check'
+        ignore_error: true
+
+  rotate:check:
+    desc: "Rotation steps 2 and 4: each key's role, each pod's /healthz, the gateway's copy of /jwks, and when the next step may run (exit 0: now)"
+    cmds:
+      - task: guard
+      - '"{{.TASKFILE_DIR}}/scripts/signing-key.sh" check'
+
+  rotate:promote:
+    desc: "Rotation step 3: the next key signs and the old one stays published as previous (refused before the wait is over)"
+    cmds:
+      - task: guard
+      - '"{{.TASKFILE_DIR}}/scripts/signing-key.sh" promote'
+      - task: install
+      - cmd: '"{{.TASKFILE_DIR}}/scripts/signing-key.sh" check'
+        ignore_error: true
+
+  rotate:drop:
+    desc: "Rotation step 5: stop publishing the previous key, then delete its Secret (refused before the wait is over)"
+    cmds:
+      - task: guard
+      - '"{{.TASKFILE_DIR}}/scripts/signing-key.sh" drop'
+      - task: install
+      - '"{{.TASKFILE_DIR}}/scripts/signing-key.sh" cleanup'
+      - '"{{.TASKFILE_DIR}}/scripts/signing-key.sh" check'
+
+  status:
+    desc: Show chain-sts's pods, Service, NetworkPolicy, key Secrets and their roles, ClusterRoleBinding, and its last audit lines
+    silent: true
+    cmds:
+      - task: guard
+      - kubectl --kubeconfig "{{.ROOT_DIR}}/local/kind/kubeconfig" --context kind-agentgateway-demo -n chain-sts get deployment,pod,poddisruptionbudget,service,networkpolicy,secret,clusterrolebinding -l app.kubernetes.io/name=chain-sts -L signing-key-role
+      - echo "Last audit lines:"
+      # From every pod; each line starts with its time, so sort orders them.
+      - kubectl --kubeconfig "{{.ROOT_DIR}}/local/kind/kubeconfig" --context kind-agentgateway-demo -n chain-sts logs -l app.kubernetes.io/name=chain-sts,app.kubernetes.io/instance=chain-sts --tail=200 | grep '"chain_sts.audit"' | sort | tail -n 5 || true
+
+  guard:
+    internal: true
+    silent: true
+    preconditions:
+      # Reads the file by path, never the shell's KUBECONFIG.
+      - sh: test "$(kubectl --kubeconfig "{{.ROOT_DIR}}/local/kind/kubeconfig" config current-context 2>/dev/null)" = "kind-agentgateway-demo"
+        msg: |
+          {{.ROOT_DIR}}/local/kind/kubeconfig is missing or its context is not kind-agentgateway-demo.
+          Nothing was changed. Run `task up:trunk` to create the cluster and the kubeconfig.

@@ -7,7 +7,7 @@
 #   setup.sh --dev   also every component's locked packages, for its own tasks
 #                    (test, run-local): npm ci for the chat assistant and the
 #                    Sample App's pages, uv sync for delivery-mcp,
-#                    remediation-agent and comms-agent
+#                    remediation-agent, comms-agent and chain-sts
 #
 # The pinned tools are not installed here. `mise trust && mise install` does
 # that, and it comes first because `task` is one of them. Images and charts
@@ -24,7 +24,7 @@ steps="kagent:tools registry:arctl"
 doctor_args=""
 case "${1:-}" in
   --dev)
-    steps="${steps} chat-assistant:install sample-app:ui delivery-mcp:sync remediation-agent:sync comms-agent:sync"
+    steps="${steps} chat-assistant:install sample-app:ui delivery-mcp:sync remediation-agent:sync comms-agent:sync chain-sts:sync"
     doctor_args="--dev"
     ;;
   "") ;;

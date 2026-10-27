@@ -39,6 +39,9 @@ class Settings:
     oidc_issuer: str
     oidc_jwks_url: str
     oidc_audience: str
+    # chain-sts, whose tokens name the agents acting for a user. Both or neither.
+    delegation_issuer: str | None
+    delegation_jwks_url: str | None
 
     db_path: str
 
@@ -73,7 +76,8 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     """Read and check the environment.
 
     The service refuses to start without the three identity bindings: there is no
-    mode in which it accepts a call it cannot attribute to a verified caller.
+    mode in which it accepts a call it cannot attribute to a verified caller. The
+    second issuer, chain-sts, is optional, but only with both of its bindings.
     """
     env = os.environ if env is None else env
 
@@ -83,6 +87,14 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     missing = [n for n in ("OIDC_ISSUER", "OIDC_JWKS_URL", "OIDC_AUDIENCE") if not get(n)]
     if missing:
         raise ConfigError("missing required environment variables: " + ", ".join(missing))
+
+    delegation = {n: get(n) for n in ("DELEGATION_ISSUER", "DELEGATION_JWKS_URL")}
+    if any(delegation.values()) and not all(delegation.values()):
+        given = next(n for n, v in delegation.items() if v)
+        absent = next(n for n, v in delegation.items() if not v)
+        raise ConfigError(f"{given} is set and {absent} is not: set both, or neither")
+    if delegation["DELEGATION_ISSUER"] and delegation["DELEGATION_ISSUER"] == get("OIDC_ISSUER"):
+        raise ConfigError("DELEGATION_ISSUER must differ from OIDC_ISSUER")
 
     applier = get("APPLIER", "fake").lower()
     if applier not in {"fake", "helm"}:
@@ -99,6 +111,8 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         oidc_issuer=get("OIDC_ISSUER"),
         oidc_jwks_url=get("OIDC_JWKS_URL"),
         oidc_audience=get("OIDC_AUDIENCE"),
+        delegation_issuer=delegation["DELEGATION_ISSUER"] or None,
+        delegation_jwks_url=delegation["DELEGATION_JWKS_URL"] or None,
         db_path=get("DELIVERY_DB_PATH", ":memory:"),
         applier=applier,
         retained_versions=retained,

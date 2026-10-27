@@ -105,25 +105,30 @@ export type RefusalLayer = 'gateway' | 'service';
 
 /**
  * A downstream said no. `layer` records who: the gateway (HTTP 401/403, or the
- * tool is not offered to this caller) or the service's own rule.
+ * tool is not offered to this caller) or the service's own rule. chain-sts
+ * declining to exchange the caller's token is a refusal in the gateway's
+ * layer, in front of every service, and carries the RFC 6749 `error` code as
+ * `oauthError`.
  */
 export class Refusal extends Error {
   readonly layer: RefusalLayer;
   readonly rule?: string;
   readonly status?: number;
+  readonly oauthError?: string;
   readonly detail: string;
 
-  constructor(input: { layer: RefusalLayer; rule?: string; status?: number; detail: string }) {
+  constructor(input: RefusalFacts) {
     super(refusalText(input));
     this.name = 'Refusal';
     this.layer = input.layer;
     this.rule = input.rule;
     this.status = input.status;
+    this.oauthError = input.oauthError;
     this.detail = input.detail;
   }
 
   toJSON() {
-    return { layer: this.layer, rule: this.rule, status: this.status, message: this.detail, text: this.message };
+    return { layer: this.layer, rule: this.rule, status: this.status, oauthError: this.oauthError, message: this.detail, text: this.message };
   }
 }
 
@@ -140,10 +145,11 @@ const RULE_IN_WORDS: Record<string, string> = {
   role_required: 'your role may not do this',
 };
 
-type RefusalFacts = { layer: RefusalLayer; rule?: string; status?: number; detail: string };
+type RefusalFacts = { layer: RefusalLayer; rule?: string; status?: number; oauthError?: string; detail: string };
 
 /** What was refused, without the rule's name: "Refused by the service: this change has not been approved yet". */
 function refusalHeadline(r: RefusalFacts): string {
+  if (r.oauthError) return `Refused by the token exchange (${r.oauthError}): ${r.detail}`;
   if (r.layer === 'gateway') {
     const why = r.status ? `HTTP ${r.status}` : 'tool not available to you';
     return `Refused by the gateway (${why}): ${r.detail}`;
@@ -164,6 +170,7 @@ const sentence = (words: string) => `${words.charAt(0).toUpperCase()}${words.sli
  * why in a sentence, and the name of the service's rule if one did.
  */
 export function refusalWords(r: RefusalFacts): { title: string; reason: string; rule?: string } {
+  if (r.oauthError) return { title: `Refused by the token exchange (${r.oauthError})`, reason: sentence(r.detail) };
   if (r.layer === 'gateway') {
     return { title: `Refused by the gateway (${r.status ? `HTTP ${r.status}` : 'tool not available to you'})`, reason: sentence(r.detail) };
   }

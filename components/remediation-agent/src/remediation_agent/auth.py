@@ -1,9 +1,14 @@
-"""The caller's bearer token: checked on the way in, read once, forwarded as is.
+"""The caller's bearer token: checked on the way in, read once, then sent on.
 
 The agent decides nothing from the token. It verifies it (signature, issuer,
 audience, expiry), so that nothing is done for a caller who is not signed in,
 and then hands the same token to delivery-mcp and to the model endpoint, which
-make their own decisions about it.
+make their own decisions about it. With chain-sts's exchange configured, they
+get the token chain-sts issued for it instead (delegation.py).
+
+Two issuers may be trusted: Keycloak, for a user's own token, and chain-sts,
+for a token it issued to an agent acting for a user. A token is verified
+against the keys of the issuer it names, and only those.
 """
 
 from __future__ import annotations
@@ -49,23 +54,46 @@ def caller_token(context: RequestContext) -> str | None:
     return bearer_token(headers)
 
 
-class TokenVerifier:
-    """Verifies a JWT against the issuer's published keys."""
+def user_of(claims: Mapping[str, Any]) -> str | None:
+    """The user a verified token is for.
 
-    def __init__(self, *, jwks_url: str, issuer: str, audience: str) -> None:
-        self._issuer = issuer
+    In a delegated token (one with ``act``) ``client_id`` names the agent acting,
+    not the user, so it is never taken for the user.
+    """
+    client_id = None if "act" in claims else claims.get("client_id")
+    user = claims.get("preferred_username") or client_id or claims.get("sub")
+    return user if isinstance(user, str) else None
+
+
+class TokenVerifier:
+    """Verifies a JWT against the published keys of the issuer it names.
+
+    ``issuers`` maps each trusted issuer to the URL of its keys. Every issuer's
+    tokens must carry ``audience``.
+    """
+
+    def __init__(self, *, issuers: Mapping[str, str], audience: str) -> None:
         self._audience = audience
-        self._keys = jwt.PyJWKClient(jwks_url, cache_keys=True, lifespan=3600, timeout=10)
+        self._keys = {
+            issuer: jwt.PyJWKClient(jwks_url, cache_keys=True, lifespan=3600, timeout=10)
+            for issuer, jwks_url in issuers.items()
+        }
 
     def verify(self, token: str) -> dict[str, Any]:
         """The token's claims. Raises ``jwt.PyJWTError`` when it does not verify."""
-        key = self._keys.get_signing_key_from_jwt(token)
+        # Read without verifying, only to choose whose keys the token must verify
+        # against; the decode below checks the issuer again, with the signature.
+        issuer = jwt.decode(token, options={"verify_signature": False}).get("iss")
+        keys = self._keys.get(issuer) if isinstance(issuer, str) else None
+        if keys is None:
+            raise jwt.InvalidIssuerError("the token's issuer is not trusted")
+        key = keys.get_signing_key_from_jwt(token)
         return jwt.decode(
             token,
             key.key,
             algorithms=["RS256"],
             audience=self._audience,
-            issuer=self._issuer,
+            issuer=issuer,
             leeway=CLOCK_SKEW_SECONDS,
             options={"require": ["exp", "iss", "aud"]},
         )
@@ -101,8 +129,8 @@ class BearerAuthMiddleware:
             await self._unauthorized(send, "the bearer token did not verify")
             return
 
-        user = claims.get("preferred_username") or claims.get("client_id") or claims.get("sub")
-        if isinstance(user, str):
+        user = user_of(claims)
+        if user is not None:
             trace.get_current_span().set_attribute("enduser.id", user)
         await self._app(scope, receive, send)
 

@@ -411,6 +411,12 @@ in 75 seconds, through the gateway, as each role, with the real alert and the
 real model, and prints every refusal with the layer that refused. With the
 model down: `task demo:drive -- --alert manual --expect-model down`.
 
+`task demo:chain` follows one Apply, pressed on the card with a Chat UI
+sign-in, through chat-assistant, remediation-agent and delivery-mcp, and
+prints what chain-sts, the gateway and delivery-mcp recorded of that one
+request, side by side, with a decoded token of the same chain: for "how do you
+know which agent did it?" About 2 minutes, then it runs `task demo:reset`.
+
 After every showing: `task demo:reset`, then reload the three chat tabs.
 
 ## Backup drills
@@ -429,6 +435,10 @@ back what it changed. Each can be run again at once.
 | `task demo:backup:telemetry-down` | "What if the telemetry backend is down?" The collector at zero: the Sample App and the gateway still answer |
 | `task demo:backup:mcp-client` | "Can a developer use these tools from their own client, without hosting anything?" Both tool servers, as `developer`, through the gateway |
 | `task demo:backup:mcp-oauth-check` | "Can I point my IDE's MCP client at it today?" No: it shows which three steps of the client's own sign-in this cluster does not answer |
+| `task demo:backup:chain-gateway` | "Can an agent replay a token it was handed somewhere else?" chain-sts's tokens where the gateway expects another agent or none, a Chat UI sign-in past the assistant, a forged token: each refused, next to the one that is let in (10 seconds) |
+| `task demo:backup:chain-exchange` | "Who may act for a user?" chain-sts refuses an unknown account, an agent's token for the wrong audience or from a deleted pod, a wrong order, a chain past its limit, and a Chat UI sign-in for any agent but the assistant (under a minute) |
+| `task demo:backup:chain-network` | "Who can reach the token exchange?" Not the Sample App; the agents and the tool servers can (10 seconds) |
+| `task demo:backup:sts-down` | "What if the token exchange is down?" chain-sts at zero: every agent stops before calling anything, nothing reaches delivery-mcp; put back at two replicas (45 seconds) |
 
 Two more, not drills: `task demo:alert` delivers the alert by hand (beat 3),
 and `task demo:model-fault -- down` cuts `remediation-agent`, `comms-agent`

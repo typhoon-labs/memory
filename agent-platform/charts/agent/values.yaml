@@ -8,6 +8,8 @@
 #   - PORT (the container port), APP_VERSION (the image tag) and
 #     OTEL_SERVICE_NAME (the release name), unless `env` sets them
 #   - one replica
+#   - on request, a service-account token for one audience as a file
+#     (projectedToken)
 #
 # A workload sets the rest in agent-deployments/clusters/<cluster>/workloads/<name>/values.yaml.
 
@@ -41,6 +43,21 @@ serviceAccount:
   create: true
   # Its name. Empty: the release name when created, "default" when not.
   name: ""
+
+# Optional: a token of the pod's ServiceAccount for one audience, as a file in
+# the container, such as the token an agent shows chain-sts to prove who it
+# is. It is a `projected` volume with a `serviceAccountToken` source, mounted
+# read-only at `mountPath`, file `token`. The kubelet writes a new token
+# before the old one expires, so the workload reads the file each time it
+# needs it. The token every pod has (automountServiceAccountToken) is not
+# changed. Nothing is mounted while `audience` is empty.
+projectedToken:
+  # The token's `aud`, such as chain-sts. The receiver must accept only this.
+  audience: ""
+  # How long each token is valid. Kubernetes requires at least 600.
+  expirationSeconds: 600
+  # The directory, read-only. Empty: /var/run/secrets/<audience>.
+  mountPath: ""
 
 # Extra labels and annotations for the pod.
 podLabels: {}

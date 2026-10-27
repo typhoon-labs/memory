@@ -1,0 +1,83 @@
+# What the dev cluster runs of chain-sts. Values for the chart
+# agent-platform/charts/chain-sts, whose values.yaml explains every key.
+# The policy is policy.yaml, whose user tokens are accepted is
+# ../../identity.yaml, and the API server's address is network.yaml.gotmpl.
+
+image:
+  repository: localhost:5002/chain-sts
+  # 0.1.1 reads `subject_audiences` in policy.yaml, which an earlier version
+  # refuses as an unknown key: the two change together. 0.1.2 can also hold a
+  # next and a previous key beside the one that signs (`signing_keys`, which
+  # 0.1.1 refuses), and its /healthz names the kid of each.
+  tag: 0.1.2
+
+# The issuer and the address agents use: the chart's default, the Service.
+#   http://chain-sts.chain-sts.svc.cluster.local
+
+# Each key is a Secret with the PEM in `key.pem`. Which Secret signs, and the
+# next or previous key during a rotation, are not set here: keys.yaml.gotmpl
+# reads them from the Secrets' labels (scripts/signing-key.sh).
+signingKey:
+  key: key.pem
+
+# Two pods, so that one answers while the other stops: in a rollout (every
+# rotation step is one), a node drain or a deleted pod. Both sign with the
+# same keys and keep no state. With more than one the chart adds a
+# PodDisruptionBudget, maxUnavailable 1, so an eviction (a drain) waits for
+# the other pod; a pod deleted outright does not ask it. kind has one node,
+# so both pods run on it.
+replicas: 2
+
+actor:
+  # The API server checks each agent's token with a TokenReview, and refuses
+  # one whose pod is gone. Needs authDelegator below.
+  verifyWith: token_review
+  # A token an agent minted for this service alone. The API server's own
+  # audience is left out: it would accept the token mounted in every pod.
+  audiences:
+    - chain-sts
+
+# ClusterRole `chain-sts-token-review`, `create` on tokenreviews and nothing
+# else, and ClusterRoleBinding `chain-sts-auth-delegator` from ServiceAccount
+# chain-sts in namespace chain-sts to it, so that it may create TokenReviews.
+# Its one permission in the API.
+authDelegator:
+  enabled: true
+
+env:
+  DEPLOYMENT_ENVIRONMENT: dev
+  LOG_LEVEL: INFO
+  # Traces: to the dev cluster's OpenTelemetry Collector
+  # (platform/40-observability), as OTLP over HTTP.
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector.telemetry.svc.cluster.local:4318
+  OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+
+resources:
+  requests:
+    cpu: 20m
+    memory: 96Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+networkPolicy:
+  # Who may call it: the agents, which exchange tokens here and read /jwks to
+  # verify the tokens it issues; the tool servers and the gateway, which read
+  # /jwks for the same reason (an exchange needs an actor in policy.yaml).
+  # Nothing else, not even the gateway's route to an agent: the exchange
+  # happens between an agent and this service. The boundaries of `agents`
+  # and `tools` (80-policies, `delegation`) let their pods out to it.
+  callers:
+    - agents
+    - tools
+    - agentgateway-system
+  # Keycloak's Service, for the users' keys (identity.yaml's jwksUrl).
+  identity:
+    namespace: keycloak
+    podLabels:
+      app.kubernetes.io/name: keycloak
+    port: 8080
+  collector:
+    namespace: telemetry
+    podLabels:
+      app.kubernetes.io/name: opentelemetry-collector

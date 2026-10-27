@@ -1,7 +1,9 @@
 """draft_status_update: code reads the incident as the caller; the model words a draft.
 
-The agent returns the draft to its caller. Posting is a separate, deliberate
-act by an incident manager through delivery-mcp, and nothing here can do it.
+Both calls carry the caller's token, or the token chain-sts exchanged it for
+(delegation.py), which is for the same user and names this agent. The agent
+returns the draft to its caller. Posting is a separate, deliberate act by an
+incident manager through delivery-mcp, and nothing here can do it.
 """
 
 from __future__ import annotations
@@ -28,6 +30,7 @@ from a2a.utils.errors import ServerError
 
 from .auth import caller_token
 from .config import Settings
+from .delegation import ExchangeFailed, token_exchange
 from .delivery import DeliveryRejected, DeliveryUnavailable, open_delivery
 from .model import draft_status_update, word_count
 
@@ -74,6 +77,7 @@ def parse_request(message: Message | None) -> str:
 class CommsExecutor(AgentExecutor):
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
+        self._exchange = token_exchange(settings)
 
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
         incident_id = parse_request(context.message)
@@ -117,6 +121,19 @@ class CommsExecutor(AgentExecutor):
 
     async def _draft(self, updater: TaskUpdater, token: str, incident_id: str) -> None:
         await self._working(updater, f"Reading {incident_id} as the caller.")
+        if self._exchange is not None:
+            # Every call of this task carries chain-sts's token, and never the caller's.
+            try:
+                token = await self._exchange.exchange(token)
+            except ExchangeFailed as exc:
+                await self._finish(
+                    updater,
+                    incident_id,
+                    outcome="error",
+                    text=f"chain-sts did not exchange the caller's token ({exc.error}),"
+                    f" so {incident_id} was not read and no draft was written.",
+                )
+                return
         try:
             async with open_delivery(self._settings.delivery_mcp_url, token) as delivery:
                 answer = await delivery.call("get_incident", {"incident_id": incident_id})

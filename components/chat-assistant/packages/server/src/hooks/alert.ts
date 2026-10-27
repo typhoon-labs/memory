@@ -2,8 +2,9 @@
  * POST /hooks/alert - a Prometheus Alertmanager webhook (payload version 4).
  *
  * The caller is a machine identity (client `alert-automation`, role
- * `alert-automation`). Everything below runs as that identity: its token is
- * forwarded to delivery-mcp and to diagnosis-agent.
+ * `alert-automation`). Everything below runs as that identity: its token (with
+ * delegation, the one chain-sts issues for it) goes to delivery-mcp and to
+ * diagnosis-agent.
  *
  * For each firing alert, in this order:
  *   1. `open_incident`, so the card exists as soon as the alert arrives;

@@ -1,8 +1,9 @@
 """Calling delivery-mcp as the caller.
 
-One MCP session over Streamable HTTP, opened with the caller's bearer token and
-with nothing else: the agent has no identity of its own at delivery-mcp. What
-the service answers, including a refusal, is returned as the service gave it.
+One MCP session over Streamable HTTP, opened with the caller's bearer token, or
+the token chain-sts exchanged it for, and with nothing else: the agent has no
+credential of its own at delivery-mcp. What the service answers, including a
+refusal, is returned as the service gave it.
 """
 
 from __future__ import annotations

@@ -1,0 +1,146 @@
+# chain-sts configuration: every key, with the default actor check. The
+# service reads the file CHAIN_STS_CONFIG names. A key the service does not
+# know stops it from starting. A relative path is relative to this file. The
+# tests start from this file and replace the addresses, files and keys with
+# their own (tests/conftest.py).
+#
+# The dev cluster does not read this file. Its configuration is written by the
+# chart agent-platform/charts/chain-sts from
+# agent-deployments/clusters/dev/platform/90-chain-sts (the policy is
+# policy.yaml there), with the same address, agents and actor check as below,
+# except that remediation-agent and comms-agent may also act for a user who
+# calls them directly (act_for_users).
+# Its account may create TokenReviews through ClusterRoleBinding
+# `chain-sts-auth-delegator` to the ClusterRole `chain-sts-token-review`,
+# which allows that and nothing else.
+
+# The `iss` of every token this service issues, and the base URL clients reach
+# it at. The metadata at <public_url>/.well-known/oauth-authorization-server
+# gives <public_url>/token as the token endpoint, and kagent's Go client uses
+# that address as it is, so `public_url` must be the address the agents use.
+# Without `public_url`, the issuer is used.
+issuer: http://chain-sts.chain-sts.svc.cluster.local
+public_url: http://chain-sts.chain-sts.svc.cluster.local
+
+# The RSA private key that signs every token (PEM, unencrypted, at least 2048
+# bits), to be mounted from a Secret. Its `kid` is its JWK thumbprint (RFC
+# 7638), and /jwks publishes it.
+signing_key_file: /etc/chain-sts/signing-key/key.pem
+
+# For a rotation, `signing_keys` instead of signing_key_file: every key by
+# name, and the role of each. Every key is published in /jwks; one signs.
+#   sign       the key that signs every token. Required.
+#   next       published before it signs, so that every verifier has it first
+#   previous   published after it stopped signing, until its last token expires
+# Each key in `files` has one role, and no two keys may be the same key. A
+# rotation (README, "The signing keys"): add `next`; once every verifier has
+# it, make it `sign` and the old key `previous`; once the old key's last token
+# has expired, drop `previous`. As the chart writes it, mid-rotation:
+#
+# signing_keys:
+#   files:
+#     chain-sts-signing-key: /etc/chain-sts/previous-key/key.pem
+#     chain-sts-signing-key-2: /etc/chain-sts/signing-key/key.pem
+#   sign: chain-sts-signing-key-2
+#   previous: chain-sts-signing-key
+
+# Lifetime of an issued token. It never outlives the subject token either.
+token_ttl_seconds: 300
+
+# The most agents one token may name in its nested `act`.
+max_chain: 4
+
+# The audiences this service issues for. A request may name only these (as
+# `audience` or `resource`); without one, the first is used.
+audiences:
+  - agentgateway
+
+# Claims copied from the subject token onto the issued one. `sub` is always
+# kept; these are what the gateway and the tools read about the user. Claims
+# the service sets itself (iss, aud, exp, act, client_id, ...) cannot be named.
+carry_claims:
+  - preferred_username
+  - roles
+  - team
+  - email
+  - name
+
+# Whether a user's token must carry `may_act` naming the first agent (kagent's
+# convention: `may_act.sub` is the agent's service account; Keycloak's:
+# `may_act.client_id` is its client). Off: Keycloak writes `may_act` only
+# through consent, which the scripted demo logins cannot give, so the agents
+# below decide the first agent. A `may_act` that is present is always checked.
+require_may_act: false
+
+# Identity providers whose user tokens are accepted as the subject. The issuer
+# is what tokens carry; the keys come from the in-cluster Keycloak Service.
+subject_issuers:
+  - issuer: http://localhost:18081/realms/demo
+    jwks_url: http://keycloak.keycloak.svc.cluster.local:8080/realms/demo/protocol/openid-connect/certs
+    audience: agentgateway
+
+# The actor is the calling agent, proven by its Kubernetes service-account token.
+actor:
+  # token_review: the Kubernetes API server checks the token (a TokenReview).
+  #   Needs `create` on tokenreviews (authentication.k8s.io) for this
+  #   service's account: in the dev cluster the ClusterRole
+  #   chain-sts-token-review.
+  # jwks: the token is checked here against the cluster's keys. For development.
+  verify_with: token_review
+
+  # The audiences an actor's token may carry. `chain-sts`: a projected token
+  # minted for this service alone, which this repository's agents mount.
+  audiences:
+    - chain-sts
+    # Stock kagent agents send the token every pod has, whose audience is the
+    # API server's. Accepting it means anyone who holds an agent's mounted
+    # token can act as that agent here, so it is off. Uncomment for kagent:
+    # - https://kubernetes.default.svc.cluster.local
+
+  # Every key has a default. `api_server`: from KUBERNETES_SERVICE_HOST and
+  # KUBERNETES_SERVICE_PORT, which Kubernetes sets in every pod, else
+  # https://kubernetes.default.svc. The pod's own token, sent as the bearer
+  # of each TokenReview and read again each time, and the cluster's CA: the
+  # standard paths, written out here.
+  token_review:
+    token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+    ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+    timeout_seconds: 5
+
+  # Used only with verify_with: jwks. Exactly one of `jwks_file` (a copy of
+  # `kubectl get --raw /openid/v1/jwks`, read once at start) and `jwks_url`
+  # (fetched and cached for 5 minutes).
+  #
+  # With an https `jwks_url` only, both optional: `token_file`, a token sent
+  # as the bearer of each fetch and read again each time, and `ca_file`, the
+  # CA the server's certificate must chain to (else the system trust store).
+  # The API server serves its keys over its own CA, and only to an
+  # authenticated caller; every service account may read them (the default
+  # ClusterRoleBinding system:service-account-issuer-discovery), so the pod's
+  # own token and CA are enough:
+  #   jwks_url: https://kubernetes.default.svc/openid/v1/jwks
+  #   token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+  #   ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+  jwks:
+    issuer: https://kubernetes.default.svc.cluster.local
+    jwks_file: /etc/chain-sts/cluster-jwks.json
+
+# Who may act, named by service account.
+#   act_for_users: may be the first agent, on a user's own token.
+#   subject_audiences: with act_for_users, the audiences a user's own token
+#     may carry for this agent to exchange it; one is enough. Without it, the
+#     identity provider's `audience` above. A token meant for one agent alone
+#     (the Chat UI's, audience chat-assistant) is then exchanged by that agent
+#     and refused for every other.
+#   after: may exchange a token whose newest agent is one of these.
+agents:
+  chat-assistant:
+    service_account: system:serviceaccount:agents:chat-assistant
+    act_for_users: true
+    subject_audiences: [agentgateway, chat-assistant]
+  remediation-agent:
+    service_account: system:serviceaccount:agents:remediation-agent
+    after: [chat-assistant]
+  comms-agent:
+    service_account: system:serviceaccount:agents:comms-agent
+    after: [chat-assistant]

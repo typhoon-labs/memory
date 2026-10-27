@@ -97,6 +97,10 @@ includes:
     taskfile: components/chat-assistant/Taskfile.yml
     dir: components/chat-assistant
     optional: true
+  chain-sts:
+    taskfile: components/chain-sts/Taskfile.yml
+    dir: components/chain-sts
+    optional: true
   diagnosis-agent:
     taskfile: agent-deployments/clusters/dev/workloads/diagnosis-agent/Taskfile.yml
     dir: agent-deployments/clusters/dev/workloads/diagnosis-agent
@@ -128,6 +132,10 @@ includes:
   model:
     taskfile: agent-deployments/clusters/dev/platform/30-model-route/Taskfile.yml
     dir: agent-deployments/clusters/dev/platform/30-model-route
+    optional: true
+  sts:
+    taskfile: agent-deployments/clusters/dev/platform/90-chain-sts/Taskfile.yml
+    dir: agent-deployments/clusters/dev/platform/90-chain-sts
     optional: true
   ui:
     taskfile: local/ui/Taskfile.yml
@@ -239,6 +247,8 @@ tasks:
       - task: comms-agent:push
       - task: chat-assistant:build
       - task: chat-assistant:push
+      - task: chain-sts:build
+      - task: chain-sts:push
       - cmd: "{{.ROOT_DIR}}/local/registry/contents.sh"
         silent: true
 

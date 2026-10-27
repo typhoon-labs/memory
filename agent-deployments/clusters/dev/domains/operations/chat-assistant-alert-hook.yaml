@@ -29,5 +29,9 @@ backend:
 allow:
   - '"alert-automation" in jwt.roles'
 
+# Who may call it on the machine client's behalf: nobody. Alertmanager posts
+# with alert-automation's own token; a token with `act` is refused.
+actors: []
+
 # The assistant receives the alert's own token and opens the incident with it.
 passthrough: true

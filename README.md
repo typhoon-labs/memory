@@ -41,7 +41,7 @@ mise exec -- task demo:preflight   # the go or no-go list; it is also the last s
 In a shell with mise activated, `task up` is enough. Every command in
 this repository is a task; `task --list` shows them all.
 
-`task up` runs fourteen steps in the one order that works on an empty machine
+`task up` runs fifteen steps in the one order that works on an empty machine
 and says which step it is on. It is safe to run again. If a step fails it
 stops, names the step, and `task up -- --from <n>` carries on from there.
 The order and the reasons for it are at the top of
@@ -110,11 +110,13 @@ name; [`local/ui/ui.sh`](local/ui/ui.sh) gives the reasons.
 | `task demo:break` | Ships search-service 2.1.0, the release that starts the incident |
 | `task demo:drive` | The whole incident as a script, through the gateway, as each role (75 seconds) |
 | `task demo:alert` | Fallback: delivers the alert by hand when the card does not appear |
-| `task demo:backup:<name>` | Nine short drills for questions from the room; see the run of show |
+| `task demo:chain` | One Apply from the Chat UI, followed through chain-sts, the gateway and delivery-mcp: what each recorded of it (2 minutes, then `demo:reset`) |
+| `task demo:backup:<name>` | Thirteen short drills for questions from the room; see the run of show |
 | `task status` | What is running, the addresses, node memory |
 | `task ui` | Every web UI, its address and whether it answers. `-- <name>` forwards one that has no host port, `-- all` the seven: [Where things are](#where-things-are) |
 | `task token -- <user>` | An access token for a user, or for `alert-automation` |
 | `task smoke` | Positive and negative checks of the model route (one small model call) |
+| `task sts:check` | The token exchange's denied paths, each next to its allowed twin ([`agent-platform/tests`](agent-platform/tests/README.md)) |
 | `task model` | Which model provider the gateway uses. `-- bedrock` and `-- local` switch it: [Model provider](#model-provider) |
 | `task deploy -- -l name=<release>` | Applies one release again, after a change to its files |
 | `task langfuse:restart-clickhouse` | When Langfuse stops answering queries |
