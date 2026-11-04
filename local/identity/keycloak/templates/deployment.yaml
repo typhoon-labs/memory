@@ -18,8 +18,9 @@ spec:
       labels:
         app.kubernetes.io/name: keycloak
       annotations:
-        # A changed realm file restarts the pod, which imports it again.
-        checksum/realm: {{ .Files.Get "files/demo-realm.json" | sha256sum }}
+        # A change to any realm file restarts the pod, which imports them
+        # again: the hash covers the whole ConfigMap, every files/*-realm.json.
+        checksum/realm: {{ include (print $.Template.BasePath "/realm-configmap.yaml") . | sha256sum }}
     spec:
       containers:
         - name: keycloak
@@ -45,8 +46,38 @@ spec:
               value: "true"
             - name: KC_CACHE
               value: local
+            {{- with .Values.features }}
+            - name: KC_FEATURES
+              value: {{ join "," . | quote }}
+            {{- end }}
+            {{- with .Values.telemetry }}
+            # Keycloak's log, sign-in and admin events included, to the cluster's
+            # collector over OTLP; see values.yaml.
+            - name: KC_TELEMETRY_LOGS_ENABLED
+              value: "true"
+            - name: KC_TELEMETRY_ENDPOINT
+              value: {{ .endpoint | quote }}
+            - name: KC_TELEMETRY_LOGS_LEVEL
+              value: {{ .logsLevel | quote }}
+            - name: KC_SPI_EVENTS_LISTENER__JBOSS_LOGGING__SUCCESS_LEVEL
+              value: {{ .eventsSuccessLevel | quote }}
+            {{- end }}
             - name: JAVA_OPTS_KC_HEAP
               value: {{ .Values.javaHeap | quote }}
+            # Each realm's signing key, so that a restart keeps it: realm file
+            # files/<realm>-realm.json reads it as ${KC_REALM_<REALM>_SIGNING_KEY}
+            # and _CERT (component `stable-rs256`). Secret keycloak-realm-keys is
+            # made by scripts/realm-keys.sh before each sync, from the same list
+            # of files.
+            {{- range $path, $_ := .Files.Glob "files/*-realm.json" }}
+            {{- $realm := base $path | trimSuffix "-realm.json" }}
+            - name: KC_REALM_{{ upper $realm }}_SIGNING_KEY
+              valueFrom:
+                secretKeyRef: { name: keycloak-realm-keys, key: {{ $realm }}-signing-key }
+            - name: KC_REALM_{{ upper $realm }}_SIGNING_CERT
+              valueFrom:
+                secretKeyRef: { name: keycloak-realm-keys, key: {{ $realm }}-signing-cert }
+            {{- end }}
           ports:
             - name: http
               containerPort: 8080

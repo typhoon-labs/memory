@@ -18,13 +18,16 @@
 #   evidence_matches                 each must match the evidence list as one text
 #   answer_matches / answer_does_not_match    against the whole answer
 #   tools_called                     tools the agent must have used
+#   skills_loaded                    skills the agent must have loaded (load_skill)
 #   max_seconds                      the turn, as the caller sees it
 #   cluster_unchanged                the Deployment's generation and the names
 #                                    of its ReplicaSets and pods are the same
-#                                    after the turn as before it
+#                                    after the turn as before it. A pod already
+#                                    terminating is left out of both
 # Always checked: the turn completes, the answer ends in a JSON block with
 # suspected_cause, evidence (a list) and recommended_version, and every tool
-# the agent called is one of the read tools in ../config/agent.yaml.
+# the agent called is one of the read tools in ../config/agent.yaml or one of
+# the three that read its skills.
 #
 # Exit status: the number of failed checks.
 set -o nounset
@@ -38,8 +41,11 @@ k() {
 
 web_url="${WEB_URL:-http://localhost:18082}"
 # Every tool of every group under `tools:` in the agent's definition: its
-# Kubernetes tools and its observability tools. All of them only read.
-allowed_tools="$(sed -n '/^tools:/,$p' "${component_dir}/config/agent.yaml" | sed -n 's/^      - //p' | jq -Rnc '[inputs]')"
+# Kubernetes tools and its observability tools. All of them only read. And the
+# three that kagent's runtime adds for the skills under `skills:`, which read
+# a skill's own files and nothing else.
+skill_tools='["list_skills","load_skill","load_skill_resource"]'
+allowed_tools="$(sed -n '/^tools:/,$p' "${component_dir}/config/agent.yaml" | sed -n 's/^      - //p' | jq -Rnc --argjson s "${skill_tools}" '[inputs] + $s')"
 failures=0
 out="$(mktemp)"; trap 'rm -f "${out}"' EXIT
 
@@ -52,10 +58,14 @@ check() {
   fi
 }
 
+# A pod already terminating is left out: straight after `task demo:break` the
+# old one is on its way out, and it going is not the agent's doing. A pod the
+# agent deletes during the turn is still seen, in `before`.
 snapshot() {
   k -n sample-app get deployment search-service -o jsonpath='{.metadata.generation}' 2>/dev/null
   printf ' '
-  k -n sample-app get replicasets,pods -l app.kubernetes.io/name=search-service -o name 2>/dev/null | sort | tr '\n' ' '
+  k -n sample-app get replicasets,pods -l app.kubernetes.io/name=search-service -o json 2>/dev/null |
+    jq -r '.items[] | select(.metadata.deletionTimestamp == null) | "\(.kind)/\(.metadata.name)"' | sort | tr '\n' ' '
 }
 
 run_scenario() {
@@ -119,6 +129,10 @@ run_scenario() {
   matches answer_does_not_match "${answer}" false
   for tool in $(printf '%s' "${expect}" | jq -r '.tools_called // [] | .[]'); do
     check "called ${tool}" "$(jq -n --argjson called "${called}" --arg tool "${tool}" '$called | index($tool) != null')"
+  done
+  loaded="$(jq -c '[.result.task.artifacts[]?.parts[] | select(.metadata["kagent.dev/a2a/part-type"] == "function_call" and .data.name == "load_skill") | .data.args.name]' "${out}")"
+  for skill in $(printf '%s' "${expect}" | jq -r '.skills_loaded // [] | .[]'); do
+    check "loaded the skill ${skill}" "$(jq -n --argjson loaded "${loaded}" --arg skill "${skill}" '$loaded | index($skill) != null')" "loaded ${loaded}"
   done
   limit="$(printf '%s' "${expect}" | jq -r '.max_seconds // empty')"
   [ -z "${limit}" ] || check "answered within ${limit}s" "$(jq -n --arg s "${seconds:-999}" --arg l "${limit}" '($s | tonumber) <= ($l | tonumber)')" "${seconds}s"

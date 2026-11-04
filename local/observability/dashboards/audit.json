@@ -1,0 +1,311 @@
+{
+  "uid": "audit",
+  "title": "Audit",
+  "tags": [
+    "audit"
+  ],
+  "schemaVersion": 41,
+  "editable": true,
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "refresh": "",
+  "timezone": "browser",
+  "description": "Who did what, through which agents, allowed or refused by which rule, and what changed: the audit records in Loki (docs/cluster.md). From the command line: task audit:change -- <change or operation id>.",
+  "templating": {
+    "list": [
+      {
+        "type": "textbox",
+        "name": "user",
+        "label": "Person (regex)",
+        "query": ".*",
+        "current": {
+          "text": ".*",
+          "value": ".*"
+        },
+        "description": "user.id, as the token or the API server names them. The default .* includes records with no user, such as a refusal of a token that did not verify."
+      },
+      {
+        "type": "textbox",
+        "name": "change",
+        "label": "Change id (regex)",
+        "query": ".*",
+        "current": {
+          "text": ".*",
+          "value": ".*"
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "logs",
+      "title": "Changes",
+      "description": "Every state a change reached in delivery-mcp: who, through which agents, the operation and the Helm revision. Change ids start again at CHG-0001 after task demo:reset; the operation id is unique.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "showLabels": false,
+        "showCommonLabels": false,
+        "prettifyLogMessage": false
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "{service_name=\"delivery-mcp\"} | audit_event=~\"change\\\\..*\" | change_id=~\"$change\" | user_id=~\"$user\" | line_format \"{{.audit_event}}  {{.change_id}}  {{.audit_outcome}}  by {{with .user_id}}{{.}}{{else}}no user{{end}}{{with .actor_chain}} via {{.}}{{end}}{{with .helm_revision}}  revision {{.}}{{end}}  {{.operation_id}}\"",
+          "queryType": "range"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "logs",
+      "title": "Refused or failed",
+      "description": "Refusals and failures in delivery-mcp, chain-sts and Keycloak, with the rule or reason, and the writes the API server refused (401 or 403) with its message.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 8
+      },
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "showLabels": false,
+        "showCommonLabels": false,
+        "prettifyLogMessage": false
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "{service_name=~\"delivery-mcp|chain-sts|keycloak\"} | audit_outcome=~\"refused|failed\" | user_id=~\"$user\" | line_format \"{{.service_name}}  {{.audit_event}}{{with or .gen_ai_tool_name .a2a_method}} {{.}}{{end}}  {{.audit_outcome}}  {{with .user_id}}{{.}}{{else}}no user{{end}}{{with .actor_chain}} via {{.}}{{end}}  {{.audit_rule}}\"",
+          "queryType": "range"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "{service_name=\"kube-apiserver-audit\"} | audit_outcome=\"refused\" | user_id=~\"$user\" | line_format \"{{.service_name}}  {{.audit_event}} {{with .objectRef_namespace}}{{.}}/{{end}}{{.objectRef_resource}}{{with .objectRef_name}}/{{.}}{{end}}{{with .objectRef_subresource}}/{{.}}{{end}}  {{.audit_outcome}}  {{.user_id}}  {{.audit_rule}}\"",
+          "queryType": "range"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "logs",
+      "title": "Refused at the gateway",
+      "description": "Requests the gateway answered 401 or 403, or refused a tool (400): who, which route and tool, and the agents acting for them.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 16
+      },
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "showLabels": false,
+        "showCommonLabels": false,
+        "prettifyLogMessage": false
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "{service_name=\"agentgateway-proxy\"} | http_response_status_code=~\"400|401|403\" | user_id=~\"$user\" | line_format \"{{.http_response_status_code}}  {{.route}}{{with or .gen_ai_tool_name .a2a_method}} {{.}}{{end}}  {{with .user_id}}{{.}}{{else}}no user{{end}}{{with .actor_chain}} via {{.}}{{end}}\"",
+          "queryType": "range"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "logs",
+      "title": "Kubernetes writes",
+      "description": "Every write the API server recorded (local/kind/audit/policy.yaml), allowed or refused: who, the verb and the object. Releases with Helm and kubectl from this machine show as kubernetes-admin; delivery-mcp's rollbacks as its service account. Not here: writes that failed for another reason (404, 409), and the platform controllers' own writes, which the policy leaves out.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 23
+      },
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "showLabels": false,
+        "showCommonLabels": false,
+        "prettifyLogMessage": false
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "{service_name=\"kube-apiserver-audit\"} | audit_outcome!=\"failed\" | user_id=~\"$user\" | line_format \"{{.audit_event}}  {{with .objectRef_namespace}}{{.}}/{{end}}{{.objectRef_resource}}{{with .objectRef_name}}/{{.}}{{end}}{{with .objectRef_subresource}}/{{.}}{{end}}  by {{.user_id}}  {{.audit_outcome}}\"",
+          "queryType": "range"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "logs",
+      "title": "Sign-ins",
+      "description": "Keycloak's sign-in and token events: the session id is the sid every gateway record of that session carries.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 31
+      },
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "showLabels": false,
+        "showCommonLabels": false,
+        "prettifyLogMessage": false
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "{service_name=\"keycloak\"} | audit_event=~\"keycloak.*\" | user_id=~\"$user\" | line_format \"{{.audit_event}}  {{with .user_id}}{{.}}{{else}}{{with .user_sub}}sub {{.}}{{else}}no user{{end}}{{end}}  client {{.user_client}}{{with .session_id}}  session {{.}}{{end}}{{with .client_address}}  from {{.}}{{end}}  {{.audit_outcome}}{{with .audit_rule}} {{.}}{{end}}\"",
+          "queryType": "range"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "logs",
+      "title": "Token exchanges",
+      "description": "chain-sts's decisions: the token it issued for an agent acting for a user, or why it refused. token.jti joins a token to the gateway requests made with it.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 38
+      },
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "showLabels": false,
+        "showCommonLabels": false,
+        "prettifyLogMessage": false
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "{service_name=\"chain-sts\"} | user_id=~\"$user\" | line_format \"{{.audit_outcome}}  {{with .user_id}}{{.}}{{else}}no user{{end}}{{with .actor_chain}} via {{.}}{{end}}{{with .token_jti}}  jti {{.}}{{end}}{{with .audit_rule}}  {{.}}{{end}}\"",
+          "queryType": "range"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "logs",
+      "title": "Calls through the gateway",
+      "description": "Every request through the gateway but the MCP protocol's own (initialize, tools/list and the like), which task audit:change leaves out as well: route, tool or A2A method, status, the caller and the agents acting for them. diagnosis-agent's own calls carry its gateway key, not a token, so they name no user; their route names the agent.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 45
+      },
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "showLabels": false,
+        "showCommonLabels": false,
+        "prettifyLogMessage": false
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "{service_name=\"agentgateway-proxy\"} | mcp_method_name!~\"initialize|notifications/initialized|tools/list|server/discover\" | http_response_status_code!=\"405\" | user_id=~\"$user\" | line_format \"{{.http_request_method}} {{.route}}{{with or .gen_ai_tool_name .a2a_method}} {{.}}{{end}} -> {{.http_response_status_code}}  {{with .user_id}}{{.}}{{else}}no user{{end}}{{with .actor_chain}} via {{.}}{{end}}  trace {{.trace_id}}\"",
+          "queryType": "range"
+        }
+      ]
+    }
+  ]
+}

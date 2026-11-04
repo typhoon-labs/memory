@@ -23,6 +23,9 @@
 #   task doctor    does this machine have the tools the tasks need (scripts/doctor.sh)
 #   task setup     fetch now what the tasks would fetch on first use (scripts/setup.sh)
 #
+# Every task, with a line each: `task --list`. What each is for, and the
+# demo's and components' tasks: docs/cluster.md, "Tasks".
+#
 # KUBECONFIG. No task may use the default kubeconfig or the current kube
 # context. With Task 3.54 a KUBECONFIG exported in the calling shell replaces a
 # Taskfile `env` entry, so `env` alone is not enough. Every command below
@@ -180,6 +183,9 @@ tasks:
       # Restore the repo-local kubeconfig if it was deleted; never the default one.
       - kind export kubeconfig --name agentgateway-demo --kubeconfig "{{.ROOT_DIR}}/local/kind/kubeconfig"
       - task: guard
+      # The API server's audit log, before anything else is installed, so that
+      # every write from here on is recorded (local/kind/audit/).
+      - "{{.ROOT_DIR}}/local/kind/audit/enable.sh"
       - "{{.ROOT_DIR}}/local/registry/registry.sh wire"
       - kubectl --kubeconfig "{{.ROOT_DIR}}/local/kind/kubeconfig" --context kind-agentgateway-demo apply -f "{{.ROOT_DIR}}/local/registry/local-registry-hosting.yaml"
       # Memory and swap go together: Docker rejects a memory limit above the swap limit.
@@ -249,6 +255,9 @@ tasks:
       - task: chat-assistant:push
       - task: chain-sts:build
       - task: chain-sts:push
+      # Files only: the skills kagent mounts into diagnosis-agent's sandbox.
+      - task: diagnosis-agent:build
+      - task: diagnosis-agent:push
       - cmd: "{{.ROOT_DIR}}/local/registry/contents.sh"
         silent: true
 
@@ -295,6 +304,44 @@ tasks:
     silent: true
     cmds:
       - "{{.ROOT_DIR}}/agent-platform/tests/model-route.sh"
+
+  audit:change:
+    desc: "Who changed what, for one change, from the audit records in Loki alone: `task audit:change -- CHG-0001` (the latest with that id) or `-- op-<uuid>`"
+    silent: true
+    cmds:
+      - python3 "{{.ROOT_DIR}}/local/observability/scripts/audit_change.py" {{.CLI_ARGS}}
+
+  sso:check:
+    desc: Check that one sign-in covers Grafana, Langfuse and the gateway UI, and who each lets in
+    silent: true
+    cmds:
+      - python3 "{{.ROOT_DIR}}/local/identity/sso_check.py"
+
+  # Keycloak brokering a stand-in enterprise IdP, realm corp; notes in
+  # agent-deployments/clusters/dev/platform/20-keycloak/README.md.
+  identity:broker-check:
+    desc: "Sign in as a corp user through the demo realm's corp button, print the token's claims and call /mcp/delivery with it, then check an email takeover is refused; `-- <corp user>` for one user"
+    silent: true
+    cmds:
+      - python3 "{{.ROOT_DIR}}/local/identity/broker_check.py" {{.CLI_ARGS}}
+
+  identity:reconcile:
+    desc: "The reconciliation job, once: disable demo-realm users whose corp account is disabled or in no platform group and end their sessions, end movers' sessions; `-- --dry-run` changes nothing"
+    silent: true
+    cmds:
+      - python3 "{{.ROOT_DIR}}/local/identity/reconcile.py" {{.CLI_ARGS}}
+
+  identity:revocation-drill:
+    desc: "Disable a corp user at the IdP, run the job, and time until the gateway refuses their tokens (about 35 minutes; `-- --quick` stops before the wait); puts the user back"
+    silent: true
+    cmds:
+      - python3 "{{.ROOT_DIR}}/local/identity/revocation_drill.py" {{.CLI_ARGS}}
+
+  docs:check:
+    desc: "Check every document's links, anchors, spelling, Mermaid blocks and freshness line (CONTRIBUTING.md, Documentation); `-- FILE ...` for some"
+    silent: true
+    cmds:
+      - python3 -I "{{.ROOT_DIR}}/scripts/docs-check.py" {{.CLI_ARGS}}
 
   # --- helpers ---------------------------------------------------------------
 

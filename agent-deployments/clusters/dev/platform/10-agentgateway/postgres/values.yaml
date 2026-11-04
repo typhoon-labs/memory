@@ -1,0 +1,37 @@
+# The database of the Agentgateway admin UI's Analytics and Logs pages, in the
+# shape of the one kagent and Substrate share (agent-platform/profiles/kagent/
+# postgres): one replica on a small volume, and only its caller may connect.
+#
+# THE ONE DIFFERENCE IS THE LOGIN. kagent's logs in with client certificates from
+# `substrate-podcert`, which `task up` installs at step 5, and the gateway needs
+# this one at step 1. So this one has a password, generated in the cluster by
+# ../scripts/postgres-secret.sh. It is written down nowhere else: the gateway's
+# configuration holds ${DATABASE_PASSWORD}, and the proxy reads it from Secret
+# `agentgateway-postgresql` when it starts. The connection is not encrypted, for
+# the same reason. SCRAM does not send the password over it, and the NetworkPolicy
+# lets in the gateway and nobody else.
+#
+# THE GATEWAY NEEDS THIS TO START. If it cannot connect at startup the proxy exits,
+# so a new gateway pod stays down until this answers, and every route with it.
+# That is why it installs before the gateway (`needs` in ../helmfile.yaml). A pod
+# that is already running does not depend on it: a write that fails is dropped
+# with a warning.
+#
+# IT HOLDS PROMPTS AND COMPLETIONS, and not only usage and cost: the gateway stores
+# what it captures for Langfuse, and the setting that would stop it cannot be used
+# here (../gateway/templates/parameters.yaml). Only `platform-engineer` can read
+# them, through the admin UI's Logs page, as in Langfuse. Nothing deletes old
+# rows. When the volume fills, writes are dropped with a warning and routes go on.
+# `helm uninstall` of this release takes the volume with it.
+
+# The same digest as kagent's.
+image: postgres:18-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15
+
+storage: 500Mi
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    memory: 256Mi

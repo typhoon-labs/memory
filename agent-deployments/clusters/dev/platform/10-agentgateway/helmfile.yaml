@@ -1,9 +1,10 @@
-# Agentgateway: Gateway API CRDs, Agentgateway CRDs, the controller, and one
-# Gateway that every model, MCP and A2A route attaches to.
+# Agentgateway: Gateway API CRDs, Agentgateway CRDs, the controller, one
+# Gateway that every model, MCP and A2A route attaches to, and for its admin UI a
+# sign-in proxy and a database.
 #
 # Install steps and versions follow
 # https://agentgateway.dev/docs/kubernetes/latest/documentation/install/helm/
-# (Agentgateway 1.6.x supports Gateway API 1.4 to 1.6 and Kubernetes 1.32 to 1.37).
+# (Agentgateway 1.7.x supports Gateway API 1.4 to 1.6 and Kubernetes 1.32 to 1.37).
 commonLabels:
   layer: trunk
 
@@ -17,7 +18,7 @@ releases:
     namespace: agentgateway-system
     createNamespace: true
     chart: oci://cr.agentgateway.dev/charts/agentgateway-crds
-    version: v1.6.0
+    version: v1.7.0
     hooks:
       # The Gateway API CRDs are published as one manifest, not as a chart.
       # Upstream installs them with a server-side apply before its own CRDs.
@@ -38,7 +39,7 @@ releases:
   - name: agentgateway
     namespace: agentgateway-system
     chart: oci://cr.agentgateway.dev/charts/agentgateway
-    version: v1.6.0
+    version: v1.7.0
     needs:
       - agentgateway-system/agentgateway-crds
     # Metrics scraping and the ready-made Grafana dashboard, switched on only
@@ -48,9 +49,46 @@ releases:
     wait: true
     timeout: 300
 
+  # The database of the admin UI's Analytics and Logs pages. A local chart, whose
+  # values.yaml says why. The proxy exits if it cannot connect when it starts, so
+  # this comes before it, and is ready before it.
+  - name: agentgateway-postgresql
+    namespace: agentgateway-system
+    chart: ./postgres
+    needs:
+      - agentgateway-system/agentgateway
+    wait: true
+    timeout: 300
+    hooks:
+      # The Secret the database starts with. It names the repo-local kubeconfig
+      # and the context itself.
+      - events: ["presync"]
+        showlogs: true
+        command: ./scripts/postgres-secret.sh
+
   # The Gateway and its proxy settings. A local chart, version in gateway/Chart.yaml.
   - name: agentgateway-proxy
     namespace: agentgateway-system
     chart: ./gateway
     needs:
       - agentgateway-system/agentgateway
+      - agentgateway-system/agentgateway-postgresql
+
+  # The admin UI's sign-in proxy, at http://localhost:18088/ui/: see ui.yaml.
+  # The chart is the one the kagent chart uses for its own, pulled as OCI.
+  - name: agentgateway-ui
+    namespace: agentgateway-system
+    chart: oci://ghcr.io/oauth2-proxy/charts/oauth2-proxy
+    version: 10.7.1
+    needs:
+      - agentgateway-system/agentgateway-proxy
+    values:
+      - ui.yaml
+    wait: true
+    timeout: 180
+    hooks:
+      # The Secret the proxy starts with. It names the repo-local kubeconfig
+      # and the context itself.
+      - events: ["presync"]
+        showlogs: true
+        command: ./scripts/ui-secret.sh

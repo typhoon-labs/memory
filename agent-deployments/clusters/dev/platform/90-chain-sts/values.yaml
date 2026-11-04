@@ -8,8 +8,11 @@ image:
   # 0.1.1 reads `subject_audiences` in policy.yaml, which an earlier version
   # refuses as an unknown key: the two change together. 0.1.2 can also hold a
   # next and a previous key beside the one that signs (`signing_keys`, which
-  # 0.1.1 refuses), and its /healthz names the kid of each.
-  tag: 0.1.2
+  # 0.1.1 refuses), and its /healthz names the kid of each. 0.2.0 also sends
+  # its audit records to the Collector as OTLP logs, on to Loki (see `env`).
+  # 0.2.1 issues each token for one target when `audiences` in policy.yaml
+  # lists several, and refuses a request that names none, or more than one.
+  tag: 0.2.1
 
 # The issuer and the address agents use: the chart's default, the Service.
 #   http://chain-sts.chain-sts.svc.cluster.local
@@ -47,8 +50,8 @@ authDelegator:
 env:
   DEPLOYMENT_ENVIRONMENT: dev
   LOG_LEVEL: INFO
-  # Traces: to the dev cluster's OpenTelemetry Collector
-  # (platform/40-observability), as OTLP over HTTP.
+  # Traces, and the audit records as logs: to the dev cluster's OpenTelemetry
+  # Collector (platform/40-observability), as OTLP over HTTP.
   OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector.telemetry.svc.cluster.local:4318
   OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
 

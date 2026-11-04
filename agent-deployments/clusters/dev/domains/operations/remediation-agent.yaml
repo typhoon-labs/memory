@@ -5,7 +5,7 @@
 #
 # Values for two releases in the helmfile.yaml next to this file:
 # `remediation-agent-route` (route, backend) and `remediation-agent-route-auth`
-# (allow, passthrough).
+# (allow, actors, passthrough).
 
 route:
   name: remediation-agent
@@ -21,6 +21,11 @@ backend:
 allow:
   - '"platform-engineer" in jwt.roles'
 
+# The target chain-sts's tokens must be for (`delegation.resources` in
+# ../../identity.yaml). chat-assistant asks for this one before it calls; a
+# token issued for any other route is refused here (401).
+resource: remediation-agent
+
 # Who may call it on a user's behalf: only chat-assistant, which hands it a
 # platform engineer's Apply button with a token chain-sts issued
 # (chain [chat-assistant]). A platform engineer calling it directly sends
@@ -29,7 +34,8 @@ allow:
 actors:
   - chat-assistant
 
-# The gateway passes the caller's token on. The agent exchanges it at
-# chain-sts for one that adds remediation-agent to `act`, and calls
-# delivery-mcp and the model route with that one only.
+# The gateway passes the caller's token on; it is for this route alone, so
+# the agent cannot present it elsewhere. The agent exchanges it at chain-sts
+# for one per target that adds remediation-agent to `act`, and calls
+# delivery-mcp and the model route each with its own.
 passthrough: true

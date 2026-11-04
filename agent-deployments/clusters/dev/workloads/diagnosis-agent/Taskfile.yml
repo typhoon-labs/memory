@@ -4,10 +4,12 @@
 #   task diagnosis-agent:deploy            apply its five releases, in order (safe to re-run)
 #   task diagnosis-agent:status            is it ready, what may it reach, its conversations
 #   task diagnosis-agent:checks            what it cannot do: writes, other namespaces, other hosts
+#   task diagnosis-agent:trace             one connected trace through it, read back from Tempo
 #   task diagnosis-agent:ask -- "<text>"   one question through the gateway, as alert-automation
 #   task diagnosis-agent:eval              run the component's scenarios against the live cluster
+#   task diagnosis-agent:build, :push      the image of its skills, to the local registry
 #
-# The last two are the component's own tasks
+# The last three are the component's own tasks
 # (components/diagnosis-agent/Taskfile.yml), included here under the same name.
 #
 # Every kubectl, helm and helmfile command names the repo-local kubeconfig and
@@ -43,3 +45,11 @@ tasks:
     silent: true
     cmds:
       - "{{.TASKFILE_DIR}}/scripts/checks.sh"
+
+  trace:
+    desc: "One connected trace through the agent: three real turns read back from Tempo (needs the model, about 2 minutes)"
+    silent: true
+    cmds:
+      # The cluster and the token source come from the root Taskfile's
+      # environment, as agent-platform/tests/lib.sh says.
+      - "{{.ROOT_DIR}}/agent-platform/tests/agent-trace.sh"

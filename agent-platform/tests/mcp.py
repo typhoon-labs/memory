@@ -19,6 +19,9 @@ refused, and by whom, is in the object:
     {"http": 400, "error": {"code": ..., "message": ...}}   refusal by the gateway
     {"http": 401, "error": {"message": "<body>"}}      no session at all
 
+With TRACEPARENT set, every request carries it as the header `traceparent`, so
+that a check can find the requests in the gateway's log (lib.sh `traced`).
+
 Standard library only.
 """
 
@@ -63,6 +66,8 @@ def refusal(status: int, body: str) -> dict:
 def main() -> int:
     url, identity, action, *rest = sys.argv[1:]
     headers = {"Accept": "application/json, text/event-stream"}
+    if os.environ.get("TRACEPARENT"):
+        headers["traceparent"] = os.environ["TRACEPARENT"]
     if identity == "@-":
         headers["Authorization"] = f"Bearer {sys.stdin.read().strip()}"
     elif identity != "-":

@@ -6,6 +6,8 @@
 #   tempo                   traces
 #   otel-collector          the one OTLP receiver; forwards to Tempo and Loki,
 #                           and to Langfuse when switched on
+#   kube-audit-forwarder    the API server's audit log, from the node to the
+#                           collector
 #   gateway-telemetry       the gateway's traces and access logs, to the collector
 #   observability-content   dashboards, the scrape of the Sample App, its alert
 #                           rule, and the route from Alertmanager to the alert hook
@@ -21,7 +23,10 @@
 # would exist in production too, so theirs are here; the policy's chart is
 # agent-platform/profiles/gateway/telemetry/.
 #
-# Chart versions are the ones the Agentgateway 1.6 guide installs:
+# Chart versions are the ones the Agentgateway 1.6 guide installed. Its 1.7
+# version, read on 2026-11-03, keeps Loki 6.24.0, Tempo 1.16.0 and the
+# collector 0.127.2 and moves kube-prometheus-stack to 81.0.0; this cluster
+# keeps 75.6.1:
 # https://agentgateway.dev/docs/kubernetes/latest/documentation/observability/otel-stack/
 # All four charts are pulled as OCI artifacts, so no Helm repository is added
 # to this machine's Helm configuration.
@@ -51,6 +56,12 @@ releases:
       - ../../../../../local/observability/stack/kube-prometheus-stack.yaml
     wait: true
     timeout: 600
+    hooks:
+      # The Secret Grafana starts with. It names the kubeconfig and the context
+      # itself.
+      - events: ["presync"]
+        showlogs: true
+        command: ../../../../../local/observability/scripts/grafana-secret.sh
 
   - name: loki
     namespace: telemetry
@@ -82,6 +93,19 @@ releases:
       - telemetry/kube-prometheus-stack
     values:
       - collector.yaml.gotmpl
+    wait: true
+    timeout: 300
+
+  # Reads the API server's audit log in the kind node and sends it to the
+  # collector, so after it.
+  - name: kube-audit-forwarder
+    namespace: telemetry
+    chart: oci://ghcr.io/open-telemetry/opentelemetry-helm-charts/opentelemetry-collector
+    version: 0.127.2
+    needs:
+      - telemetry/otel-collector
+    values:
+      - kube-audit-forwarder.yaml
     wait: true
     timeout: 300
 

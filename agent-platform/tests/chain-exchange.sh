@@ -14,12 +14,20 @@
 #   subject    remediation-agent or comms-agent with a Chat UI sign-in, whose
 #              audience only chat-assistant may exchange; a forged chain-sts
 #              token
+#   target     an exchange that names no target, one no route takes chain
+#              tokens on (/mcp/observability), and `agentgateway`, the audience
+#              every token carried before chain-sts issued one per target
+#              (invalid_target); next to them, one for remediation-agent's
+#              route, whose token carries that route as its `aud`
 #
 # Every refusal is checked for its status, its `error` and the words of its
 # `error_description`. Exchanges are sent from inside remediation-agent's pod,
 # which may reach chain-sts, with actor tokens from `kubectl create token`
-# (`--audience chain-sts`, 10 minutes). Each exchange is answered by the
-# deployed chain-sts, except the max_chain ones.
+# (`--audience chain-sts`, 10 minutes), each for one target (lib.sh
+# `exchange`: delivery-mcp's route unless another is named). Each exchange is
+# answered by the deployed chain-sts, except the max_chain ones. Run it once
+# the rollout of tokens per target has ended (platform/90-chain-sts/README.md,
+# "Tokens per target"): until then chain-sts still issues for `agentgateway`.
 #
 # Two pods are made and deleted again, also when the check is cut off: an idle
 # pod in `agents` running as chat-assistant's account, which the bound token
@@ -66,14 +74,15 @@ expect_issued() {
 # sts_actor <agent> [kubectl create token flags]: the agent's token for chain-sts.
 sts_actor() { sts_account="$1"; shift; actor_token agents "${sts_account}" --audience chain-sts "$@"; }
 
-showing "exchanges at chain-sts by an actor it must refuse, in an order its policy does not allow, past max_chain, and with a subject token it must not take; each next to one it allows."
+showing "exchanges at chain-sts by an actor it must refuse, in an order its policy does not allow, past max_chain, with a subject token it must not take, and for a target it does not issue for; each next to one it allows."
 
 pe="$(token platform-engineer)" || { unexpected "no token for platform-engineer from ${PLATFORM_TOKEN_CMD}"; result ""; }
 pe_ui="$(token platform-engineer --chat-ui)" || { unexpected "no Chat UI sign-in for platform-engineer from ${PLATFORM_TOKEN_CMD}"; result ""; }
 
 # --- actor --------------------------------------------------------------------
 
-answer="$(exchange "${pe}" "$(sts_actor chat-assistant)")"
+# For remediation-agent's route, as chat-assistant asks before it calls it.
+answer="$(exchange "${pe}" "$(sts_actor chat-assistant)" "$(route_of remediation-agent)")"
 expect_issued allowed "chat-assistant, its token for audience chain-sts, platform-engineer's token" "${answer}"
 pe_chat="$(issued "${answer}")"
 expect_refusal refused "no actor token, platform-engineer's token" \
@@ -154,6 +163,21 @@ done
 forged="$(forge "${pe_chat}" "$(header "${pe_chat}" | jq -r '.kid')")"
 expect_refusal refused "comms-agent, [chat-assistant] forged with a key chain-sts does not publish" \
   "$(exchange "${forged}" "$(sts_actor comms-agent)")" 400 invalid_request "InvalidSignatureError"
+
+# --- target ---------------------------------------------------------------------
+
+target_is="$(target_of "${pe_chat}")"
+if [ "${target_is}" = "/a2a/remediation-agent" ]; then
+  line allowed "chat-assistant, for $(route_of remediation-agent)" "issued, aud ${target_is} (the gateway's address left out), and no other"
+else
+  unexpected "chat-assistant's token for remediation-agent's route has the aud ${target_is}"
+fi
+expect_refusal refused "chat-assistant, no target named" \
+  "$(exchange "${pe}" "$(sts_actor chat-assistant)" "")" 400 invalid_target "name one target"
+for target in "${gateway_in_cluster}/mcp/observability" agentgateway; do
+  expect_refusal refused "chat-assistant, for ${target}" \
+    "$(exchange "${pe}" "$(sts_actor chat-assistant)" "${target}")" 400 invalid_target "not an audience this service issues for"
+done
 
 # --- max_chain, on a test instance ----------------------------------------------
 
@@ -242,4 +266,4 @@ else
   unexpected "the test instance ${instance_pod} did not start: $(k --namespace chain-sts logs "${instance_pod}" 2>&1 | tail -n 3)"
 fi
 
-result "chain-sts refused each actor, order, length and subject its rules forbid, with the error its README names, and issued each allowed twin."
+result "chain-sts refused each actor, order, length, subject and target its rules forbid, with the error its README names, and issued each allowed twin."

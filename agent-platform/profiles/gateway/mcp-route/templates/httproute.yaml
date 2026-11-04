@@ -1,4 +1,6 @@
 {{- $name := required "route.name" .Values.route.name -}}
+{{- $path := required "route.path" .Values.route.path -}}
+{{- $signIn := (.Values.mcpAuthentication | default dict).enabled -}}
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -10,11 +12,52 @@ spec:
       namespace: {{ .Values.gateway.namespace }}
       sectionName: {{ .Values.gateway.listener }}
   rules:
-    - matches:
+    {{- if $signIn }}
+    # A request that brings a credential. The route's own policy checks it,
+    # against every issuer it trusts. Of two rules with the same path, the one
+    # with a header match wins when the header is there.
+    - name: mcp
+      matches:
         - path:
             type: PathPrefix
-            value: {{ required "route.path" .Values.route.path | quote }}
+            value: {{ $path | quote }}
+          headers:
+            - name: Authorization
+              type: RegularExpression
+              value: ".+"
       backendRefs:
         - group: agentgateway.dev
           kind: AgentgatewayBackend
           name: {{ $name }}
+    # A request without a credential, and the MCP client's discovery. The
+    # name `sign-in` is what the route-auth chart's policy for this rule
+    # targets. That policy answers each of these at the gateway, so none
+    # reaches the backend.
+    - name: sign-in
+      matches:
+        - path:
+            type: PathPrefix
+            value: {{ $path | quote }}
+        # Protected resource metadata (RFC 9728).
+        - path:
+            type: PathPrefix
+            value: {{ printf "/.well-known/oauth-protected-resource%s" $path | quote }}
+        # Authorization server metadata (RFC 8414), and under it
+        # /client-registration.
+        - path:
+            type: PathPrefix
+            value: {{ printf "/.well-known/oauth-authorization-server%s" $path | quote }}
+      backendRefs:
+        - group: agentgateway.dev
+          kind: AgentgatewayBackend
+          name: {{ $name }}
+    {{- else }}
+    - matches:
+        - path:
+            type: PathPrefix
+            value: {{ $path | quote }}
+      backendRefs:
+        - group: agentgateway.dev
+          kind: AgentgatewayBackend
+          name: {{ $name }}
+    {{- end }}

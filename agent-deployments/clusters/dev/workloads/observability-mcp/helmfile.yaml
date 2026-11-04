@@ -17,7 +17,8 @@
 # diagnosis-agent (kagent) presents its gateway key at
 #   http://agentgateway-proxy.agentgateway-system.svc/workloads/diagnosis-agent/mcp/observability
 # with the gateway's short name, because kagent keeps one credential per host
-# name and the model route already uses the long one.
+# name and the model route already uses the long one. How a gateway key works:
+# the header of agent-platform/profiles/kagent/model-access/values.yaml.
 #
 # Needs Grafana (release kube-prometheus-stack in platform/40-observability):
 # the hook creates a Viewer service account in it, and the Secret

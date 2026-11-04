@@ -18,7 +18,15 @@
 #      refused, and anonymous client registration at Keycloak is refused
 #      ("Trusted Hosts"), which is as it should be.
 #
-# WHAT IS MISSING, each checked on a scratch copy of the route:
+# SINCE 2026-11-03 (route-auth 0.6.0, mcp-route 0.5.0) (a) and (b) below are
+# in the shared charts, as `mcpAuthentication` in /mcp/delivery's route file:
+# steps 1 and 2 answer, and only step 3 is missing, for the reason in (c).
+# Agentgateway 1.7.0 allows MCP authentication only in a policy with one
+# issuer, and /mcp/delivery trusts two, so the sign-in has a route rule of its
+# own (requests without a token, and the well-known paths) with a policy that
+# trusts Keycloak alone; requests with a token keep the two-issuer policy.
+#
+# WHAT WAS MISSING, each checked on a scratch copy of the route:
 #
 #   a. In the route's policy (chart agent-platform/policies/agentgateway/route-auth
 #      has no option for it), under `traffic.jwtAuthentication`:

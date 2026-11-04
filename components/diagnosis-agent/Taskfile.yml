@@ -1,7 +1,11 @@
-# diagnosis-agent tasks that belong to the component: asking it, and running
-# its scenarios. There is nothing to build: the agent is a prompt, a runbook
-# and a list of tools, and kagent runs it.
+# diagnosis-agent tasks that belong to the component: building its skills,
+# asking it, and running its scenarios. The agent has no code: it is a prompt,
+# a list of tools and its skills, and kagent runs it. The skills are the one
+# thing built, as an image of files that kagent mounts into the agent's
+# sandbox; `task publish` builds and pushes it with the other images.
 #
+#   task diagnosis-agent:build             the image of skills/, localhost:5002/diagnosis-agent-skills:<version>
+#   task diagnosis-agent:push              push it to the local registry
 #   task diagnosis-agent:ask -- "<text>"   one question through the gateway, as alert-automation
 #   task diagnosis-agent:eval              run the scenarios under evals/ against the live cluster
 #
@@ -9,14 +13,33 @@
 # (agent-deployments/clusters/dev/workloads/diagnosis-agent/Taskfile.yml),
 # which adds deploy, status and checks under the same name.
 #
-# Where the agent is and whose tokens to use come from the environment, which
-# the root Taskfile sets for the dev cluster: DIAGNOSIS_AGENT_URL (default: the
-# gateway on this machine), PLATFORM_TOKEN_CMD and, for the scenarios that
-# compare the cluster before and after a turn, PLATFORM_KUBECONFIG and
-# PLATFORM_CONTEXT.
+# Where the agent is and whose tokens to use come from the environment. The
+# root Taskfile sets PLATFORM_TOKEN_CMD and, for the scenarios that compare
+# the cluster before and after a turn, PLATFORM_KUBECONFIG and
+# PLATFORM_CONTEXT. DIAGNOSIS_AGENT_URL is not set there: scripts/ask.sh
+# defaults it to the gateway on this machine.
 version: "3"
 
+# Top-level variables are shared by every included Taskfile, so each carries
+# this component's name. REGISTRY is the root Taskfile's; the default applies
+# when this file is run on its own. The cluster names the same version where it
+# looks up the image's digest
+# (agent-deployments/clusters/dev/workloads/diagnosis-agent/values.yaml.gotmpl).
+vars:
+  DIAGNOSIS_AGENT_SKILLS_VERSION: '{{.DIAGNOSIS_AGENT_SKILLS_VERSION | default "0.1.0"}}'
+  DIAGNOSIS_AGENT_SKILLS_IMAGE: '{{.REGISTRY | default "localhost:5002"}}/diagnosis-agent-skills:{{.DIAGNOSIS_AGENT_SKILLS_VERSION}}'
+
 tasks:
+  build:
+    desc: Build the image of the agent's skills ({{.DIAGNOSIS_AGENT_SKILLS_IMAGE}})
+    cmds:
+      - docker build --build-arg VERSION={{.DIAGNOSIS_AGENT_SKILLS_VERSION}} -t {{.DIAGNOSIS_AGENT_SKILLS_IMAGE}} "{{.TASKFILE_DIR}}"
+
+  push:
+    desc: Push the image of the agent's skills to the local registry
+    cmds:
+      - docker push {{.DIAGNOSIS_AGENT_SKILLS_IMAGE}}
+
   ask:
     desc: 'Ask one question through the gateway: `task diagnosis-agent:ask -- "Alert X is firing for service search-service."` (flags: --as <user>, --context <id>, --raw)'
     silent: true

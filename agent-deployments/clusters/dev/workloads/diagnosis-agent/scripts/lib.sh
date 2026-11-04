@@ -6,7 +6,7 @@
 scripts_dir="$(cd "$(dirname "$0")" && pwd)"
 repo="$(cd "${scripts_dir}/../../../../../.." && pwd)"
 . "${repo}/scripts/lib/cluster.sh"
-# What the agent is (prompt, runbook, tool list) belongs to its component.
+# What the agent is (prompt, skills, tool list) belongs to its component.
 component_dir="${repo}/components/diagnosis-agent"
 agent="diagnosis-agent"
 agent_namespace="kagent"

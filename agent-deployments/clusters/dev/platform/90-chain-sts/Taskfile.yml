@@ -14,7 +14,7 @@
 #                          (agent-platform/tests/chain-*.sh; under a minute)
 #
 # Rotating the signing key, one task per step (scripts/signing-key.sh; the
-# steps and waits are in components/chain-sts/README.md, "Rotating the key"):
+# steps and waits are in components/chain-sts/docs/key-rotation.md):
 #
 #   task sts:rotate:new [-- NAME]  1. a new key's Secret (default
 #                                     chain-sts-signing-key-<UTC time>), published

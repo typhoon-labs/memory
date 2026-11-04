@@ -1,5 +1,7 @@
 # Okta for AI Agents vs. Keycloak + chain-sts: cost and capability
 
+> **Owner:** chain-sts maintainers · **Type:** explanation · **Checked:** 2026-11-03 against chain-sts 0.2.0 for its repository facts; its vendor facts and prices are as of 2026-10-21
+
 This document compares Okta for AI Agents (O4AA) with what this repository
 runs instead, Keycloak plus [chain-sts](../README.md), on cost and on
 capability. It was researched on 2026-10-21, and every web source was accessed
@@ -288,7 +290,9 @@ complete chain of custody directly into the token".
   streaming is on your SKU is **unverified**.
 - **chain-sts:** one JSON audit line per decision (issued or refused, user,
   chain, `jti`, `aud`, `exp`, error) goes to stderr ([Logs and
-  audit](../README.md#logs-and-audit)). You keep it, and you choose the
+  audit](../README.md#logs-and-audit)), and since chain-sts 0.2.0 also to the
+  OpenTelemetry Collector, which in the dev cluster sends it on to Loki. You
+  keep it, and you choose the
   retention and the SIEM, and you run them yourself.
 
 ### 3.4 Token endpoint rate limits
@@ -345,34 +349,14 @@ complete chain of custody directly into the token".
   - No per-user license meter.
   - Works in air-gapped or self-hosted clusters.
   - No Okta compliance-scope exclusions.
-- **Gaps in chain-sts itself** (its README, [What is not
-  done](../README.md#what-is-not-done)):
-  - No key in a KMS: a KMS signer is described, not written. The key is a
-    Secret.
-  - Key rotation is done in the dev cluster (2026-10-21, with `task
-    sts:rotate:*`, two replicas serving, 2,926 requests and no failure), but
-    nothing rotates on a schedule, and the tasks run from a workstation with
-    the cluster's admin kubeconfig.
-  - The dev cluster runs two replicas with a PodDisruptionBudget, but both on
-    kind's one node. Every agent call depends on the service, and without it
-    the agents fail closed.
-  - The TokenReview grant is narrow: ClusterRole `chain-sts-token-review`,
-    `create` on `tokenreviews` and nothing else, in place of
-    `system:auth-delegator`. A TokenReview is cluster-wide, so the service may
-    still ask about any token in the cluster.
-  - One audience for every issued token (`agentgateway`), so an agent can
-    reuse a token it received wherever its caller is accepted as the newest
-    actor; tokens for one target each (RFC 8707 `resource`) would close that.
-    The refusals are checked by script (`task sts:check`) and drilled
-    (`task demo:chain`, `task demo:backup:sts-down`) in the dev cluster.
-  - The gateway's rules read `act`, but only the newest actor is checked. A
-    user's own token without `act` still works on every route its roles allow,
-    and `delivery-mcp` records the chain but decides nothing by it.
-  - kagent can only be the last agent in a chain.
-  - `diagnosis-agent` runs on Agent Substrate with no credential of its own
-    that chain-sts can verify, so it stays outside the chain.
-  - A Keycloak 26.8.1 test showed Keycloak's own delegation (preview) records
-    only one `act`.
+- **Gaps in chain-sts itself** are in its README, [What is not
+  done](../README.md#what-is-not-done), with what has been done and what each
+  step leaves open. In short: no signer in a KMS, no rotation on a schedule,
+  both replicas on one node, only the newest actor checked, a kagent agent
+  only ever the last in a chain, and an Agent Substrate agent in none. (One
+  audience for every issued token was a gap until chain-sts 0.2.1, which
+  issues each token for one route.) Keycloak's own delegation records only one
+  `act` (the README's [Why](../README.md#why)).
 
 ## 4. Cost of running Keycloak + chain-sts in production
 
@@ -430,20 +414,14 @@ Vendor reference points:
   - 24x7 on-call. chain-sts down means every agent call fails.
 - **One-time productionization of chain-sts:** about 1–3 engineer-months
   (**estimate**). The estimate was made when every item below was open and is
-  kept as it was; the status after each item is from chain-sts's README. It
+  kept as it was. Which are done now, and what each leaves open, is in
+  chain-sts's README, [What is not done](../README.md#what-is-not-done). It
   covers:
-  - Key rotation with overlapping JWKS. Done in the dev cluster, by hand with
-    `task sts:rotate:*` ([the rotation
-    run](../../../agent-deployments/clusters/dev/platform/90-chain-sts/README.md#the-rotation-run-in-this-cluster));
-    nothing rotates on a schedule.
-  - KMS signing. Not done: described, not written.
-  - Multi-replica HA and SLOs. The dev cluster runs two replicas with a
-    PodDisruptionBudget, both on kind's one node ([Several
-    replicas](../README.md#several-replicas)).
-  - A narrower TokenReview ClusterRole. Done: `chain-sts-token-review`.
-  - Drills and negative tests. Done in the dev cluster: `task sts:check`
-    ([the checks](../../../agent-platform/tests/README.md)), `task
-    demo:chain` and `task demo:backup:sts-down`.
+  - Key rotation with overlapping JWKS.
+  - KMS signing.
+  - Multi-replica HA and SLOs.
+  - A narrower TokenReview ClusterRole.
+  - Drills and negative tests.
   - A threat model and an external penetration test. The cost of an external
     pen test is **unverified**.
 
@@ -452,7 +430,7 @@ Vendor reference points:
 Red Hat says it is "not available for purchase as a separate and distinct
 product". It is entitled through Red Hat Runtimes, Red Hat Application
 Foundations or OpenShift Container Platform (including OpenShift Platform Plus
-and ROSA/ARO/OSD). Its usage "counts towards the cores" of those subscriptions
+and ROSA/ARO/OSD). Its usage "counts toward the cores" of those subscriptions
 (access.redhat.com/articles/7044244, updated 2025-10-24). No public per-core
 price for Runtimes was found (**contact Red Hat**). If you already have
 OpenShift subscriptions with spare cores, the marginal license cost may be

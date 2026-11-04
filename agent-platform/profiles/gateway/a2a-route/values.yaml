@@ -12,7 +12,7 @@
 # separate release of agent-platform/policies/agentgateway/route-auth that
 # targets HTTPRoute <route.name>. Install both in the agent's namespace.
 #
-# Schema: Agentgateway 1.6 (agentgateway.dev/v1alpha1), from
+# Schema: Agentgateway 1.7 (agentgateway.dev/v1alpha1), from
 #   https://agentgateway.dev/docs/kubernetes/latest/documentation/agent/a2a/
 #   https://agentgateway.dev/docs/kubernetes/latest/documentation/security/backend-authn/key/
 #

@@ -1,4 +1,4 @@
-"""Compatibility with kagent's Python STS client, agentsts-core 1.0.0a16.
+"""Compatibility with kagent's Python STS client, agentsts-core 1.0.0rc1.
 
 The service runs on 127.0.0.1, port 0, and the client finds the token
 endpoint from the metadata, as it does in a kagent agent.

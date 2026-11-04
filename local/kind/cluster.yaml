@@ -37,5 +37,5 @@ nodes:
       - { containerPort: 30085, hostPort: 18085, listenAddress: "127.0.0.1", protocol: TCP } # Langfuse
       - { containerPort: 30086, hostPort: 18086, listenAddress: "127.0.0.1", protocol: TCP } # Agentregistry UI
       - { containerPort: 30087, hostPort: 18087, listenAddress: "127.0.0.1", protocol: TCP } # kagent UI
-      - { containerPort: 30088, hostPort: 18088, listenAddress: "127.0.0.1", protocol: TCP } # Spare
+      - { containerPort: 30088, hostPort: 18088, listenAddress: "127.0.0.1", protocol: TCP } # Agentgateway admin UI
       - { containerPort: 30089, hostPort: 18089, listenAddress: "127.0.0.1", protocol: TCP } # Spare

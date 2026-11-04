@@ -2,7 +2,9 @@
 
 Every line has `time`, `level`, `logger` and `message`. A record that carries
 `extra={"fields": {...}}` adds those fields at the top level, which is how the
-audit lines (logger `chain_sts.audit`) carry their decision.
+audit lines (logger `chain_sts.audit`) carry their decision. Their
+`extra={"attributes": {...}}` is not on the line: it is what the Collector
+gets of the same decision (telemetry.py).
 """
 
 from __future__ import annotations

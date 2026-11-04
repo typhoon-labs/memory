@@ -8,7 +8,7 @@
 # separate release of agent-platform/policies/agentgateway/route-auth that
 # targets HTTPRoute <route.name>. Install both in the server's namespace.
 #
-# Schema: Agentgateway 1.6 (agentgateway.dev/v1alpha1), from
+# Schema: Agentgateway 1.7 (agentgateway.dev/v1alpha1), from
 #   https://agentgateway.dev/docs/kubernetes/latest/documentation/mcp/static-mcp/
 #   https://agentgateway.dev/docs/kubernetes/latest/documentation/mcp/tool-access/
 #   https://agentgateway.dev/docs/kubernetes/latest/documentation/security/backend-authn/key/
@@ -21,11 +21,11 @@
 #   - no token: 401 on initialize
 #   - tools/list per role returns exactly that role's tools plus the
 #     "any signed-in" tools; the tool without a rule is listed for nobody
-#   - tools/call of a tool the role may not use: JSON-RPC error "Unknown tool"
+#   - tools/call of a tool the role may not use: JSON-RPC error "unknown
+#     resource", the same as for a tool that does not exist
 #   - the server received the caller's own bearer token (passthrough)
-# Not part of this chart: the MCP OAuth settings an interactive client needs
-# to find the authorization server by itself
-# (https://agentgateway.dev/docs/kubernetes/latest/documentation/mcp/auth/setup/).
+# The routing an interactive client needs to sign in by itself is
+# `mcpAuthentication` below. The settings for it are in route-auth.
 
 # The Gateway this route attaches to.
 gateway:
@@ -51,6 +51,29 @@ backend:
   # restarted. For a server that keeps per-session state, use Stateful.
   sessionRouting: Stateless
 
+# Optional: route what an MCP client of a person's own (an IDE or a CLI) needs
+# to sign in by itself (MCP authorization, RFC 9728). Off by default. Turn it
+# on together with the same option of the route's route-auth release, which
+# reads the same route file. That option writes the policy for rule `sign-in`
+# and explains what it answers.
+#
+# On, the HTTPRoute has two rules, both to the same backend:
+#   mcp      <route.path> with an Authorization header. The route's own
+#            policy checks the token, as it does with the option off. So
+#            an expired or a wrong token gets that policy's plain 401,
+#            without the pointer to the metadata.
+#   sign-in  <route.path> without one, and the metadata paths
+#            /.well-known/oauth-protected-resource<route.path> and
+#            /.well-known/oauth-authorization-server<route.path> (with
+#            /client-registration under it). PathPrefix, as in
+#            https://agentgateway.dev/docs/kubernetes/latest/documentation/mcp/auth/setup/
+# Why two rules: Agentgateway 1.7.0 serves the metadata, and puts the pointer
+# to it in the 401, only from a policy that trusts a single issuer. A route
+# that also takes the token exchange's tokens needs that policy on a rule of
+# its own, one that no request with a token reaches.
+mcpAuthentication:
+  enabled: false
+
 # Tool name -> roles (values of the token's `roles` claim) that may see it in
 # tools/list and call it. "*" means any caller with a valid token. A tool that
 # is not listed here is hidden from everyone.
@@ -66,6 +89,10 @@ tools: {}
 # caller's own, is decided by `tools` alone. A name that is not in `tools`
 # or not in `delegation.agents` stops the render.
 toolActors: {}
+# Whose tokens are a caller's own: a token without `act` passes the rules on
+# agents only when this issuer made it. From identity.yaml, `identity`.
+identity:
+  issuer: ""
 delegation:
   issuer: ""
   agents: {}

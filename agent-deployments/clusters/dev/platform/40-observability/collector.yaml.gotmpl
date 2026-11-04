@@ -102,6 +102,24 @@ alternateConfig:
           action: delete
         - key: gen_ai.system_instructions
           action: delete
+    # Agent Substrate's API server authorizes every call with OpenFGA, which
+    # writes a span for each step of each check: about 1,700 of the 1,900 spans
+    # of one agent turn, all under one span of the call they belong to. That
+    # call's own span stays, so the trace keeps its shape; only what is inside
+    # the check goes. Measured on Agent Substrate 0.6.0-alpha3.
+    #
+    # Since Substrate 1.0 the API server also writes a span for each statement
+    # it sends to PostgreSQL (scope atepg). Those of the check, OpenFGA's reads
+    # of its own tables and the role a connection it opens takes, hang under
+    # the spans dropped above, so each would arrive as a piece of its own:
+    # about 400 per agent turn on 1.0.0-rc1. They go too; the statements of the
+    # call itself stay.
+    filter/substrate-authorization:
+      error_mode: ignore
+      traces:
+        span:
+          - resource.attributes["service.name"] == "ateapi" and IsMatch(instrumentation_scope.name, "^(internal/graph/check|openfga/pkg/.*|pkg/storage/sqlcommon)$")
+          - resource.attributes["service.name"] == "ateapi" and instrumentation_scope.name == "atepg" and (IsMatch(attributes["db.collection.name"], "^(tuple|store|authorization_model|assertion|changelog)$") or attributes["db.operation.name"] == "SET")
     {{- if $langfuse }}
     # What reaches Langfuse, in two steps.
     #
@@ -154,6 +172,48 @@ alternateConfig:
             - delete_matching_keys(attributes, "^gen_ai\\.usage\\.") where resource.attributes["service.name"] != "agentgateway-proxy"
     {{- end }}
 
+    # One set of field names across the audit sources, so that one query by
+    # person, session or kind of event finds them all in Loki. The gateway,
+    # delivery-mcp and chain-sts write these names themselves (user.id,
+    # user.sub, user.client, session.id, token.jti, actor.chain, audit.event,
+    # audit.outcome, audit.rule); Keycloak's events and the API server's audit
+    # log are given them here, next to their own fields.
+    transform/audit:
+      error_mode: ignore
+      log_statements:
+        # A Keycloak event is one line of key="value" pairs that starts with
+        # type= (a sign-in, a token) or operationType= (an admin change).
+        - context: log
+          conditions:
+            - resource.attributes["service.name"] == "keycloak" and IsMatch(body, "^(type|operationType)=")
+          statements:
+            - merge_maps(cache, ParseKeyValue(body, "=", ", "), "upsert")
+            - set(attributes["audit.event"], Concat(["keycloak", cache["type"]], ".")) where cache["type"] != nil
+            - set(attributes["audit.event"], Concat(["keycloak.admin", cache["operationType"]], ".")) where cache["operationType"] != nil
+            - set(attributes["audit.outcome"], "succeeded") where cache["error"] == nil
+            - set(attributes["audit.outcome"], "failed") where cache["error"] != nil
+            - set(attributes["audit.rule"], cache["error"]) where cache["error"] != nil
+            - set(attributes["user.sub"], cache["userId"]) where cache["userId"] != nil
+            - set(attributes["user.id"], cache["username"]) where cache["username"] != nil
+            - set(attributes["user.client"], cache["clientId"]) where cache["clientId"] != nil
+            - set(attributes["session.id"], cache["sessionId"]) where cache["sessionId"] != nil
+            - set(attributes["client.address"], cache["ipAddress"]) where cache["ipAddress"] != nil
+        # An API server audit event, one JSON object per write
+        # (kube-audit-forwarder.yaml). Refused is 401 or 403: not signed in,
+        # not allowed by RBAC, or denied by an admission policy. Any other
+        # error is a write that failed without being refused, most often 404
+        # (already gone) or 409 (already there, or changed meanwhile).
+        - context: log
+          conditions:
+            - resource.attributes["service.name"] == "kube-apiserver-audit"
+          statements:
+            - set(attributes["user.id"], attributes["user"]["username"])
+            - set(attributes["audit.event"], Concat(["kubernetes", attributes["verb"]], "."))
+            - set(attributes["audit.outcome"], "allowed") where attributes["responseStatus"]["code"] < 400
+            - set(attributes["audit.outcome"], "refused") where attributes["responseStatus"]["code"] == 401 or attributes["responseStatus"]["code"] == 403
+            - set(attributes["audit.outcome"], "failed") where attributes["responseStatus"]["code"] >= 400 and attributes["responseStatus"]["code"] != 401 and attributes["responseStatus"]["code"] != 403
+            - set(attributes["audit.rule"], attributes["responseStatus"]["message"]) where attributes["responseStatus"]["code"] >= 400
+
   exporters:
     otlp/tempo:
       endpoint: tempo.telemetry.svc.cluster.local:4317
@@ -183,7 +243,7 @@ alternateConfig:
     pipelines:
       traces:
         receivers: [otlp]
-        processors: [memory_limiter, attributes/strip-llm-content, batch]
+        processors: [memory_limiter, filter/substrate-authorization, attributes/strip-llm-content, batch]
         exporters: [otlp/tempo]
       {{- if $langfuse }}
       traces/langfuse:
@@ -193,5 +253,5 @@ alternateConfig:
       {{- end }}
       logs:
         receivers: [otlp]
-        processors: [memory_limiter, batch]
+        processors: [memory_limiter, transform/audit, batch]
         exporters: [otlphttp/loki]

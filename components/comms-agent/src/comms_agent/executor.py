@@ -1,7 +1,8 @@
 """draft_status_update: code reads the incident as the caller; the model words a draft.
 
-Both calls carry the caller's token, or the token chain-sts exchanged it for
-(delegation.py), which is for the same user and names this agent. The agent
+Both calls carry the caller's token, or a token chain-sts exchanged it for
+(delegation.py), which is for the same user and names this agent: one for
+delivery-mcp alone, and another for the model route alone. The agent
 returns the draft to its caller. Posting is a separate, deliberate act by an
 incident manager through delivery-mcp, and nothing here can do it.
 """
@@ -119,21 +120,30 @@ class CommsExecutor(AgentExecutor):
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
         raise ServerError(error=UnsupportedOperationError())
 
-    async def _draft(self, updater: TaskUpdater, token: str, incident_id: str) -> None:
+    async def _token_for(self, caller: str, resource: str) -> str:
+        """What a call to ``resource`` carries: chain-sts's token for it, or the caller's own.
+
+        With the exchange configured, the caller's token is exchanged for each
+        target, never a token issued for another one, and never goes out itself.
+        Raises :class:`ExchangeFailed`.
+        """
+        if self._exchange is None:
+            return caller
+        return await self._exchange.exchange(caller, resource)
+
+    async def _draft(self, updater: TaskUpdater, caller: str, incident_id: str) -> None:
         await self._working(updater, f"Reading {incident_id} as the caller.")
-        if self._exchange is not None:
-            # Every call of this task carries chain-sts's token, and never the caller's.
-            try:
-                token = await self._exchange.exchange(token)
-            except ExchangeFailed as exc:
-                await self._finish(
-                    updater,
-                    incident_id,
-                    outcome="error",
-                    text=f"chain-sts did not exchange the caller's token ({exc.error}),"
-                    f" so {incident_id} was not read and no draft was written.",
-                )
-                return
+        try:
+            token = await self._token_for(caller, self._settings.delivery_resource)
+        except ExchangeFailed as exc:
+            await self._finish(
+                updater,
+                incident_id,
+                outcome="error",
+                text=f"chain-sts did not exchange the caller's token ({exc.error}),"
+                f" so {incident_id} was not read and no draft was written.",
+            )
+            return
         try:
             async with open_delivery(self._settings.delivery_mcp_url, token) as delivery:
                 answer = await delivery.call("get_incident", {"incident_id": incident_id})
@@ -170,7 +180,19 @@ class CommsExecutor(AgentExecutor):
 
         await self._working(updater, f"Drafting a status update for {incident_id}.")
         try:
-            draft, cut = await draft_status_update(self._settings, token, answer.data)
+            # The model route gets a token of its own, exchanged from the caller's.
+            model_token = await self._token_for(caller, self._settings.model_resource)
+        except ExchangeFailed as exc:
+            await self._finish(
+                updater,
+                incident_id,
+                outcome="error",
+                text=f"No draft was written for {incident_id}: chain-sts did not exchange the"
+                f" caller's token for the model ({exc.error}).",
+            )
+            return
+        try:
+            draft, cut = await draft_status_update(self._settings, model_token, answer.data)
         except TimeoutError:
             logger.warning(
                 "the model did not answer within %gs", self._settings.model_timeout_seconds

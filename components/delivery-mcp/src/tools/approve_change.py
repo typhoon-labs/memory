@@ -20,7 +20,8 @@ async def approve_change(change_id: str) -> ToolResult:
     """Approve a proposed change.
 
     Needs the role `incident-manager`. The approver cannot be the person who proposed the
-    change (rule `approver_is_not_proposer`).
+    change, the same token `sub` whatever the user name (rule `approver_is_not_proposer`);
+    a token without `sub` is refused by that rule.
 
     Args:
         change_id: The change, for example `CHG-0001`.
@@ -28,5 +29,5 @@ async def approve_change(change_id: str) -> ToolResult:
     return await run_tool(
         "approve_change",
         lambda service, caller: service.approve_change(caller, change_id),
-        target=change_id,
+        change_id=change_id,
     )

@@ -28,5 +28,5 @@ async def reject_change(change_id: str, reason: str) -> ToolResult:
     return await run_tool(
         "reject_change",
         lambda service, caller: service.reject_change(caller, change_id, reason),
-        target=change_id,
+        change_id=change_id,
     )

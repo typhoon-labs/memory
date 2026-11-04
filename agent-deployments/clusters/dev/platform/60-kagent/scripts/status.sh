@@ -21,7 +21,7 @@ k get --raw /api/v1/nodes/agentgateway-demo-control-plane/proxy/stats/summary 2>
 
 echo "== Helm releases"
 helm --kubeconfig "${kubeconfig}" --kube-context "${context}" list -A --no-headers 2>/dev/null |
-  awk '$2 == "ate-system" || $2 == "kagent" { printf "  %-12s %-16s %-10s %s\n", $2, $1, $8, $9 }'
+  awk '$2 == "ate-system" || $2 == "podcertificate-controller-system" || $2 == "kagent" { printf "  %-33s %-20s %-10s %s\n", $2, $1, $8, $9 }'
 
 for namespace in ate-system podcertificate-controller-system kagent; do
   echo "== Pods in ${namespace}"

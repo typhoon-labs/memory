@@ -17,8 +17,8 @@
 #     {"messageId":"<uuid>","role":"ROLE_USER","parts":[{"text":"..."}]}}}
 # The answer is the text of the last artifact of result.task. Earlier
 # artifacts are the agent's tool calls and their results, as data parts.
-# kagent 1.0.0-alpha7 answers A2A 1.0 only: the 0.3 method `message/send` is
-# refused with -32601.
+# kagent answers A2A 1.0 only (1.0.0-alpha17 and rc1): the 0.3 method
+# `message/send` is refused with -32601.
 #
 # From the environment: DIAGNOSIS_AGENT_URL (default: the gateway on this
 # machine) and PLATFORM_TOKEN_CMD, a command that prints an access token for

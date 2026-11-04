@@ -1,0 +1,108 @@
+# See values.yaml.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: agentgateway-postgresql
+  namespace: {{ .Release.Namespace }}
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: {{ .Values.storage }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agentgateway-postgresql
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "agentgateway-postgresql.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "agentgateway-postgresql.labels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "agentgateway-postgresql.labels" . | nindent 8 }}
+    spec:
+      securityContext:
+        fsGroup: 70
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: postgresql
+        image: {{ .Values.image }}
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: POSTGRES_DB
+          value: agentgateway
+        - name: POSTGRES_USER
+          value: agentgateway
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: agentgateway-postgresql
+              key: password
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        ports:
+        - name: postgresql
+          containerPort: 5432
+        readinessProbe:
+          exec:
+            command: [sh, -c, 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"']
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        livenessProbe:
+          exec:
+            command: [sh, -c, 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"']
+          initialDelaySeconds: 20
+          periodSeconds: 10
+        resources:
+          {{- toYaml .Values.resources | nindent 10 }}
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/postgresql/data
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: agentgateway-postgresql
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agentgateway-postgresql
+  namespace: {{ .Release.Namespace }}
+spec:
+  selector:
+    {{- include "agentgateway-postgresql.labels" . | nindent 4 }}
+  ports:
+  - name: postgresql
+    port: 5432
+    targetPort: postgresql
+---
+# Who may open a connection to the database: the gateway's proxy.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: agentgateway-postgresql
+  namespace: {{ .Release.Namespace }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "agentgateway-postgresql.labels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - ports:
+        - protocol: TCP
+          port: 5432
+      from:
+        - podSelector:
+            matchLabels:
+              gateway.networking.k8s.io/gateway-name: agentgateway-proxy

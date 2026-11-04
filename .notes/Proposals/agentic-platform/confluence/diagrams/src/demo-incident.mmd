@@ -1,0 +1,18 @@
+sequenceDiagram
+    autonumber
+    participant AL as Alert
+    participant D as developer
+    participant IM as incident-manager
+    participant PE as platform-engineer
+    participant AG as Agents via Agentgateway
+    participant T as delivery tool
+    AL->>AG: search errors, 09:54:24
+    AG->>AG: diagnosis agent reads logs, metrics, traces, about 20 s
+    AG-->>D: incident card with cause and evidence
+    D->>T: propose rollback, 09:55:03
+    PE->>T: apply before approval, 09:55:18
+    T-->>PE: refused by the service, rule change_is_approved
+    IM->>AG: draft status update
+    IM->>T: approve, 09:55:46
+    PE->>T: apply, 09:56:00
+    T-->>PE: applied and verified, resolved about 8 s later

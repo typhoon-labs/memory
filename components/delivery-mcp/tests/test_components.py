@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 import json
+import logging
 import stat
 from pathlib import Path
 
 import httpx
 import pytest
 
+from delivery import errors as e
 from delivery.applier import ApplyError, HelmApplier
 from delivery.config import ConfigError, load_settings
+from delivery.errors import Refusal
+from delivery.identity import Caller
 from delivery.restarter import KubernetesRestarter, RestartError
 from delivery.service import DeliveryService
 from delivery.store import Store
@@ -43,19 +47,35 @@ def test_the_service_does_not_start_without_identity_bindings():
 DELEGATION = {
     "DELEGATION_ISSUER": "http://chain-sts.chain-sts.svc.cluster.local",
     "DELEGATION_JWKS_URL": "http://chain-sts.chain-sts.svc.cluster.local/jwks",
+    "DELEGATION_AUDIENCE": "http://agentgateway-proxy.agentgateway-system.svc.cluster.local"
+    "/mcp/delivery",
 }
 
 
-def test_chain_sts_is_trusted_only_with_both_of_its_bindings():
+def test_chain_sts_is_trusted_only_with_all_three_of_its_bindings():
     settings = load_settings(IDENTITY)
     assert settings.delegation_issuer is None and settings.delegation_jwks_url is None
+    assert settings.delegation_audiences == ()
     settings = load_settings({**IDENTITY, **DELEGATION})
     assert settings.delegation_issuer == DELEGATION["DELEGATION_ISSUER"]
     assert settings.delegation_jwks_url == DELEGATION["DELEGATION_JWKS_URL"]
-    issuer, jwks_url = DELEGATION
-    for given, absent in ((issuer, jwks_url), (jwks_url, issuer)):
-        with pytest.raises(ConfigError, match=f"{given} is set and {absent} is not"):
-            load_settings({**IDENTITY, given: DELEGATION[given]})
+    assert settings.delegation_audiences == (DELEGATION["DELEGATION_AUDIENCE"],)
+    for given in DELEGATION:
+        for absent in DELEGATION:
+            if absent == given:
+                continue
+            partial = {k: v for k, v in DELEGATION.items() if k != absent}
+            with pytest.raises(ConfigError, match=f"is set and {absent} is not"):
+                load_settings({**IDENTITY, **partial})
+            with pytest.raises(ConfigError, match=f"{given} is set and"):
+                load_settings({**IDENTITY, given: DELEGATION[given]})
+
+
+def test_the_delegation_audience_may_list_several():
+    listed = {**DELEGATION, "DELEGATION_AUDIENCE": " a , agentgateway,a,"}
+    assert load_settings({**IDENTITY, **listed}).delegation_audiences == ("a", "agentgateway")
+    with pytest.raises(ConfigError, match="DELEGATION_AUDIENCE names no audience"):
+        load_settings({**IDENTITY, **DELEGATION, "DELEGATION_AUDIENCE": " , "})
 
 
 def test_chain_sts_is_not_keycloak():
@@ -128,6 +148,20 @@ async def test_helm_applier_runs_the_upgrade_on_the_release(tmp_path):
     # It changes one value on the release, and nothing else.
     assert "--install" not in args and "--force" not in args and "--set" not in args
     assert "sample-app" in result.detail
+    # helm printed no revision.
+    assert (result.release, result.namespace, result.revision) == ("sample-app", "sample-app", None)
+
+
+async def test_helm_applier_reports_the_revision_it_created(tmp_path):
+    out = (
+        'Release "sample-app" has been upgraded. Happy Helming!\n'
+        "NAME: sample-app\nNAMESPACE: sample-app\nSTATUS: deployed\nREVISION: 7\n"
+        "TEST SUITE: None\n"
+    )
+    settings = load_settings({**HELM, "HELM_BIN": str(fake_helm(tmp_path, stdout=out))})
+    result = await HelmApplier(settings).apply("search-service", "2.0.0", "op-1")
+    assert result.revision == 7
+    assert result.detail.endswith(", revision 7")
 
 
 async def test_helm_applier_plain_http_registry(tmp_path):
@@ -308,7 +342,7 @@ async def test_restart_without_a_service_account_token(tmp_path):
 # -- state ------------------------------------------------------------------
 
 
-def test_state_survives_a_restart_and_in_flight_changes_are_not_called_applied(tmp_path):
+def test_state_survives_a_restart_and_in_flight_changes_are_not_called_applied(tmp_path, caplog):
     path = str(tmp_path / "delivery.db")
     store = Store(path)
     incident = store.create_incident(
@@ -335,7 +369,17 @@ def test_state_survives_a_restart_and_in_flight_changes_are_not_called_applied(t
         restarter=None,  # type: ignore[arg-type]
         retained_versions=("2.0.0",),
     )
-    assert service.fail_interrupted() == 1
+    with caplog.at_level(logging.INFO, logger="delivery.audit"):
+        assert service.fail_interrupted() == 1
+    # The service failed it alone: the record names nobody.
+    (line,) = [json.loads(r.getMessage()) for r in caplog.records if r.name == "delivery.audit"]
+    assert (line["audit.event"], line["audit.outcome"], line["change.id"]) == (
+        "change.failed",
+        "failed",
+        change["change_id"],
+    )
+    assert line["operation.id"] == "op-1"
+    assert not [k for k in line if k.startswith(("user.", "session.", "token.", "actor."))]
     after = reopened.get_change(change["change_id"])
     assert after is not None
     assert after["status"] == "failed" and "restarted" in after["detail"]
@@ -413,3 +457,86 @@ def test_a_database_from_before_the_chain_gets_its_columns(tmp_path):
     store.close()
     # Opened again: nothing left to add.
     Store(str(path)).close()
+
+
+def _incident_manager(user: str, sub: str | None) -> Caller:
+    return Caller(user=user, roles=frozenset({"incident-manager"}), team="incident", sub=sub)
+
+
+def test_a_change_from_before_0_2_1_falls_back_to_the_proposers_name(tmp_path):
+    """A file written by 0.2.0 has no *_by_sub: its changes are checked by name."""
+    import sqlite3
+
+    path = tmp_path / "0.2.0.db"
+    db = sqlite3.connect(path)
+    db.executescript(
+        """
+        CREATE TABLE changes (seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT UNIQUE,
+            incident_id TEXT NOT NULL, service TEXT NOT NULL, target_version TEXT NOT NULL,
+            previous_version TEXT, status TEXT NOT NULL, operation_id TEXT NOT NULL UNIQUE,
+            proposed_by TEXT NOT NULL, proposed_via TEXT NOT NULL DEFAULT '[]',
+            proposed_at TEXT NOT NULL, approved_by TEXT, approved_via TEXT, approved_at TEXT,
+            rejected_by TEXT, rejected_via TEXT, rejected_at TEXT, reject_reason TEXT,
+            applied_by TEXT, applied_via TEXT, applied_at TEXT, detail TEXT,
+            history TEXT NOT NULL);
+        INSERT INTO changes (id, incident_id, service, target_version, status, operation_id,
+            proposed_by, proposed_at, history) VALUES ('CHG-0001', 'INC-0001',
+            'search-service', '2.0.0', 'proposed', 'op-1', 'test-two-roles', 't', '[]');
+        """
+    )
+    db.commit()
+    db.close()
+
+    store = Store(str(path))
+    old = store.get_change("CHG-0001")
+    assert old is not None
+    assert [old[f"{step}_by_sub"] for step in ("proposed", "approved", "rejected", "applied")] == [
+        None
+    ] * 4
+    service = DeliveryService(
+        store=store,
+        applier=None,
+        verifier=None,
+        restarter=None,  # type: ignore[arg-type]
+        retained_versions=("2.0.0",),
+    )
+    # Only the name is known, so the name decides, whatever the approver's sub.
+    with pytest.raises(Refusal) as refused:
+        service.approve_change(_incident_manager("test-two-roles", "any-sub"), "CHG-0001")
+    assert refused.value.rule == e.RULE_APPROVER_NOT_PROPOSER
+    assert store.get_change("CHG-0001")["status"] == "proposed"  # type: ignore[index]
+    # Someone else by name may approve it, and the approval keeps their sub.
+    approved = service.approve_change(_incident_manager("incident-manager", "im-sub"), "CHG-0001")
+    assert approved["status"] == "approved"
+    assert (approved["approved_by"], approved["approved_by_sub"]) == ("incident-manager", "im-sub")
+    assert approved["proposed_by_sub"] is None
+    store.close()
+
+
+def test_a_change_stores_its_proposers_sub():
+    """New changes compare sub, not the name stored beside it."""
+    store = Store()
+    incident = store.create_incident(
+        service="search-service", severity="sev2", summary="s", impact="i", opened_by="alert"
+    )
+    change = store.create_change(
+        incident_id=incident["incident_id"],
+        service="search-service",
+        target_version="2.0.0",
+        previous_version=None,
+        operation_id="op-1",
+        proposed_by="old-name",
+        proposed_by_sub="sub-1",
+    )
+    assert change["proposed_by_sub"] == "sub-1"
+    service = DeliveryService(
+        store=store,
+        applier=None,
+        verifier=None,
+        restarter=None,  # type: ignore[arg-type]
+        retained_versions=("2.0.0",),
+    )
+    with pytest.raises(Refusal):
+        service.approve_change(_incident_manager("new-name", "sub-1"), change["change_id"])
+    approved = service.approve_change(_incident_manager("old-name", "sub-2"), change["change_id"])
+    assert (approved["approved_by"], approved["approved_by_sub"]) == ("old-name", "sub-2")

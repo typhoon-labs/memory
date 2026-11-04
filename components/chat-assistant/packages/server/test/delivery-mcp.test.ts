@@ -35,7 +35,7 @@ beforeAll(async () => {
           },
         });
       } else if (rpc.method === 'tools/call') {
-        json(400, { jsonrpc: '2.0', id: rpc.id, error: { code: -32602, message: 'Unknown tool: approve_change' } });
+        json(400, { jsonrpc: '2.0', id: rpc.id, error: { code: -32602, message: 'unknown resource' } });
       } else {
         res.writeHead(202).end();
       }

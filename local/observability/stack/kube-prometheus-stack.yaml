@@ -108,9 +108,19 @@ alertmanager:
 
 # --- Grafana ----------------------------------------------------------------
 grafana:
-  # The login is the chart's default for user `admin`: demo only, and reachable
-  # only from this machine (127.0.0.1:18084). The password is not written in
-  # this repository; `task observability:login` prints it from the cluster.
+  # People sign in with Keycloak (`auth.generic_oauth` below). User `admin` is
+  # still there and must stay: the pre-flight, `task observability:status` and
+  # scripts/grafana-mcp-credential.sh use it, and it is the way in while Keycloak
+  # is down. Its login is the chart's default: demo only, and reachable only from
+  # this machine (127.0.0.1:18084). The password is not written in this
+  # repository; `task observability:login` prints it from the cluster.
+  #
+  # Secret `grafana-oidc` is made by scripts/grafana-secret.sh before each sync.
+  envValueFrom:
+    GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET:
+      secretKeyRef:
+        name: grafana-oidc
+        key: client-secret
   service:
     type: NodePort
     # Mapped to host port 18084 by the kind cluster.
@@ -155,6 +165,28 @@ grafana:
       # The address in a browser on this machine. Links that Grafana and the
       # MCP server's `generate_deeplink` build start with it.
       root_url: http://localhost:18084
+    # Sign-in with Keycloak, client `grafana`. Keycloak answers on two addresses
+    # (docs/contracts.md): the browser's, and its Service, the one a pod can
+    # reach. So each endpoint is named, and no discovery is involved.
+    #
+    # `/login?disableAutoLogin=true` shows the form for user `admin`.
+    auth.generic_oauth:
+      enabled: true
+      name: Keycloak
+      client_id: grafana
+      scopes: openid profile email
+      auth_url: http://localhost:18081/realms/demo/protocol/openid-connect/auth
+      token_url: http://keycloak.keycloak.svc.cluster.local:8080/realms/demo/protocol/openid-connect/token
+      api_url: http://keycloak.keycloak.svc.cluster.local:8080/realms/demo/protocol/openid-connect/userinfo
+      # The client requires it (local/identity/keycloak/files/demo-realm.json).
+      use_pkce: true
+      auto_login: true
+      # Without this, signing out comes straight back in: Keycloak's session is
+      # still there, and auto_login uses it.
+      signout_redirect_url: http://localhost:18081/realms/demo/protocol/openid-connect/logout?client_id=grafana&post_logout_redirect_uri=http%3A%2F%2Flocalhost%3A18084%2Flogin
+      login_attribute_path: preferred_username
+      # The roles are the top-level `roles` claim. Set at every sign-in.
+      role_attribute_path: contains(roles[*], 'platform-engineer') && 'Admin' || 'Viewer'
     analytics:
       reporting_enabled: false
       check_for_updates: false

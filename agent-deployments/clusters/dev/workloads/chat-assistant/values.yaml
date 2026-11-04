@@ -26,8 +26,12 @@ image:
   # the caller's token at chain-sts before every call it makes, and never
   # sends the caller's own (DELEGATION_* below). 0.1.11 also takes a Chat UI
   # sign-in, whose audience is chat-assistant (OIDC_ACCEPTED_AUDIENCES), and
-  # refuses a token that names an acting agent (claim act).
-  tag: 0.1.11
+  # refuses a token that names an acting agent (claim act). 0.1.12 knows
+  # Agentgateway 1.7's "unknown resource" as the gateway's refusal of a tool.
+  # 0.1.13 makes the Chat UI's forced sign-in a setting (UI_FORCE_SIGN_IN).
+  # 0.1.14 asks chain-sts for a token per target (`resource`, the target's
+  # URL below), and its stand-in delivery-mcp keys separation of duties on sub.
+  tag: 0.1.14
 
 port: 8080
 
@@ -44,15 +48,18 @@ env:
   # The audiences a caller's token may carry: the gateway's, as `task token`
   # and the alert's machine client get it, and chat-assistant's own, which
   # Keycloak gives a Chat UI sign-in (client chat-ui) and which no other route
-  # accepts. What goes downstream is still exchanged for OIDC_AUDIENCE. A
+  # accepts. What goes downstream is exchanged at chain-sts, per target. A
   # token with an `act` claim is refused either way.
   OIDC_ACCEPTED_AUDIENCES: agentgateway,chat-assistant
 
   # chain-sts (platform/90-chain-sts): before each call below, the caller's
   # token, the alert hook's too, is exchanged there for one that names
-  # chat-assistant in its `act` claim, for the audience OIDC_AUDIENCE, and
-  # only that one is sent. The actor token is projectedToken below. A refused
-  # or failed exchange stops the call; the caller's own token is never sent.
+  # chat-assistant in its `act` claim, for that call's target alone: its
+  # `resource` is the target's URL below (MODEL_BASE_URL with /v1 for the
+  # model), and no other route accepts it. Only that one is sent, and it is
+  # kept per caller token and target while it is valid. The actor token is
+  # projectedToken below. A refused or failed exchange stops the call; the
+  # caller's own token is never sent.
   # The boundary of `agents` (platform/80-policies) lets the pod reach it.
   DELEGATION_METADATA_URL: http://chain-sts.chain-sts.svc.cluster.local/.well-known/oauth-authorization-server
   DELEGATION_ACTOR_TOKEN_FILE: /var/run/secrets/chain-sts/token
@@ -65,7 +72,8 @@ env:
   # All the time one chat answer may take, tool calls included, with no retry.
   # A model that is down is reported at once; a slow one after this many
   # seconds. It has to cover a question that makes the chat agent ask
-  # diagnosis-agent (11 to 14 seconds) between two model calls. The incident
+  # diagnosis-agent (well under a minute: docs/measurements.md,
+  # "diagnosis-agent") between two model calls. The incident
   # card and its buttons do not use the model.
   MODEL_TIMEOUT_SECONDS: "90"
   # delivery-mcp through the gateway's MCP route (a URL with a path is used as given).
@@ -115,6 +123,13 @@ env:
   # messages natively.
   UI_A2A_PROTOCOL_VERSION: "1.0"
   UI_OIDC_CLIENT_ID: chat-ui
+  # Sign in with prompt=login, so Keycloak shows its form on every sign-in even
+  # when the browser already has a session there. The demo needs it: each tab
+  # signs in as another role. Production turns it off ("false"), so that an
+  # existing session is reused and a user behind the enterprise IdP is not
+  # sent back through the IdP, and perhaps MFA, on every visit
+  # (docs/production-design.md, 2.8).
+  UI_FORCE_SIGN_IN: "true"
   # The gateway owns CORS for its route, so the server sends no CORS headers.
   # Name an origin here only if a browser calls this Service directly from
   # another origin.

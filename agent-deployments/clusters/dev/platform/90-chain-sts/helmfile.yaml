@@ -33,7 +33,7 @@
 # A rotation is `task sts:rotate:new`, `sts:rotate:promote` and
 # `sts:rotate:drop`, with the waits `task sts:rotate:check` counts down: the
 # runbook is README.md here, and why each wait is as long as it is,
-# components/chain-sts/README.md, "Rotating the key".
+# components/chain-sts/docs/key-rotation.md.
 #
 # Apply it:   task sts:install    (or task deploy -- -l name=chain-sts)
 #             `task up` runs task sts:install right after task publish.

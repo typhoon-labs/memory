@@ -1,0 +1,38 @@
+# The database kagent and Agent Substrate share. Neither chart deploys one:
+# only `kagent install` does, and this platform installs with helmfile.
+#
+# Written from files upstream, at the versions in
+# agent-deployments/clusters/dev/platform/60-kagent/helmfile.yaml:
+#
+#   templates/         kagent v1.0.0-rc1,
+#                      go/core/pkg/install/bundled_postgres.yaml
+#   files/*-setup.sql  verbatim: kagent's go/core/pkg/postgressetup/setup.sql
+#                      and Substrate v1.0.0-rc1's pkg/postgressetup/setup.sql.
+#                      Roles, logins, schemas and grants. Replace them when the
+#                      versions move; scripts/postgres-setup.sh runs both.
+#                      All three are the same at v1.0.0-alpha17 and
+#                      v0.6.0-alpha3 (compared on 2026-11-02).
+#
+# Nothing here holds a password. Logins present a client certificate from the
+# signer postgres.podcert.ate.dev, which the `substrate-podcert` release issues
+# to the ServiceAccounts it names, and the superuser cannot log in over the
+# network (pg_hba.conf). So the four connection Secrets are not secret, and
+# they are rendered here.
+#
+# Development use: one replica on a small volume, as upstream.
+
+# The same digest Substrate's chart pinned for its own database.
+image: postgres:18-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15
+
+storage: 500Mi
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# Where Substrate runs: it reads its two connection Secrets there.
+substrateNamespace: ate-system

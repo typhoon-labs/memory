@@ -3,10 +3,10 @@ import { createTestIssuer } from '../src/dev/test-issuer.js';
 import { createStubDownstreams } from '../src/downstream/stub.js';
 import { Refusal, type Downstreams } from '../src/downstream/types.js';
 
-let token: (subject: string) => Promise<string>;
+let token: (subject: string, extra?: Record<string, unknown>) => Promise<string>;
 beforeAll(async () => {
   const issuer = await createTestIssuer({ issuer: 'http://test-issuer.invalid', audience: 'agentgateway' });
-  token = (subject) => issuer.accessToken(subject);
+  token = (subject, extra) => issuer.accessToken(subject, undefined, extra);
 });
 
 async function refusal(run: Promise<unknown>): Promise<Refusal> {
@@ -73,6 +73,35 @@ describe('stub downstreams obey the contracts', () => {
     const approved: any = await d.delivery.callTool(await token('incident-manager'), 'approve_change', { change_id: 'CHG-0001' });
     expect(approved).toMatchObject({ status: 'approved', proposed_by: 'two-hats', approved_by: 'incident-manager', previous_version: '2.1.0' });
     expect(approved.history.map((h: any) => h.status)).toEqual(['proposed', 'approved']);
+    // Each person's sub is kept beside their name, as delivery-mcp keeps it.
+    expect(approved).toMatchObject({ proposed_by_sub: 'two-hats', approved_by_sub: 'incident-manager', rejected_by_sub: null, applied_by_sub: null });
+  });
+
+  test("service rule: the approver is not the proposer keys on the token's sub, not on the name", async () => {
+    // The same person under another name is still the proposer.
+    let d = await seeded();
+    await d.delivery.callTool(await token('two-hats'), 'propose_change', { incident_id: 'INC-0001', target_version: '2.0.0' });
+    const renamed = await token('two-hats', { preferred_username: 'someone-else' });
+    const r = await refusal(d.delivery.callTool(renamed, 'approve_change', { change_id: 'CHG-0001' }));
+    expect([r.layer, r.rule]).toEqual(['service', 'approver_is_not_proposer']);
+
+    // Another person who carries the proposer's name is not.
+    d = await seeded();
+    await d.delivery.callTool(await token('two-hats'), 'propose_change', { incident_id: 'INC-0001', target_version: '2.0.0' });
+    const namesake = await token('incident-manager', { preferred_username: 'two-hats' });
+    const approved: any = await d.delivery.callTool(namesake, 'approve_change', { change_id: 'CHG-0001' });
+    expect(approved).toMatchObject({ status: 'approved', proposed_by: 'two-hats', approved_by: 'two-hats', approved_by_sub: 'incident-manager' });
+  });
+
+  test('service rule: propose and approve refuse a token without sub, which the rule needs', async () => {
+    const d = await seeded();
+    const noSub = await token('developer', { sub: undefined });
+    const r = await refusal(d.delivery.callTool(noSub, 'propose_change', { incident_id: 'INC-0001', target_version: '2.0.0' }));
+    expect([r.layer, r.rule]).toEqual(['service', 'approver_is_not_proposer']);
+    await d.delivery.callTool(await token('developer'), 'propose_change', { incident_id: 'INC-0001', target_version: '2.0.0' });
+    const manager = await token('incident-manager', { sub: undefined });
+    const a = await refusal(d.delivery.callTool(manager, 'approve_change', { change_id: 'CHG-0001' }));
+    expect([a.layer, a.rule]).toEqual(['service', 'approver_is_not_proposer']);
   });
 
   test('service rule: apply needs an approved change, and is idempotent on change_id', async () => {

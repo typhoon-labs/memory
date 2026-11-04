@@ -35,7 +35,7 @@
 # is the signing key. Two keys with one role, keys without a role beside
 # others, or no key while chain-sts runs, stop `values` and with it the sync.
 #
-# THE WAITS (components/chain-sts/README.md, "Rotating the key"; the same as
+# THE WAITS (components/chain-sts/docs/key-rotation.md; the same as
 # `python -m chain_sts.rotate steps` prints), counted from the end of the
 # Deployment's last rollout, which is when every serving pod had the roles:
 #   promote   360 s: the gateway's controller fetches /jwks every 300 s
@@ -154,7 +154,7 @@ ensure() {
   read_keys
   if [ "${total}" -eq 0 ]; then
     if deployment_exists; then
-      fail "chain-sts runs but no key Secret exists in ${namespace}: a new key now would sign tokens no verifier knows. See components/chain-sts/README.md, \"A key that leaked\"."
+      fail "chain-sts runs but no key Secret exists in ${namespace}: a new key now would sign tokens no verifier knows. See agent-deployments/clusters/dev/platform/90-chain-sts/README.md, \"A key Secret deleted\"."
     fi
     pem="$(openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 2>/dev/null)"
     check_pem

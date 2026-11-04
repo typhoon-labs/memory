@@ -1,6 +1,6 @@
 [project]
 name = "chain-sts"
-version = "0.1.0"
+version = "0.2.1"
 description = "Exchanges a user's token for one that names every agent the request passed through (RFC 8693 delegation)"
 requires-python = ">=3.13"
 dependencies = [
@@ -14,6 +14,9 @@ dependencies = [
     "opentelemetry-exporter-otlp>=1.30.0,<2.0",
     "opentelemetry-instrumentation-httpx>=0.51b0",
     "opentelemetry-instrumentation-starlette>=0.51b0",
+    # The handler that sends the audit records to the Collector; the SDK's own
+    # LoggingHandler is deprecated in its favor.
+    "opentelemetry-instrumentation-logging>=0.66b1",
 ]
 
 [dependency-groups]
@@ -22,7 +25,7 @@ dev = [
     "pytest-asyncio>=1.3.0",
     "ruff>=0.15.1",
     # kagent's Python STS client (the one kagent-adk uses), to check the service against it.
-    "agentsts-core==1.0.0a16",
+    "agentsts-core==1.0.0rc1",
 ]
 
 [tool.uv]

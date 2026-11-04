@@ -1,0 +1,12 @@
+flowchart TB
+    subgraph Base["Base application chart: any app, stable"]
+        D[Deployment or Job, Service,<br/>ServiceAccount, HPA, probes]
+    end
+    subgraph Agent["Agent integration chart: agent apps only, evolves"]
+        R[Gateway route and policy,<br/>delegation entry, network rule,<br/>gateway settings]
+    end
+    subgraph Platform["Platform releases: central"]
+        C[CRDs and controllers<br/>Agentgateway, Kyverno, chain-sts]
+    end
+    Agent -- "refers to by name" --> Base
+    Agent -- "requires API versions of" --> Platform

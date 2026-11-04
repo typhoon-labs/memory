@@ -1,0 +1,35 @@
+# What the dev cluster changes in the Substrate profile
+# (agent-platform/profiles/kagent/substrate-values.yaml).
+
+# Traces from Substrate's router and its Go components to the cluster's
+# collector, over gRPC: the router takes a host and port, and the chart trims
+# the scheme. Without this the router records nothing, and the agent's first
+# span in a trace points at a parent no one has.
+#
+# `samplingRatio` stays at the chart's 0.01. It decides only for a request with
+# no trace of its own; one that arrives traced stays traced. Metrics and logs
+# stay where they were: Prometheus scraping and each pod's stdout.
+otel:
+  traces:
+    endpoint: http://otel-collector.telemetry.svc.cluster.local:4317
+
+# Where Substrate's node agent pulls an image named localhost:5002/...: from
+# the local registry, by its name on the kind network, over plain HTTP.
+#
+# The node agent (atelet) pulls the images it mounts into an Actor itself, not
+# through the node's containerd, so the registry mirror that
+# local/registry/registry.sh gives containerd does not apply to it. One such
+# image is diagnosis-agent's skill (localhost:5002/diagnosis-agent-skills),
+# which kagent mounts into the agent's sandbox. Inside the atelet pod
+# localhost is the pod itself; this flag rewrites a localhost or loopback
+# registry to the given one and allows HTTP for it (Substrate's
+# cmd/atelet/main.go, "useful for local development"). Images from any other
+# registry are pulled as before.
+#
+# kind only. On EKS the skill image sits in ECR, a registry like any other:
+# nothing is rewritten, and atelet signs in with the node's credential provider
+# (the chart's atelet.imageCredentialProviderConfigYAML and
+# imageCredentialProviderBinDir, which this cluster has no use for).
+atelet:
+  extraArgs:
+    - --localhost-registry-replacement=agentgateway-demo-registry:5000

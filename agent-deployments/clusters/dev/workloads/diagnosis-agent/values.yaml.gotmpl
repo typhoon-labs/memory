@@ -2,24 +2,34 @@
 # agent-platform/profiles/kagent/agent, merged over the component's own
 # components/diagnosis-agent/config/agent.yaml.
 #
-# A helmfile template only to read the prompt and the runbook from the
-# component's directory; a chart cannot read files outside itself.
+# A helmfile template, to read the prompt from the component's directory (a
+# chart cannot read files outside itself) and to pin the skill image by digest.
 {{- $component := "../../../../../components/diagnosis-agent" }}
 
 prompt: {{ readFile (printf "%s/prompts/system.md" $component) | toJson }}
 
-# Each runbook is a skill directory in the Agent Skills layout
-# (skills/<name>/SKILL.md). Its text is handed to the agent inside the prompt,
-# without the front matter: see "Why not as a kagent skill" at the end of this
-# file. regexReplaceAll takes (pattern, text, replacement), so the file is the
-# second argument and cannot be piped in.
-runbooks:
-  search-service-runbook: {{ regexReplaceAll "(?s)\\A---\\n.*?\\n---\\n" (readFile (printf "%s/skills/search-service-runbook/SKILL.md" $component)) "" | toJson }}
+# The image of the component's skills, the runbooks among them
+# (components/diagnosis-agent/Dockerfile; `task publish` pushes it). kagent
+# takes an image pinned by digest only, so the tag is looked up in the local
+# registry each time this file is rendered: a rebuilt image is a new digest, so
+# a new revision of the agent. Without the image in the registry the render
+# fails, and nothing is applied. The version is the component's
+# (DIAGNOSIS_AGENT_SKILLS_VERSION in its Taskfile).
+#
+# Substrate's node agent pulls it, from agentgateway-demo-registry:5000 and
+# not localhost:5002: platform/60-kagent/substrate-values.yaml says why.
+# Which skill is in which directory of the image is the component's
+# (config/agent.yaml).
+skills:
+  search-service-runbook:
+    source:
+      oci: localhost:5002/diagnosis-agent-skills@{{ exec "../../../../../local/registry/digest.sh" (list "diagnosis-agent-skills:0.1.0") | trim }}
 
 model:
   # Not the model route everyone else uses (/v1, a user's token), but this
   # workload's own door to the same backend, opened with the key in the Secret
-  # below. Both are created by release `diagnosis-agent-model-access`.
+  # below. Both are created by release `diagnosis-agent-model-access`. How the
+  # key works: the header of agent-platform/profiles/kagent/model-access/values.yaml.
   baseUrl: http://agentgateway-proxy.agentgateway-system.svc.cluster.local/workloads/diagnosis-agent/v1
   credential:
     secretName: diagnosis-agent-gateway-key
@@ -38,8 +48,10 @@ tools:
   # this work, and each was a way for it to fail:
   #
   #   1. The route accepts this agent. /mcp/observability asks for a Keycloak
-  #      token, and the agent has none to send: kagent 1.x cannot forward its
-  #      caller's token to a tool, only a fixed header from a Secret. So the
+  #      token, and the agent has none to send: it sends a tool a fixed header
+  #      from a Secret. (kagent can forward the caller's token with
+  #      `tokenPassthrough` since alpha17, and rc1 adds a token its egress
+  #      gateway mints per Actor, `actorJwt`; neither is used here.) So the
   #      agent uses a route of its own, opened with its gateway key (release
   #      observability-mcp-workload-access, which names this workload).
   #   2. The address uses the gateway's OTHER DNS name: ending in .svc, not
@@ -61,19 +73,15 @@ tools:
       secretKey: AUTHORIZATION_HEADER
 
 
-# Why not as a kagent skill (`spec.skills`), checked on kagent 1.0.0-alpha7
-# with Agent Substrate 0.3.0-alpha3:
-#
-#   - A skill is fetched inside the sandbox by the Actor that builds the
-#     agent's golden snapshot, and that Actor has no egress policy at all. A
-#     git source failed there with "Could not resolve host: github.com", the
-#     Agent reported GoldenActorCrashed, and never became ready.
-#   - An OCI source must be an HTTPS registry with a certificate the runtime
-#     trusts (kagent's documentation; v1alpha3 has no switch for it). This
-#     cluster's registry speaks plain HTTP.
-#   - A skill also gives the agent seven more tools, among them `bash`,
-#     `write_file` and `edit_file` inside its sandbox. A read-only agent is
-#     better off without them.
-#
-# The runbook keeps the skill layout so that it can be published as one when
-# those change.
+# Why an image and not git, the other source kagent takes: an Actor fetches a
+# git source itself, through the egress gateway, and release
+# `substrate-egress-boundary` stops it at the edge of the cluster, as it should.
+# An image is pulled by Substrate's node agent, outside the sandbox, from the
+# same registry as every other image here, and the agent's egress list does
+# not grow. On kagent 1.0.0-alpha7 a git source failed ("Could not resolve
+# host: github.com") and an OCI source had to be an HTTPS registry; rc1 mounts
+# the image through Substrate's image volumes, which accept this plain HTTP
+# registry with the node agent's flag. A skill no longer brings the
+# built-in tools: bash, list_files, grep_file and ask_user stay off, and the
+# skill adds list_skills, load_skill and load_skill_resource, which only read
+# (60-kagent/README.md).

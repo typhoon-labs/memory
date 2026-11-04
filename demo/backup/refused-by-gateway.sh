@@ -24,9 +24,13 @@ else
   unexpected "developer's tools/list is not as expected: ${answer}"
 fi
 
+traced
 answer="$(mcp "${url}" developer call apply_change '{"change_id": "CHG-0000"}')"
-if [ "$(printf '%s' "${answer}" | jq -r '.http')" = "400" ] && [ "$(printf '%s' "${answer}" | jq -r '.error.message')" = "Unknown tool: apply_change" ]; then
-  line refused "developer: tools/call apply_change" "HTTP 400 from the gateway: $(printf '%s' "${answer}" | jq -r '.error.message')"
+logged="$(logged_reason)"
+untraced
+if [ "$(printf '%s' "${answer}" | jq -r '.http')" = "400" ] && [ "$(printf '%s' "${answer}" | jq -r '.error.message')" = "unknown resource" ] &&
+  [ "${logged}" = "mcp: authorization denied for tool: apply_change" ]; then
+  line refused "developer: tools/call apply_change" "HTTP 400 from the gateway: $(printf '%s' "${answer}" | jq -r '.error.message'); it logged: ${logged}"
 else
   unexpected "developer's call to apply_change was not refused by the gateway: ${answer}"
 fi

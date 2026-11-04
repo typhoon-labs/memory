@@ -51,7 +51,11 @@ token_ttl_seconds: 300
 max_chain: 4
 
 # The audiences this service issues for. A request may name only these (as
-# `audience` or `resource`); without one, the first is used.
+# `audience` or `resource`). With one, a request that names none gets it.
+# With several, one per target (as the dev cluster lists the gateway routes
+# that take its tokens, each by its URL), a request must name exactly one,
+# and the token is for that target alone: the agent it is sent to cannot
+# present it anywhere else.
 audiences:
   - agentgateway
 

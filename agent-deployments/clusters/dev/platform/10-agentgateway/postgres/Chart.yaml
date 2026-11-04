@@ -1,0 +1,5 @@
+apiVersion: v2
+name: agentgateway-postgresql
+description: The PostgreSQL database behind the Analytics and Logs pages of the Agentgateway admin UI
+type: application
+version: 0.1.0

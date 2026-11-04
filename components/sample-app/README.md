@@ -1,19 +1,21 @@
 # Sample App
 
+> **Owner:** sample-app maintainers · **Type:** reference · **Checked:** 2026-11-03 against search-service 2.0.0 (deployed), web 1.2.1, registration-service 1.0.0
+
 The application the incident happens to: three small Node services in one Helm
 release.
 
-| Service | Serves (container port 8080) | Local dev port | Owned by team |
-|---|---|---|---|
-| `web` | Home, Search, Register pages; proxies `/api/*` | 18182 | `web` |
-| `search-service` | `GET /search?q=` | 18183 | `search` |
-| `registration-service` | `POST /register` | 18184 | `registration` |
+| | |
+|---|---|
+| Built with | Node; the pages are a React app ([Pages](#pages)) |
+| Serves | `web`, `search-service` and `registration-service`, each on container port 8080. What each serves, and its local dev port: [`docs/contracts.md`](../../docs/contracts.md#components) |
+| Gateway route | None. From the host, `web` is at `http://localhost:18082` ([`docs/cluster.md`](../../docs/cluster.md)) |
+| Model | None |
+| In the dev cluster | `search-service` 2.0.0, `web` 1.2.1, `registration-service` 1.0.0. Helm release `sample-app` in namespace `sample-app`, chart in `components/sample-app/chart/` |
+| Values | [`values.yaml`](../../agent-deployments/clusters/dev/workloads/sample-app/values.yaml), over the chart's own [`chart/values.yaml`](chart/values.yaml) |
 
-## As built
+## What it serves and returns
 
-- Helm release `sample-app` in namespace `sample-app`, chart in
-  `components/sample-app/chart/`.
-- The selection the rollback changes is the value `searchService.image.tag`.
 - `search-service` exists as `2.0.0` (healthy) and `2.1.0` (every search
   fails), built from one source. `search-service` is owned by team `search`,
   `registration-service` by team `registration`, `web` by team `web`.
@@ -30,7 +32,7 @@ release.
   expose its HTTP receiver.
 - The traffic generator (`local/traffic/`) runs in namespace `sample-app`.
 
-## Pages
+### Pages
 
 The pages are one React app in `web/ui`: Vite, TypeScript, Tailwind CSS and
 shadcn/ui components (`web/ui/src/components/ui`, added with the shadcn CLI),
@@ -49,7 +51,16 @@ dependencies of its own; the image builds the pages in a first stage.
 `web` reads `web/ui/dist` when it starts: after a change to the pages, run
 `task sample-app:ui` and restart `web`.
 
-## Tasks
+## Settings
+
+All optional: `PORT` (8080), `APP_VERSION` (the image sets the version
+`Taskfile.yml` built it as), `DEPLOYMENT_ENVIRONMENT` (`dev`),
+`OTEL_EXPORTER_OTLP_ENDPOINT` (no traces without it) and `SEED_FILE`
+(`seed/catalog.json`, for `web` and `search-service`). `web` reaches the other
+two at `SEARCH_SERVICE_URL` and `REGISTRATION_SERVICE_URL`, by default
+`http://localhost:18183` and `http://localhost:18184`.
+
+## Run and test
 
 | Task | Does |
 |---|---|
@@ -66,5 +77,19 @@ Swap the search version locally, as the incident and the rollback do in the
 cluster: `task sample-app:run-local SAMPLE_APP_SEARCH_VERSION=2.1.0`, then
 `task sample-app:run-local`.
 
-What the dev cluster runs is
-`agent-deployments/clusters/dev/workloads/sample-app/values.yaml`.
+## Release
+
+The selection the rollback changes is the value `searchService.image.tag`,
+which the dev cluster sets in its
+[`values.yaml`](../../agent-deployments/clusters/dev/workloads/sample-app/values.yaml).
+The versions the images are built as are `SAMPLE_APP_WEB_VERSION`,
+`SAMPLE_APP_REGISTRATION_VERSION` and `SAMPLE_APP_SEARCH_VERSIONS` in
+`Taskfile.yml`; the tags the chart deploys are in
+[`chart/values.yaml`](chart/values.yaml).
+
+To release: `task sample-app:build`, `task sample-app:push` and
+`task sample-app:chart:push`, then `task deploy -- -l name=sample-app`
+([`docs/cluster.md`](../../docs/cluster.md#tasks)). delivery-mcp upgrades the
+release from the chart in the registry, so push the chart after every change
+to it
+([`helmfile.yaml`](../../agent-deployments/clusters/dev/workloads/sample-app/helmfile.yaml)).

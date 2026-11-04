@@ -9,7 +9,7 @@ import time
 import httpx
 import jwt
 import pytest
-from conftest import AUDIENCE, assert_refused
+from conftest import AUDIENCE, RESOURCE, assert_refused
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastmcp import Client
 from fastmcp.client.transports import StreamableHttpTransport
@@ -184,6 +184,34 @@ def test_caller_from_claims_types():
     assert machine is not None and machine.user == "alert-automation"
 
 
+def test_the_audit_ids_are_read_from_the_claims():
+    caller = caller_from_claims(
+        {
+            "preferred_username": "incident-manager",
+            "sub": " u-1 ",
+            "iss": "http://localhost:18081/realms/demo",
+            "azp": "chat-ui",
+            "sid": "s-1",
+            "jti": "j-1",
+        }
+    )
+    assert caller is not None
+    assert (caller.sub, caller.issuer, caller.client, caller.sid, caller.jti) == (
+        "u-1",
+        "http://localhost:18081/realms/demo",
+        "chat-ui",
+        "s-1",
+        "j-1",
+    )
+    # A claim of the wrong type is absent. The client is azp only: in a
+    # chain-sts token client_id names the agent, and there is no azp.
+    odd = caller_from_claims(
+        {"preferred_username": "dev", "sid": 7, "jti": "", "client_id": "remediation-agent"}
+    )
+    assert odd is not None
+    assert (odd.sub, odd.issuer, odd.client, odd.sid, odd.jti) == (None, None, None, None, None)
+
+
 def test_the_chain_is_read_from_act_newest_first():
     act = {
         "sub": "system:serviceaccount:agents:remediation-agent",
@@ -316,6 +344,8 @@ async def test_every_record_names_the_chain_next_to_the_user(call, chain, world)
 async def test_the_audit_line_names_the_chain(call, chain, incident, caplog):
     incident_id = await incident()
     caplog.set_level(logging.INFO, logger="delivery.audit")
+    caplog.clear()
+    # A read that succeeds writes no audit line: the gateway records it.
     await call(
         "get_incident",
         token=chain.delegate("platform-engineer", "chat-assistant", "remediation-agent"),
@@ -323,15 +353,31 @@ async def test_the_audit_line_names_the_chain(call, chain, incident, caplog):
     )
     await call(
         "apply_change",
-        token=chain.delegate("platform-engineer", "chat-assistant"),
+        token=chain.delegate("platform-engineer", "chat-assistant", "remediation-agent"),
         change_id="CHG-9999",
     )
-    await call("get_incident", "developer", incident_id=incident_id)
+    await call("propose_change", "developer", incident_id=incident_id, target_version="2.0.0")
     lines = [json.loads(r.getMessage()) for r in caplog.records if r.name == "delivery.audit"]
-    assert [(line["tool"], line["user"], line["chain"], line["outcome"]) for line in lines] == [
-        ("get_incident", "platform-engineer", ["remediation-agent", "chat-assistant"], "allowed"),
-        ("apply_change", "platform-engineer", ["chat-assistant"], "not_found"),
-        ("get_incident", "developer", [], "allowed"),
+    assert [
+        (
+            line["audit.event"],
+            line.get("gen_ai.tool.name"),
+            line["user.id"],
+            line.get("actor.chain"),
+            line["audit.outcome"],
+        )
+        for line in lines
+    ] == [
+        (
+            "tool.call",
+            "apply_change",
+            "platform-engineer",
+            "remediation-agent,chat-assistant",
+            "refused",
+        ),
+        # The user's own token: no actor.chain.
+        ("change.proposed", None, "developer", None, "succeeded"),
+        ("tool.call", "propose_change", "developer", None, "allowed"),
     ]
 
 
@@ -394,6 +440,63 @@ def test_a_token_signed_by_the_other_issuers_key_is_401(server_url, issuer, chai
 )
 def test_a_bearer_that_is_not_a_jwt_is_401(server_url, world, token):
     assert post_mcp(server_url, token).status_code == 401
+
+
+# -- each issuer's own audience ------------------------------------------------
+#
+# Keycloak's tokens are for the gateway (OIDC_AUDIENCE). chain-sts's are each
+# for one target, and here only those for this service's own route count
+# (DELEGATION_AUDIENCE): a token an agent was given for another route, or one
+# for the gateway as a whole as chain-sts issued before, is refused.
+
+GATEWAY = "http://agentgateway-proxy.agentgateway-system.svc.cluster.local"
+
+
+def test_a_chain_token_for_this_route_is_accepted(server_url, chain, world):
+    token = chain.delegate("platform-engineer")
+    assert jwt.decode(token, options={"verify_signature": False})["aud"] == RESOURCE
+    assert post_mcp(server_url, token).status_code == 200
+
+
+@pytest.mark.parametrize(
+    "aud",
+    [
+        pytest.param(f"{GATEWAY}/a2a/remediation-agent", id="another route's"),
+        pytest.param(f"{GATEWAY}/v1", id="the model route's"),
+        pytest.param(AUDIENCE, id="the gateway's, as chain-sts issued before"),
+        pytest.param([f"{GATEWAY}/a2a/remediation-agent", AUDIENCE], id="several, none this one"),
+    ],
+)
+def test_a_chain_token_for_another_target_is_401(server_url, chain, world, aud):
+    assert post_mcp(server_url, chain.delegate("platform-engineer", aud=aud)).status_code == 401
+
+
+def test_a_keycloak_token_needs_the_gateways_audience_not_this_routes(server_url, issuer, world):
+    assert post_mcp(server_url, issuer.sign(claims(issuer, aud=RESOURCE))).status_code == 401
+    assert post_mcp(server_url, issuer.sign(claims(issuer))).status_code == 200
+
+
+async def test_during_the_rollout_either_audience_is_taken(issuer, chain):
+    # The dev cluster's values while agents are being updated: this route's
+    # target and the one audience every chain token carried before.
+    verifier = build_verifier(
+        load_settings(
+            {
+                "OIDC_ISSUER": issuer.issuer,
+                "OIDC_JWKS_URL": issuer.jwks_url,
+                "OIDC_AUDIENCE": AUDIENCE,
+                "DELEGATION_ISSUER": chain.issuer,
+                "DELEGATION_JWKS_URL": chain.jwks_url,
+                "DELEGATION_AUDIENCE": f"{RESOURCE}, {AUDIENCE}",
+            }
+        )
+    )
+    for aud in (RESOURCE, AUDIENCE):
+        assert await verifier.verify_token(chain.delegate("platform-engineer", aud=aud)), aud
+    other = chain.delegate("platform-engineer", aud=f"{GATEWAY}/a2a/comms-agent")
+    assert await verifier.verify_token(other) is None
+    # Keycloak's tokens are not affected: still the gateway's audience alone.
+    assert await verifier.verify_token(issuer.sign(claims(issuer, aud=RESOURCE))) is None
 
 
 async def test_without_the_delegation_bindings_only_keycloak_is_trusted(issuer, chain):

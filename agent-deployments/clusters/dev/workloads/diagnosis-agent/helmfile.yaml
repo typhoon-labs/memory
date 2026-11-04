@@ -10,7 +10,7 @@
 #                                                        (../../domains/operations/diagnosis-agent.yaml)
 #   diagnosis-agent                kagent                the agent itself, and its A2A route
 #
-# The agent is defined in components/diagnosis-agent/ (prompt, runbook, tool
+# The agent is defined in components/diagnosis-agent/ (prompt, skills, tool
 # list); this directory says where things are in this cluster.
 #
 # Callers:   DIAGNOSIS_AGENT_URL=http://agentgateway-proxy.agentgateway-system.svc.cluster.local/a2a/diagnosis-agent
@@ -37,7 +37,7 @@ releases:
   - name: diagnosis-agent-tools
     namespace: kagent
     chart: oci://ghcr.io/kagent-dev/tools/helm/kagent-tools
-    # The version the kagent 1.0.0-alpha7 chart itself pins.
+    # The version the kagent 1.0.0-rc1 chart itself pins.
     version: 0.3.0
     values:
       - tools-values.yaml
@@ -78,5 +78,6 @@ releases:
     values:
       # What the agent is, from its owners.
       - ../../../../../components/diagnosis-agent/config/agent.yaml
-      # Where things are in this cluster, and the prompt and runbook files.
+      # Where things are in this cluster: the prompt file, and the skill image
+      # by digest.
       - values.yaml.gotmpl

@@ -1,0 +1,6 @@
+flowchart LR
+    S[Harnesses, gateway,<br/>agents, tools] --> C[OTel collector<br/>redact, route]
+    C -- "sampled, no content" --> O[(Dynatrace<br/>operations)]
+    C -- "whole agent traces" --> L[(Langfuse<br/>quality, evals, prompts)]
+    C -- "every action, never sampled" --> A[(Audit<br/>S3 Object Lock, SIEM)]
+    C -- "every model call, never sampled" --> U[(Usage ledger<br/>reconciled with AWS bill)]

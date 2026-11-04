@@ -1,6 +1,6 @@
 # diagnosis-agent, as its owners define it: what it is for, which model it
-# needs and which tools it uses. No code: kagent 1.x runs it from this file,
-# prompts/system.md and the runbooks under skills/.
+# needs, which skills it has and which tools it uses. No code: kagent 1.x runs
+# it from this file, prompts/system.md and the runbooks under skills/.
 #
 # These are values for the chart agent-platform/profiles/kagent/agent. Where
 # things are in a cluster (the model route, the tool servers' addresses, the
@@ -18,6 +18,17 @@ model:
   # MODEL_ID of the contracts: diagnosis is the one place where the stronger
   # model earns its cost. The gateway decides whether it is approved.
   id: claude-sonnet-5-5
+
+# The runbooks, as Agent Skills: one directory per service under skills/,
+# built into one image (`task diagnosis-agent:build`, run by `task publish`).
+# The model sees each one's name and description in its prompt and loads the
+# one it needs (load_skill), so a runbook's text costs tokens only in a turn
+# about its service. The cluster gives the image, pinned by digest.
+skills:
+  search-service-runbook:
+    source:
+      # The skill's directory in the image.
+      path: search-service-runbook
 
 tools:
   # kagent's own tool server (kagent-tools 0.3.0), started with --read-only and
@@ -56,7 +67,7 @@ tools:
   # for what the runbook already states. Names as the server reports them:
   #   kubectl get remotemcpserver diagnosis-agent-observability -n kagent \
   #     -o jsonpath='{range .status.discoveredTools[*]}{.name}{"\n"}{end}'
-  # kagent does not check a name against the server; a misspelt one is
+  # kagent does not check a name against the server; a misspelled one is
   # silently never offered.
   observability:
     description: Read-only queries of the Sample App's metrics (Prometheus) and traces (Tempo), and of the gateway's access log (Loki).

@@ -5,8 +5,9 @@
  *
  * The model is reached through MODEL_BASE_URL (the gateway's model route; an
  * Anthropic Messages API) with the caller's bearer token, or with delegation
- * the token chain-sts issued for the caller, so the gateway attributes and
- * authorizes the model call per user. No provider key exists in this process.
+ * the token chain-sts issued for the caller and the model route's resource
+ * (MODEL_BASE_URL/v1), so the gateway attributes and authorizes the model call
+ * per user. No provider key exists in this process.
  *
  * Request parameters are left at their defaults on purpose: the current
  * Sonnet rejects non-default sampling values, a forced tool choice and
@@ -19,7 +20,7 @@ import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import type { Identity } from '../auth.js';
 import type { Config } from '../config.js';
-import type { DownstreamToken } from '../downstream/delegation.js';
+import { resourcesOf, type DownstreamToken } from '../downstream/delegation.js';
 import { getIncident, listIncidents } from '../downstream/index.js';
 import { Refusal, type Downstreams } from '../downstream/types.js';
 
@@ -87,6 +88,7 @@ export interface Chat {
 /** `tokenFor`: what the model call carries for the caller (delegation); without it, the caller's own token. */
 export function createChat(config: Config, downstreams: Downstreams, tokenFor?: DownstreamToken): Chat {
   const token = (rc: RequestContext<ChatRequestContext>) => rc.get('identity').token;
+  const modelResource = resourcesOf(config).model;
 
   const agent = new Agent<'chat-assistant', Record<string, ReturnType<typeof createTool>>, undefined, ChatRequestContext>({
     id: 'chat-assistant',
@@ -98,7 +100,7 @@ export function createChat(config: Config, downstreams: Downstreams, tokenFor?: 
         createAnthropic({
           baseURL: `${config.model.baseUrl}/v1`,
           // Sent as `Authorization: Bearer <token>`.
-          authToken: tokenFor ? await tokenFor(token(requestContext), config.model.timeoutMs) : token(requestContext),
+          authToken: tokenFor ? await tokenFor(token(requestContext), modelResource, config.model.timeoutMs) : token(requestContext),
         })(config.model.id),
       ),
     tools: {

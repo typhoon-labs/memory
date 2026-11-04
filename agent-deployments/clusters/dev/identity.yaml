@@ -21,14 +21,29 @@ identity:
 # acting for a user. Each carries the user's `sub`, preferred_username, roles
 # and team, and a nested `act` naming every agent the request passed through,
 # so a route's rules on roles hold for it as for the user's own token, and
-# the route's `actors` say which agent may present it.
-# The component bindings are DELEGATION_ISSUER and DELEGATION_JWKS_URL; the
-# audience is the same as above, OIDC_AUDIENCE.
+# the route's `actors` say which agent may present it. Each is for one
+# target: its `aud` is one of `resources` below, and only that target's
+# route accepts it.
+# The component bindings are DELEGATION_ISSUER, DELEGATION_JWKS_URL and
+# DELEGATION_AUDIENCE, the service's own entry in `resources`.
 delegation:
   # The `iss` claim: chain-sts's address, which is also the issuer it signs as.
   issuer: http://chain-sts.chain-sts.svc.cluster.local
-  # The audience chain-sts issues for (its policy.yaml): the gateway.
-  audience: agentgateway
+  # Each target that takes chain-sts's tokens, with its resource identifier
+  # (RFC 8707): the address an agent calls it at through the gateway, which
+  # the agent names as `resource` at chain-sts and gets back as the token's
+  # `aud`. A route names its entry as `resource` (chart route-auth), and
+  # accepts a chain-sts token only for that one, so an agent cannot present
+  # a token it was called with anywhere else. The model route's paths all
+  # start /v1 (/v1/messages, /v1/chat/completions, /v1/models). chain-sts
+  # issues for these and no others: `audiences` in its policy.yaml, which its
+  # chart checks against this list.
+  resources:
+    delivery-mcp: http://agentgateway-proxy.agentgateway-system.svc.cluster.local/mcp/delivery
+    remediation-agent: http://agentgateway-proxy.agentgateway-system.svc.cluster.local/a2a/remediation-agent
+    comms-agent: http://agentgateway-proxy.agentgateway-system.svc.cluster.local/a2a/comms-agent
+    diagnosis-agent: http://agentgateway-proxy.agentgateway-system.svc.cluster.local/a2a/diagnosis-agent
+    model: http://agentgateway-proxy.agentgateway-system.svc.cluster.local/v1
   # Its signing keys through its Service. Its NetworkPolicy lets in namespace
   # agentgateway-system, whose controller fetches the keys for the gateway,
   # and namespaces `agents` and `tools`, whose services fetch them too.

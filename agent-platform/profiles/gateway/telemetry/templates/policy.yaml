@@ -73,7 +73,30 @@ spec:
         add:
           - name: user.id
             expression: jwt.preferred_username
+          # The same value as the gateway's own jwt.sub, under the name the
+          # other audit sources use.
+          - name: user.sub
+            expression: jwt.sub
+          - name: user.roles
+            expression: jwt.roles
+          - name: user.team
+            expression: jwt.team
+          - name: user.issuer
+            expression: jwt.iss
+          - name: user.client
+            expression: jwt.azp
+          # The sign-in session, and the token itself: they join a request to
+          # the identity provider's sign-in and to the exchange that issued the
+          # token (chain-sts writes the same jti).
+          - name: session.id
+            expression: jwt.sid
+          - name: token.jti
+            expression: jwt.jti
           {{- include "telemetry.actorAttributes" . | nindent 10 }}
+          # What a workload's model route recorded of the tools the model was
+          # offered (chart profiles/kagent/model-access). Left out everywhere else.
+          - name: gen_ai.request.tools
+            expression: metadata.offeredTools
       {{- end }}
       otlp:
         backendRef:

@@ -94,6 +94,15 @@ from_outside_pod() {
 # chain-sts's token endpoint as a pod in `agents` reaches it.
 sts_url="${STS_URL:-http://chain-sts.chain-sts.svc.cluster.local}"
 
+# The targets chain-sts issues for, one per token: each gateway route that
+# takes its tokens, by the address a pod calls it at, which is the token's
+# `aud` (`delegation.resources` in the cluster's identity.yaml). A route
+# accepts a chain-sts token for itself alone. route_of <agent> is the route
+# of an agent that is called through the gateway.
+target_delivery="${gateway_in_cluster}/mcp/delivery"
+target_model="${gateway_in_cluster}/v1"
+route_of() { printf '%s/a2a/%s' "${gateway_in_cluster}" "$1"; }
+
 # actor_token <namespace> <service account> [kubectl create token flags]: a
 # service-account token, valid 10 minutes, as an agent proves who it is.
 # Name the audience in the flags: `--audience chain-sts` is the one chain-sts
@@ -103,11 +112,13 @@ actor_token() {
   k --namespace "${actor_namespace}" create token "${actor_account}" --duration 10m "$@"
 }
 
-# exchange <subject token> <actor token, or empty for none> [audience]: one
+# exchange <subject token> <actor token, or empty for none> [target]: one
 # RFC 8693 exchange at chain-sts, sent from inside the probe workload, which
-# may reach it. Prints {"connected", "status", "body": the answer's JSON, "error"};
-# the issued token is in .body.access_token, so print the answer only through
-# `shown` below. STS_URL, when set, sends it to another instance.
+# may reach it, for one target, sent as `resource` (RFC 8707): delivery-mcp's
+# route when none is given, and none at all when it is given empty. Prints
+# {"connected", "status", "body": the answer's JSON, "error"}; the issued
+# token is in .body.access_token, so print the answer only through `shown`
+# below. STS_URL, when set, sends it to another instance.
 exchange() {
   {
     printf '{"grant_type":"urn:ietf:params:oauth:grant-type:token-exchange"'
@@ -115,7 +126,9 @@ exchange() {
     if [ -n "$2" ]; then
       printf ',"actor_token":"%s","actor_token_type":"urn:ietf:params:oauth:token-type:jwt"' "$2"
     fi
-    printf ',"audience":"%s"}' "${3:-agentgateway}"
+    exchange_target="${3-${target_delivery}}"
+    if [ -n "${exchange_target}" ]; then printf ',"resource":"%s"' "${exchange_target}"; fi
+    printf '}'
   } | in_pod form "${sts_url}/token"
 }
 
@@ -137,18 +150,24 @@ reason() { printf '%s' "$1" | jq -r '.body.error_description // .error // empty'
 claims() {
   printf '%s' "$1" | cut -d. -f2 | tr '_-' '/+' | awk '{ while (length($0) % 4) $0 = $0 "="; print }' | base64 -d 2>/dev/null
 }
+# target_of <token>: its `aud`, the route it is for, by its path ("/mcp/delivery").
+target_of() { claims "$1" | jq -r '.aud | if type == "array" then join(",") else . end' | sed "s#^${gateway_in_cluster}##"; }
 # chain <token>: the agents in its `act`, newest first, as "a, b"; empty without `act`.
 chain() { claims "$1" | jq -r '[.act | recurse(.act; . != null) | select(. != null) | .client_id] | join(", ")' 2>/dev/null; }
 
-# exchange_for <subject token> <agent> [<agent> ...]: the subject exchanged by
-# each agent in turn, each with a fresh actor token of its own service account
-# in namespace agents; prints the last issued token, for a variable. Fails,
-# printing nothing, at the first refusal.
+# exchange_for <subject token> <target> <agent> [<agent> ...]: the subject
+# exchanged by each agent in turn, each with a fresh actor token of its own
+# service account in namespace agents, as the agents do it: each agent but the
+# last asks for the next one's route, and the last for <target>. Prints the
+# last issued token, for a variable. Fails, printing nothing, at the first
+# refusal.
 exchange_for() {
-  held="$1"; shift
-  for agent in "$@"; do
+  held="$1"; final_target="$2"; shift 2
+  while [ "$#" -gt 0 ]; do
+    agent="$1"; shift
+    if [ "$#" -gt 0 ]; then hop_target="$(route_of "$1")"; else hop_target="${final_target}"; fi
     actor="$(actor_token agents "${agent}" --audience chain-sts)" || return 1
-    held="$(issued "$(exchange "${held}" "${actor}")")"
+    held="$(issued "$(exchange "${held}" "${actor}" "${hop_target}")")"
     [ -n "${held}" ] || return 1
   done
   printf '%s\n' "${held}"
@@ -161,11 +180,42 @@ gw() {
   gw_out="$(mktemp)"
   if [ -n "${4:-}" ]; then set -- "$1" "$2" "$3" --data "$4" -H 'content-type: application/json'; fi
   gw_method="$1"; gw_path="$2"; gw_token="$3"; shift 3
+  if [ -n "${TRACEPARENT:-}" ]; then set -- "$@" -H "traceparent: ${TRACEPARENT}"; fi
   gw_status="$(printf 'Authorization: Bearer %s\n' "${gw_token}" |
     curl --silent --max-time 30 --output "${gw_out}" --write-out '%{http_code}' -X "${gw_method}" \
       -H @- -H 'accept: application/json, text/event-stream' "$@" "${gateway_url}${gw_path}")"
   printf '%s %s\n' "${gw_status}" "$(head -c 160 "${gw_out}" | tr '\n' ' ')"
   rm -f "${gw_out}"
+}
+
+# Why the gateway refused. From Agentgateway 1.7 the body of a refusal is
+# generic (`authentication failed`, `unknown resource`), and the reason is in
+# the proxy's access log, on the request's own line. A check finds that line
+# by a trace id of its own.
+#
+# traced: the requests that follow belong to a new trace. `trace_id` names it,
+# and gw and mcp.py send TRACEPARENT as the header `traceparent`. `untraced`
+# ends it.
+traced() {
+  trace_id="$(openssl rand -hex 16)"
+  TRACEPARENT="00-${trace_id}-$(openssl rand -hex 8)-01"
+  export TRACEPARENT
+}
+untraced() { unset TRACEPARENT; }
+# logged_reason: the `error` of the newest line of that trace that has one;
+# nothing if none does. A line is written when the response ends, so this asks
+# up to five times, a second apart.
+logged_reason() {
+  for attempt in 1 2 3 4 5; do
+    reason_line="$(k --namespace agentgateway-system logs --since=1m --tail=-1 \
+      --selector gateway.networking.k8s.io/gateway-name=agentgateway-proxy 2>/dev/null |
+      grep -F "trace.id=${trace_id} " | grep -F ' error="' | tail -n 1)"
+    if [ -n "${reason_line}" ]; then
+      printf '%s\n' "${reason_line}" | sed -e 's/.* error="//' -e 's/" [a-z_.]*=.*$/"/' -e 's/"$//' -e 's/\\"/"/g'
+      return 0
+    fi
+    sleep 1
+  done
 }
 
 # header <token>: its JOSE header, decoded.

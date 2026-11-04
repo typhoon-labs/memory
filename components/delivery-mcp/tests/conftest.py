@@ -40,6 +40,9 @@ from delivery.store import Store  # noqa: E402
 from delivery.verifier import VerifyResult  # noqa: E402
 
 AUDIENCE = "agentgateway"
+# The target chain-sts issues this service's tokens for: its route, as the
+# dev cluster names it (DELEGATION_AUDIENCE).
+RESOURCE = "http://agentgateway-proxy.agentgateway-system.svc.cluster.local/mcp/delivery"
 RETAINED = ("2.0.0", "2.1.0")
 CURRENT = "2.1.0"
 TERMINAL = {"applied", "failed", "rejected"}
@@ -80,9 +83,9 @@ class Result:
     text: dict[str, Any]
 
 
-def _served_issuer() -> Iterator[TestIssuer]:
+def _served_issuer(audience: str = AUDIENCE) -> Iterator[TestIssuer]:
     port = free_port()
-    issuer = TestIssuer(issuer=f"http://127.0.0.1:{port}", audience=AUDIENCE)
+    issuer = TestIssuer(issuer=f"http://127.0.0.1:{port}", audience=audience)
     server = serve(issuer, port)
     issuer.jwks_url = f"http://127.0.0.1:{port}/jwks"  # type: ignore[attr-defined]
     yield issuer
@@ -97,8 +100,8 @@ def issuer() -> Iterator[TestIssuer]:
 
 @pytest.fixture(scope="session")
 def chain() -> Iterator[TestIssuer]:
-    """chain-sts: tokens for an agent acting for a user (DELEGATION_*)."""
-    yield from _served_issuer()
+    """chain-sts: tokens for an agent acting for a user (DELEGATION_*), for this route."""
+    yield from _served_issuer(RESOURCE)
 
 
 @pytest.fixture(scope="session")
@@ -110,6 +113,7 @@ def server_url(issuer: TestIssuer, chain: TestIssuer) -> Iterator[str]:
             "OIDC_AUDIENCE": AUDIENCE,
             "DELEGATION_ISSUER": chain.issuer,
             "DELEGATION_JWKS_URL": chain.jwks_url,  # type: ignore[attr-defined]
+            "DELEGATION_AUDIENCE": RESOURCE,
         }
     )
     dynamic = DynamicMCPServer(name="delivery-mcp", settings=settings)

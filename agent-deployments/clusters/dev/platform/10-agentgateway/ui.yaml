@@ -1,0 +1,74 @@
+# The Agentgateway admin UI, at http://localhost:18088/ui/ (NodePort 30088,
+# docs/cluster.md), in the same shape as the kagent UI:
+#
+#   browser -> oauth2-proxy (signs in with Keycloak, client `agentgateway-ui`)
+#           -> the proxy's admin port
+#
+# It runs in its own pod, so that it can fail without touching a route. This is
+# a convenience of the dev cluster, and it is why the admin port is open at all
+# (gateway/templates/parameters.yaml). Another cluster should leave the port on
+# localhost and use `kubectl port-forward`, as `task ui -- agentgateway` does.
+#
+# The same values as the kagent UI's sign-in proxy, except where a comment says.
+config:
+  # Keys client-id, client-secret and cookie-secret. Made by
+  # scripts/ui-secret.sh before each sync of this release.
+  existingSecret: agentgateway-ui-oidc
+  # Cookies are kept per host and not per port, so this one is also sent to
+  # every other UI on localhost. A name of its own keeps it apart from theirs.
+  cookieName: agentgateway_ui
+  # WHAT IS FORWARDED, and everything else answers 404 here: the UI, what it
+  # reads, and nothing from the rest of the port, such as /quitquitquit,
+  # /logging and /debug/*. A path says nothing about the method, so POST
+  # /api/config gets through as well; UI_READ_ONLY refuses that at the proxy.
+  configFile: |-
+    email_domains = [ "*" ]
+    upstreams = [
+      "http://agentgateway-proxy-admin:15000/ui/",
+      "http://agentgateway-proxy-admin:15000/config_dump",
+      "http://agentgateway-proxy-admin:15000/api/"
+    ]
+service:
+  type: NodePort
+  nodePort: 30088
+# Nothing scrapes it, and on a NodePort Service the metrics port would get a
+# node port as well.
+metrics:
+  enabled: false
+resources:
+  requests:
+    cpu: 10m
+    memory: 32Mi
+  limits:
+    memory: 128Mi
+# Added to the chart's own arguments; a key written here replaces the chart's.
+extraArgs:
+  # Keycloak answers on two addresses (docs/contracts.md): the browser's, which
+  # is the issuer in every token, and its Service, the one a pod can reach.
+  # Discovery returns a single set, so each endpoint is named. It also means the
+  # pod does not need Keycloak to start, which comes later in `task up:trunk`.
+  provider: oidc
+  skip-oidc-discovery: true
+  oidc-issuer-url: http://localhost:18081/realms/demo
+  login-url: http://localhost:18081/realms/demo/protocol/openid-connect/auth
+  redeem-url: http://keycloak.keycloak.svc.cluster.local:8080/realms/demo/protocol/openid-connect/token
+  oidc-jwks-url: http://keycloak.keycloak.svc.cluster.local:8080/realms/demo/protocol/openid-connect/certs
+  redirect-url: http://localhost:18088/oauth2/callback
+  # The client requires it (local/identity/keycloak/files/demo-realm.json).
+  code-challenge-method: S256
+  scope: openid profile email
+  # WHO MAY SIGN IN: `platform-engineer` only, as for the kagent UI. The role is
+  # the top-level `roles` claim.
+  oidc-groups-claim: roles
+  allowed-group: platform-engineer
+  # Straight to Keycloak, with no page of the proxy's own before it. The kagent
+  # chart sets the two below for its proxy; this chart leaves them to the default.
+  skip-provider-button: true
+  approval-prompt: auto
+  cookie-samesite: lax
+  # The address is plain http, where a browser other than Chrome or Firefox
+  # drops a cookie marked Secure.
+  cookie-secure: false
+  # Not the 25 minutes of the kagent UI, which hands on the token. Nothing here
+  # uses it, and a session that ends turns the UI's calls into errors.
+  cookie-expire: 8h

@@ -28,5 +28,5 @@ async def post_status_update(incident_id: str, text: str) -> ToolResult:
     return await run_tool(
         "post_status_update",
         lambda service, caller: service.post_status_update(caller, incident_id, text),
-        target=incident_id,
+        incident_id=incident_id,
     )

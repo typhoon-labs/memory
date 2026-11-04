@@ -48,17 +48,25 @@ workloadRoutesNamespace: ""
 
 # Whose tokens are trusted: agent-deployments/clusters/dev/identity.yaml.
 # `identity` is Keycloak. `delegation` is optional: chain-sts, for an agent
-# acting for a user; with an empty `issuer`, Keycloak alone is trusted.
+# acting for a user, trusted only on a route that names its `resource`.
 identity:
   issuer: ""
   audience: ""
   jwksUrl: ""
 delegation:
   issuer: ""
-  audience: ""
   jwksUrl: ""
+  # Target name -> the URI a chain-sts token for it carries as `aud`.
+  resources: {}
+  # During a rollout only: an audience accepted besides the route's own.
+  audience: ""
   # Agent name -> the `sub` chain-sts writes for it in `act`.
   agents: {}
+
+# Which entry of `delegation.resources` this route is: chain-sts's tokens are
+# accepted here only when issued for it. Empty: chain-sts is not trusted on
+# this route at all, and `actors` must be empty. As in chart route-auth.
+resource: ""
 
 # Which agent may call the route on a user's behalf: a token with an `act`
 # claim is let in only when `delegation.issuer` signed it and its newest actor

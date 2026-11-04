@@ -1,13 +1,14 @@
 #!/bin/sh
 # Creates the identity material Agent Substrate needs and no Helm chart
-# creates, then waits until Substrate is ready.
+# creates.
 #
-# Runs as the postsync hook of release `substrate` (../helmfile.yaml), after
-# the chart has created the namespaces. Until this has run, the pods in
-# ate-system stay in ContainerCreating: they mount Secrets that do not exist.
+# Runs as the presync hook of release `substrate-podcert` (../helmfile.yaml),
+# the first of them to need it: the certificate controller mounts three of
+# these pools, and every later pod needs what it issues. A pod that starts
+# without them stays in ContainerCreating.
 #
-# The steps and names are the ones in
-# https://kagent.dev/docs/kagent/1.x/setup/installation/#install-agent-substrate
+# The steps and names are the ones `kagent install` takes at the version in
+# ../helmfile.yaml (go/core/pkg/install/substrate_init.go).
 #
 # Safe to re-run. A pool is a signing key: an existing one is never replaced,
 # because every certificate and token already issued from it would stop
@@ -32,15 +33,24 @@ pool() {
   echo "identity: ${namespace}/${name} created"
 }
 
-# The chart creates this namespace; the two pools that sign service and pod
-# certificates live in it.
-k wait --for=jsonpath='{.status.phase}'=Active namespace/podcertificate-controller-system --timeout=60s >/dev/null
+# A presync hook runs before Helm would create these, and no chart does.
+for namespace in ate-system podcertificate-controller-system kagent; do
+  k get namespace "${namespace}" >/dev/null 2>&1 || k create namespace "${namespace}" >/dev/null
+done
 
-pool make-ca-pool  podcertificate-controller-system service-dns-ca-pool  --ca-id=1
-pool make-ca-pool  podcertificate-controller-system pod-identity-ca-pool --ca-id=1
+# Substrate's API admits clients only from namespaces with this label, kagent's
+# controller among them. Workers are refused whatever their namespace says.
+k label namespace kagent ate.dev/api-access=true --overwrite >/dev/null
+
+# The three pools that sign service, pod and database login certificates.
+# Ed25519, here and for actor-id-ca-pool below, as `kagent install` makes
+# them; kubectl-ate's own default is ECDSA P-256 since Substrate 1.0.
+pool make-ca-pool  podcertificate-controller-system service-dns-ca-pool  --ca-id=1 --key-type=ED25519
+pool make-ca-pool  podcertificate-controller-system pod-identity-ca-pool --ca-id=1 --key-type=ED25519
+pool make-ca-pool  podcertificate-controller-system postgres-ca-pool     --ca-id=1 --key-type=ED25519
 # Actor credentials: issued as tokens, verified against the CA.
 pool make-jwt-pool ate-system actor-id-jwt-pool --key-id=1
-pool make-ca-pool  ate-system actor-id-ca-pool  --ca-id=1
+pool make-ca-pool  ate-system actor-id-ca-pool  --ca-id=1 --key-type=ED25519
 # The egress gateway terminates an agent's HTTPS to apply hostname rules and
 # to add credentials, and signs a certificate per destination from this pool.
 # ECDSA P-256, because clients inside a sandbox may not accept Ed25519.
@@ -67,13 +77,10 @@ fi
 # GKE, leave those two lines out.)
 issuer="$(k get --raw /.well-known/openid-configuration | jq -r .issuer)"
 k create configmap ate-api-authentication -n ate-system --dry-run=client -o yaml \
-  --from-literal=authentication.yaml="actorIdentityJWTProvider: kubernetes
-jwtProviders:
+  --from-literal=authentication.yaml="jwtProviders:
 - name: kubernetes
   issuer: ${issuer}
   audiences: [api.ate-system.svc]
   certificateAuthorityFile: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
   discoveryTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
 " | k apply -f - | sed 's/^/identity: /'
-
-"${scripts_dir}/wait-substrate.sh"

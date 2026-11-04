@@ -1,7 +1,9 @@
 """Test fixtures: two issuers, and stand-ins for delivery-mcp, the model endpoint and
 chain-sts's token exchange.
 
-The issuers play Keycloak and chain-sts, each with a key of its own.
+The issuers play Keycloak and chain-sts, each with a key of its own. Keycloak's
+tokens are for the gateway (AUDIENCE); chain-sts's are each for one target, and
+those this agent accepts are for its own route (DELEGATION_AUDIENCE).
 
 Nothing here calls a real model. The stand-ins record what the agent sent them,
 so the tests can check which token went out on every call: the caller's, or the
@@ -35,6 +37,9 @@ from remediation_agent.app import create_app
 from remediation_agent.config import load_settings
 
 AUDIENCE = "agentgateway"
+# The resource (RFC 8707) of this agent's own route: the audience of a chain
+# token meant for it.
+DELEGATION_AUDIENCE = "http://agentgateway-proxy.test/a2a/remediation-agent"
 # The agents a delegated token has passed through: the chat assistant, then this one.
 CHAIN = ("chat-assistant", "remediation-agent")
 FAST_MODEL = "test-fast-model"
@@ -109,7 +114,7 @@ class Issuer:
         """Claims shaped like chain-sts's: the user's, carried through ``agents``.
 
         ``client_id`` is the last agent, and ``act`` names every agent, the last
-        outermost.
+        outermost. The audience is this agent's route, unless ``aud`` says otherwise.
         """
         act: dict[str, Any] | None = None
         for agent in agents:
@@ -119,7 +124,7 @@ class Issuer:
         claims = {
             "iss": self.issuer,
             "sub": f"{user}-id",
-            "aud": AUDIENCE,
+            "aud": DELEGATION_AUDIENCE,
             "iat": now,
             "nbf": now,
             "exp": now + 300,
@@ -409,7 +414,7 @@ def _delivery_server() -> Iterator[FakeDelivery]:
             {
                 "jsonrpc": "2.0",
                 "id": request["id"],
-                "error": {"code": -32602, "message": "Unknown tool: apply_change"},
+                "error": {"code": -32602, "message": "unknown resource"},
             }
         ).encode()
         await send(
@@ -444,14 +449,18 @@ def delivery(_delivery_server: FakeDelivery) -> FakeDelivery:
 class FakeSTS:
     """chain-sts's metadata and token endpoint, recording each exchange's form.
 
-    It answers ``refusal`` when one is set. Otherwise it issues a token as
-    chain-sts would, signed with ``chain``'s key, for the subject's user.
+    It answers ``refusal`` when one is set, or the refusal ``refusals`` names
+    for the resource asked for. Otherwise it issues a token as chain-sts would,
+    signed with ``chain``'s key, for the subject's user and for the resource
+    asked for alone.
     """
 
     chain: Issuer
     url: str = ""
     # The HTTP status and JSON body to answer instead of a token.
     refusal: tuple[int, dict[str, Any]] | None = None
+    # The same, for one resource only.
+    refusals: dict[str, tuple[int, dict[str, Any]]] = field(default_factory=dict)
     requests: list[dict[str, list[str]]] = field(default_factory=list)
     issued: list[str] = field(default_factory=list)
 
@@ -461,6 +470,7 @@ class FakeSTS:
 
     def reset(self) -> None:
         self.refusal = None
+        self.refusals.clear()
         self.requests.clear()
         self.issued.clear()
 
@@ -475,11 +485,13 @@ class FakeSTS:
 
     def exchange(self, form: dict[str, list[str]]) -> tuple[int, dict[str, Any]]:
         self.requests.append(form)
-        if self.refusal is not None:
-            return self.refusal
+        (resource,) = form.get("resource") or [None]
+        refusal = self.refusal or self.refusals.get(resource or "")
+        if refusal is not None:
+            return refusal
         (subject,) = form["subject_token"]
         user = jwt.decode(subject, options={"verify_signature": False})["preferred_username"]
-        token = self.chain.delegate(user)
+        token = self.chain.delegate(user, aud=resource)
         self.issued.append(token)
         return 200, {
             "access_token": token,
@@ -593,6 +605,7 @@ def _agent_env(
         "OIDC_AUDIENCE": AUDIENCE,
         "DELEGATION_ISSUER": chain.issuer,
         "DELEGATION_JWKS_URL": chain.jwks_url,
+        "DELEGATION_AUDIENCE": DELEGATION_AUDIENCE,
         "DELIVERY_MCP_URL": _delivery_server.url,
         "MODEL_BASE_URL": _model_server.url,
         "MODEL_ID": "test-default-model",

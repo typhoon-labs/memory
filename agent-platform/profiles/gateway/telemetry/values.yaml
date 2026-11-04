@@ -5,7 +5,7 @@
 # ServiceMonitor and PodMonitor of the Agentgateway chart (`monitoring.enabled`
 # in agent-deployments/clusters/<cluster>/platform/10-agentgateway/telemetry.yaml.gotmpl).
 #
-# Schema: Agentgateway 1.6 (agentgateway.dev/v1alpha1), `frontend.tracing` and
+# Schema: Agentgateway 1.7 (agentgateway.dev/v1alpha1), `frontend.tracing` and
 # `frontend.accessLog`, from
 #   https://agentgateway.dev/docs/kubernetes/latest/documentation/observability/traces/setup/
 #   https://agentgateway.dev/docs/kubernetes/latest/documentation/observability/access-logs/export/
@@ -48,12 +48,20 @@ accessLog:
   # the proxy's own and the record sent to the collector, next to the
   # gateway's own `jwt.sub`:
   #   user.id       preferred_username
+  #   user.sub      sub, as the gateway's own jwt.sub
+  #   user.roles, user.team
+  #                 the claims the routes' rules read
+  #   user.issuer   iss: Keycloak, or chain-sts for a token it issued
+  #   user.client   azp: the client the token was issued to
+  #   session.id    sid: the sign-in session, as the identity provider
+  #                 records it (a token chain-sts issued has none)
+  #   token.jti     the token's id; chain-sts writes the same in its audit line
   #   actor.sub     the newest actor, `act.sub`: the agent that sent the
   #                 request (a service account, for chain-sts's tokens)
   #   actor.chain   every agent in the token's nested `act`, by `client_id`
   #                 (else `sub`), newest first, comma-separated
   # A token without `act`, a person's or the machine client's own, has no
-  # actor.* fields; a request without a token has none of the three.
+  # actor.* fields; a request without a token has none of these.
   caller: true
   # How deep actor.chain reads `act`, here and on spans. CEL has no recursion, so the chain is
   # written out to this depth; chain-sts's `max_chain` (4 in the dev cluster)

@@ -1,5 +1,7 @@
 # Working in this repository
 
+> **Owner:** coordinator · **Type:** reference · **Checked:** 2026-11-03 against this repository's layout and tasks
+
 The rules for everyone building a part of this demo, and the report each piece
 of work ends with.
 
@@ -49,6 +51,74 @@ reusable charts and policies in `agent-platform/`; what runs in a cluster, and
 who may call what, in `agent-deployments/`; a component's source, its catalog
 entry and its own notes in `components/<name>/`; anything that exists only
 because this is kind in `local/`; presenting in `demo/`.
+
+## Documentation
+
+Four rules decide where a document goes and what it holds.
+
+1. **A document lives with its owner.** The three top-level directories stand
+   in for three kinds of repository, and a document must be able to move with
+   the code it describes. A component's reference goes in
+   `components/<name>/`, a release's runbook beside its helmfile in
+   `agent-deployments/`, a chart's or policy's notes in `agent-platform/`.
+   Only documents about the whole system go in `docs/`.
+2. **Each file has one job.** Start: what it is and how to run it.
+   Explanation: how and why it works. Proposal: what production should be.
+   Reference: the exact names, values and rules. Runbook: how to do a task.
+   Record: what happened when it was run. A file that does two jobs is split.
+3. **One home per fact.** State a fact once, where its owner keeps it, and
+   link to it everywhere else. A copy is how a fact goes stale. The homes of
+   the facts most often repeated:
+
+   | Fact | Home |
+   |---|---|
+   | Identities, tokens, audiences, which agent may call which tool, bindings, audit fields | [`docs/contracts.md`](docs/contracts.md) |
+   | Names, namespaces, ports, addresses, tasks | [`docs/cluster.md`](docs/cluster.md) |
+   | Every timing, token count and cost, with its date | [`docs/measurements.md`](docs/measurements.md) |
+   | How the system works, and why | [`docs/system-architecture.md`](docs/system-architecture.md) |
+   | The production design, hardening and open decisions | [`docs/production-design.md`](docs/production-design.md) |
+   | What the demo cannot do | [`README.md`](README.md#limits-worth-knowing), "Limits worth knowing" |
+   | How a workload key works (diagnosis-agent's credential at the gateway) | The header of [`model-access/values.yaml`](agent-platform/profiles/kagent/model-access/values.yaml), the chart that makes it |
+   | kagent's and Agent Substrate's limits, and how this cluster runs them | [`60-kagent/README.md`](agent-deployments/clusters/dev/platform/60-kagent/README.md) |
+   | Which chart, profile and policy each release uses | [`agent-platform/README.md`](agent-platform/README.md) |
+
+4. **Every document says how fresh it is.** The first line under its title:
+
+   ```
+   > **Owner:** <who keeps it> · **Type:** <start, explanation, proposal, reference, runbook or record> · **Checked:** <date> against <versions>
+   ```
+
+   Change the date and versions when you check the document against the
+   code, not when you change a sentence.
+
+**Evidence.** A claim says how it is known. **Observed in the demo**: run on
+this cluster. **Observed**, with the place named: run elsewhere, such as a
+throwaway Keycloak. **Documented upstream**: the vendor's documentation says
+so, and it was not tested here. **To validate**: nobody should rely on it
+before a pilot result. **To verify**: a vendor fact to check against your
+contract or edition. Unmarked text describes this repository or proposes
+something.
+
+**A component's README** has these parts, in this order, and leaves out any
+that do not apply. Deeper topics go in `components/<name>/docs/`.
+
+1. What it is: the opening paragraph, with no heading.
+2. A facts table: built with, serves, route with its roles and agents, model,
+   running version, and where its values and route files are.
+3. Identity: the issuers it trusts, whether it exchanges at chain-sts, and
+   what it refuses.
+4. What it serves and returns.
+5. Settings: variable, default, and whether it is required. The dev
+   cluster's values stay in its values file, which this part links to.
+6. Run and test, as `task <name>:...` from the repository's root.
+7. Release: where the version is set, and the steps.
+8. Limits.
+
+**Before handing in a change to a document,** run `task docs:check`. It
+checks relative links and their anchors, American spelling, Mermaid blocks
+and the freshness line, and names the file and line of each problem. An
+agent's prompt and a skill are inputs to a program, not documentation, so it
+leaves them alone.
 
 ## Reporting
 

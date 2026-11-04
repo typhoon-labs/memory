@@ -1,0 +1,210 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1480 1060" width="1480" height="1060" role="img" aria-labelledby="t d" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+<title id="t">Enterprise agent platform on EKS: the minimum useful platform</title>
+<desc id="d">Layers from consumers at the top through identity, the Agentgateway control point, execution, tools and services, to state and telemetry, with each component colored by whether it is reused, adopted, built, optional or deferred.</desc>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#57606A"/></marker></defs>
+<rect width="1480" height="1060" fill="#FFFFFF"/>
+<text x="24" y="34" font-size="20" font-weight="700" fill="#1F2328" text-anchor="start">Agent platform on EKS: the minimum useful platform</text>
+<text x="24" y="56" font-size="12.5" font-weight="normal" fill="#57606A" text-anchor="start">One governed path for models, tools and agents. Execution stays conventional unless a workload earns a second operating model.</text>
+<rect x="20" y="72" width="1110" height="128" rx="10" fill="#FAFBFC" stroke="#E1E4E8" stroke-width="1"/>
+<text x="32" y="90" font-size="10.5" font-weight="700" fill="#57606A" text-anchor="start">CONSUMERS</text>
+<rect x="34" y="98" width="200" height="92" rx="8" fill="#E8F1FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="44" y="118" font-size="13" font-weight="600" fill="#1F2328" text-anchor="start">Coding harnesses</text>
+<text x="44" y="136" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">Claude Code, Codex</text>
+<text x="44" y="152" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">Kiro kept during pilot</text>
+<text x="44" y="168" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">macOS, Linux, CI</text>
+<rect x="246" y="98" width="200" height="92" rx="8" fill="#E8F1FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="256" y="118" font-size="13" font-weight="600" fill="#1F2328" text-anchor="start">Xcode (macOS)</text>
+<text x="256" y="136" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">Native agents: Claude,</text>
+<text x="256" y="152" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">Codex in Xcode 26.3+</text>
+<text x="256" y="168" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">Gateway support: verify</text>
+<rect x="458" y="98" width="200" height="92" rx="8" fill="#E8F1FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="468" y="118" font-size="13" font-weight="600" fill="#1F2328" text-anchor="start">GitLab</text>
+<text x="468" y="136" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">Source of truth, CI,</text>
+<text x="468" y="152" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">runners in EKS</text>
+<text x="468" y="168" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">MR events and API</text>
+<rect x="670" y="98" width="210" height="92" rx="8" fill="#FFF4E0" stroke="#B7791F" stroke-width="1.5"/>
+<text x="680" y="118" font-size="13" font-weight="600" fill="#1F2328" text-anchor="start">Internal UIs and chat</text>
+<text x="680" y="136" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">Helpdesk, incident chat</text>
+<text x="680" y="152" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">Read-only first</text>
+<rect x="892" y="98" width="226" height="92" rx="8" fill="#E8F1FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="902" y="118" font-size="13" font-weight="600" fill="#1F2328" text-anchor="start">Automation</text>
+<text x="902" y="136" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">Alerts, schedules,</text>
+<text x="902" y="152" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">pipelines calling agents</text>
+<text x="902" y="168" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">Client credentials</text>
+<rect x="1146" y="72" width="314" height="420" rx="10" fill="#FAFBFC" stroke="#E1E4E8" stroke-width="1"/>
+<text x="1158" y="90" font-size="10.5" font-weight="700" fill="#57606A" text-anchor="start">IDENTITY</text>
+<rect x="1160" y="98" width="286" height="78" rx="8" fill="#E8F1FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="1170" y="118" font-size="13" font-weight="600" fill="#1F2328" text-anchor="start">Enterprise IdP: Okta or Ping</text>
+<text x="1170" y="136" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">Base tier: sign-in, MFA, groups,</text>
+<text x="1170" y="152" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">immutable user ID, deprovisioning</text>
+<rect x="1160" y="190" width="286" height="94" rx="8" fill="#E9F6EE" stroke="#2E8A57" stroke-width="1.5"/>
+<text x="1170" y="210" font-size="13" font-weight="600" fill="#1F2328" text-anchor="start">Keycloak (broker + platform AS)</text>
+<text x="1170" y="228" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">Access tokens for platform audiences</text>
+<text x="1170" y="244" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">PKCE, device, client credentials,</text>
+<text x="1170" y="260" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">K8s SA token client assertion</text>
+<rect x="1160" y="298" width="286" height="94" rx="8" fill="#FFF4E0" stroke="#B7791F" stroke-width="1.5"/>
+<text x="1170" y="318" font-size="13" font-weight="600" fill="#1F2328" text-anchor="start">chain-sts (narrow STS)</text>
+<text x="1170" y="336" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">RFC 8693 delegation only: sub = user,</text>
+<text x="1170" y="352" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">act = current agent, one resource,</text>
+<text x="1170" y="368" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">&lt;= 5 min. Replaceable by contract</text>
+<rect x="1160" y="406" width="286" height="76" rx="8" fill="#E8F1FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="1170" y="426" font-size="13" font-weight="600" fill="#1F2328" text-anchor="start">AWS: EKS Pod Identity</text>
+<text x="1170" y="444" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">Workload to AWS APIs (Bedrock,</text>
+<text x="1170" y="460" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">S3, KMS). Never user identity</text>
+<line x1="1303" y1="176" x2="1303" y2="190" stroke="#57606A" stroke-width="1.6" marker-end="url(#arrow)"/>
+<line x1="1303" y1="284" x2="1303" y2="298" stroke="#57606A" stroke-width="1.6" marker-end="url(#arrow)"/>
+<rect x="20" y="214" width="1110" height="150" rx="10" fill="#FAFBFC" stroke="#E1E4E8" stroke-width="1"/>
+<text x="32" y="232" font-size="10.5" font-weight="700" fill="#57606A" text-anchor="start">CONTROL POINT</text>
+<rect x="34" y="240" width="1084" height="114" rx="8" fill="#E9F6EE" stroke="#2E8A57" stroke-width="1.5"/>
+<text x="44" y="260" font-size="13" font-weight="600" fill="#1F2328" text-anchor="start">Agentgateway: the only door to models, MCP tools and agents (OSS, Kubernetes Gateway API controller)</text>
+<rect x="44" y="270" width="346" height="54" rx="6" fill="#FFFFFF" stroke="#9CC9AE" stroke-width="1"/>
+<text x="52" y="286" font-size="12" font-weight="600" fill="#1F2328" text-anchor="start">Model routes</text>
+<text x="52" y="301" font-size="11" font-weight="normal" fill="#57606A" text-anchor="start">Approved models only; Bedrock credential</text>
+<text x="52" y="315" font-size="11" font-weight="normal" fill="#57606A" text-anchor="start">held here (Pod Identity); token limits</text>
+<rect x="400" y="270" width="346" height="54" rx="6" fill="#FFFFFF" stroke="#9CC9AE" stroke-width="1"/>
+<text x="408" y="286" font-size="12" font-weight="600" fill="#1F2328" text-anchor="start">MCP routes</text>
+<text x="408" y="301" font-size="11" font-weight="normal" fill="#57606A" text-anchor="start">OAuth protected-resource metadata;</text>
+<text x="408" y="315" font-size="11" font-weight="normal" fill="#57606A" text-anchor="start">per-tool CEL on role and current actor</text>
+<rect x="756" y="270" width="346" height="54" rx="6" fill="#FFFFFF" stroke="#9CC9AE" stroke-width="1"/>
+<text x="764" y="286" font-size="12" font-weight="600" fill="#1F2328" text-anchor="start">A2A and HTTP routes</text>
+<text x="764" y="301" font-size="11" font-weight="normal" fill="#57606A" text-anchor="start">Per-agent CEL; hosted agents are</text>
+<text x="764" y="315" font-size="11" font-weight="normal" fill="#57606A" text-anchor="start">reachable only from the gateway</text>
+<text x="44" y="343" font-size="11" font-weight="normal" fill="#1F2328" text-anchor="start">Every route: verify token (Keycloak, chain-sts, workload key)  |  coarse authorization  |  rate limits per principal  |  usage record (user, team, workload, workflow, model)  |  OTel span</text>
+<line x1="1160" y1="237" x2="1118" y2="262" stroke="#57606A" stroke-width="1.6" marker-end="url(#arrow)"/>
+<text x="1030" y="232" font-size="10.5" font-weight="normal" fill="#57606A" text-anchor="start">validates tokens</text>
+<line x1="134" y1="190" x2="134" y2="240" stroke="#57606A" stroke-width="1.6" marker-end="url(#arrow)"/>
+<line x1="346" y1="190" x2="346" y2="240" stroke="#57606A" stroke-width="1.6" marker-end="url(#arrow)"/>
+<line x1="558" y1="190" x2="558" y2="240" stroke="#57606A" stroke-width="1.6" marker-end="url(#arrow)"/>
+<line x1="775" y1="190" x2="775" y2="240" stroke="#57606A" stroke-width="1.6" marker-end="url(#arrow)"/>
+<line x1="1005" y1="190" x2="1005" y2="240" stroke="#57606A" stroke-width="1.6" marker-end="url(#arrow)"/>
+<rect x="20" y="378" width="1110" height="170" rx="10" fill="#FAFBFC" stroke="#E1E4E8" stroke-width="1"/>
+<text x="32" y="396" font-size="10.5" font-weight="700" fill="#57606A" text-anchor="start">EXECUTION</text>
+<rect x="34" y="404" width="300" height="134" rx="8" fill="#E9F6EE" stroke="#2E8A57" stroke-width="1.5"/>
+<text x="44" y="424" font-size="13" font-weight="600" fill="#1F2328" text-anchor="start">Conventional Kubernetes apps</text>
+<text x="44" y="442" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">Default for agents, MCP servers,</text>
+<text x="44" y="458" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">workflows. Deployment or Job.</text>
+<text x="44" y="474" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">Base chart + agent-integration chart</text>
+<text x="44" y="490" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">Python template (ADK reference)</text>
+<text x="44" y="506" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">Karpenter, Spot where safe</text>
+<rect x="346" y="404" width="252" height="134" rx="8" fill="#E8F1FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="356" y="424" font-size="13" font-weight="600" fill="#1F2328" text-anchor="start">GitLab CI jobs</text>
+<text x="356" y="442" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">Batch agents: MR review,</text>
+<text x="356" y="458" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">scheduled reports. Runner pods</text>
+<text x="356" y="474" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">in EKS, job-scoped tokens,</text>
+<text x="356" y="490" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">interruptible, idempotent output</text>
+<rect x="626" y="404" width="232" height="134" rx="8" fill="#F3EEFB" stroke="#7A55B3" stroke-width="1.5" stroke-dasharray="6 4"/>
+<text x="636" y="424" font-size="13" font-weight="600" fill="#1F2328" text-anchor="start">kagent (declarative)</text>
+<text x="636" y="442" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">Simple read-only agents only,</text>
+<text x="636" y="458" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">after the identity gate</text>
+<text x="636" y="474" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">(user token or chain-sts)</text>
+<text x="636" y="490" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">1.0 is rc: pin, do not expose</text>
+<text x="636" y="506" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">its console</text>
+<rect x="870" y="404" width="248" height="134" rx="8" fill="#F2F2F2" stroke="#8A8A8A" stroke-width="1.5" stroke-dasharray="6 4"/>
+<text x="880" y="424" font-size="13" font-weight="600" fill="#1F2328" text-anchor="start">Deferred runtimes</text>
+<text x="880" y="442" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">Agent Substrate snapshots,</text>
+<text x="880" y="458" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">sandboxed coding agents,</text>
+<text x="880" y="474" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">AgentCore Runtime:</text>
+<text x="880" y="490" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">only for a named workload</text>
+<text x="880" y="506" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">that justifies a 2nd model</text>
+<line x1="150" y1="354" x2="150" y2="404" stroke="#57606A" stroke-width="1.6" marker-end="url(#arrow)"/>
+<text x="156" y="372" font-size="10.5" font-weight="normal" fill="#57606A" text-anchor="start">A2A, HTTP</text>
+<line x1="250" y1="404" x2="250" y2="354" stroke="#57606A" stroke-width="1.6" marker-end="url(#arrow)"/>
+<text x="256" y="372" font-size="10.5" font-weight="normal" fill="#57606A" text-anchor="start">models, tools</text>
+<line x1="472" y1="404" x2="472" y2="354" stroke="#57606A" stroke-width="1.6" marker-end="url(#arrow)"/>
+<text x="478" y="372" font-size="10.5" font-weight="normal" fill="#57606A" text-anchor="start">models, tools</text>
+<rect x="20" y="562" width="1110" height="118" rx="10" fill="#FAFBFC" stroke="#E1E4E8" stroke-width="1"/>
+<text x="32" y="580" font-size="10.5" font-weight="700" fill="#57606A" text-anchor="start">BEHIND THE GATEWAY (TOOLS OWN THEIR BUSINESS AUTHORIZATION)</text>
+<rect x="34" y="588" width="260" height="82" rx="8" fill="#E8F1FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="44" y="608" font-size="13" font-weight="600" fill="#1F2328" text-anchor="start">Amazon Bedrock</text>
+<text x="44" y="626" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">Reached only with the gateway&#x27;s</text>
+<text x="44" y="642" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">IAM role; no app holds a key</text>
+<rect x="306" y="588" width="260" height="82" rx="8" fill="#E8F1FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="316" y="608" font-size="13" font-weight="600" fill="#1F2328" text-anchor="start">Existing APIs</text>
+<text x="316" y="626" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">Service catalog, runbooks, docs,</text>
+<text x="316" y="642" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">CI, deploy status, tickets</text>
+<rect x="578" y="588" width="260" height="82" rx="8" fill="#FFF4E0" stroke="#B7791F" stroke-width="1.5"/>
+<text x="588" y="608" font-size="13" font-weight="600" fill="#1F2328" text-anchor="start">Team MCP servers</text>
+<text x="588" y="626" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">Re-verify token and current actor;</text>
+<text x="588" y="642" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">enforce approvals and state</text>
+<rect x="850" y="588" width="268" height="82" rx="8" fill="#E8F1FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="860" y="608" font-size="13" font-weight="600" fill="#1F2328" text-anchor="start">macOS build hosts</text>
+<text x="860" y="626" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">GitLab macOS runners: Xcode,</text>
+<text x="860" y="642" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">simulators, signing. Not EKS</text>
+<line x1="612" y1="354" x2="612" y2="588" stroke="#57606A" stroke-width="1.6" marker-end="url(#arrow)"/>
+<text x="618" y="572" font-size="10.5" font-weight="normal" fill="#57606A" text-anchor="start">MCP, model calls</text>
+<rect x="1146" y="506" width="314" height="174" rx="10" fill="#FAFBFC" stroke="#E1E4E8" stroke-width="1"/>
+<text x="1158" y="524" font-size="10.5" font-weight="700" fill="#57606A" text-anchor="start">DISTRIBUTION</text>
+<rect x="1160" y="532" width="286" height="64" rx="8" fill="#E8F1FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="1170" y="552" font-size="13" font-weight="600" fill="#1F2328" text-anchor="start">GitLab + ECR (OCI)</text>
+<text x="1170" y="570" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">Source of truth; immutable images,</text>
+<text x="1170" y="586" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">charts, skill bundles by digest</text>
+<rect x="1160" y="606" width="286" height="64" rx="8" fill="#F3EEFB" stroke="#7A55B3" stroke-width="1.5" stroke-dasharray="6 4"/>
+<text x="1170" y="626" font-size="13" font-weight="600" fill="#1F2328" text-anchor="start">Agentregistry + org CLI</text>
+<text x="1170" y="644" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">Catalog index and install; never</text>
+<text x="1170" y="660" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">in the request path</text>
+<line x1="1303" y1="596" x2="1303" y2="606" stroke="#57606A" stroke-width="1.6" marker-end="url(#arrow)"/>
+<rect x="20" y="694" width="720" height="128" rx="10" fill="#FAFBFC" stroke="#E1E4E8" stroke-width="1"/>
+<text x="32" y="712" font-size="10.5" font-weight="700" fill="#57606A" text-anchor="start">STATE (SEPARATE STORES BY DATA CLASS)</text>
+<rect x="34" y="720" width="168" height="92" rx="8" fill="#E9F6EE" stroke="#2E8A57" stroke-width="1.5"/>
+<text x="44" y="740" font-size="13" font-weight="600" fill="#1F2328" text-anchor="start">CloudNativePG</text>
+<text x="44" y="758" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">App and workflow</text>
+<text x="44" y="774" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">state, Keycloak,</text>
+<text x="44" y="790" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">gateway, Langfuse</text>
+<rect x="212" y="720" width="168" height="92" rx="8" fill="#E9F6EE" stroke="#2E8A57" stroke-width="1.5"/>
+<text x="222" y="740" font-size="13" font-weight="600" fill="#1F2328" text-anchor="start">Valkey</text>
+<text x="222" y="758" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">Caches and rate</text>
+<text x="222" y="774" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">counters only.</text>
+<text x="222" y="790" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">Loss is safe</text>
+<rect x="390" y="720" width="168" height="92" rx="8" fill="#E8F1FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="400" y="740" font-size="13" font-weight="600" fill="#1F2328" text-anchor="start">S3</text>
+<text x="400" y="758" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">Artifacts, audit</text>
+<text x="400" y="774" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">(Object Lock),</text>
+<text x="400" y="790" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">backups, blobs</text>
+<rect x="568" y="720" width="162" height="92" rx="8" fill="#E8F1FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="578" y="740" font-size="13" font-weight="600" fill="#1F2328" text-anchor="start">ClickHouse</text>
+<text x="578" y="758" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">Existing: usage ledger.</text>
+<text x="578" y="774" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">Dedicated 1-shard</text>
+<text x="578" y="790" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">cluster: Langfuse</text>
+<rect x="754" y="694" width="706" height="128" rx="10" fill="#FAFBFC" stroke="#E1E4E8" stroke-width="1"/>
+<text x="766" y="712" font-size="10.5" font-weight="700" fill="#57606A" text-anchor="start">TELEMETRY AND RECORDS (FOUR STREAMS, ONE COLLECTOR)</text>
+<rect x="768" y="720" width="160" height="92" rx="8" fill="#E8F1FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="778" y="740" font-size="13" font-weight="600" fill="#1F2328" text-anchor="start">OTel collector</text>
+<text x="778" y="758" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">Redact, route,</text>
+<text x="778" y="774" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">tail-sample</text>
+<text x="778" y="790" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">(trace-aware)</text>
+<rect x="938" y="720" width="120" height="92" rx="8" fill="#E8F1FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="948" y="740" font-size="13" font-weight="600" fill="#1F2328" text-anchor="start">Dynatrace</text>
+<text x="948" y="758" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">Sampled ops</text>
+<text x="948" y="774" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">traces, metrics</text>
+<rect x="1068" y="720" width="120" height="92" rx="8" fill="#E9F6EE" stroke="#2E8A57" stroke-width="1.5"/>
+<text x="1078" y="740" font-size="13" font-weight="600" fill="#1F2328" text-anchor="start">Langfuse</text>
+<text x="1078" y="758" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">Agent traces,</text>
+<text x="1078" y="774" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">evals, prompts</text>
+<rect x="1198" y="720" width="120" height="92" rx="8" fill="#FFF4E0" stroke="#B7791F" stroke-width="1.5"/>
+<text x="1208" y="740" font-size="13" font-weight="600" fill="#1F2328" text-anchor="start">Audit store</text>
+<text x="1208" y="758" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">Immutable</text>
+<text x="1208" y="774" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">action records</text>
+<rect x="1328" y="720" width="120" height="92" rx="8" fill="#FFF4E0" stroke="#B7791F" stroke-width="1.5"/>
+<text x="1338" y="740" font-size="13" font-weight="600" fill="#1F2328" text-anchor="start">Usage ledger</text>
+<text x="1338" y="758" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">Tokens, cost,</text>
+<text x="1338" y="774" font-size="11.5" font-weight="normal" fill="#57606A" text-anchor="start">reconciled to CUR</text>
+<line x1="928" y1="766" x2="938" y2="766" stroke="#57606A" stroke-width="1.6" marker-end="url(#arrow)"/>
+<rect x="20" y="836" width="1440" height="70" rx="10" fill="#FAFBFC" stroke="#E1E4E8" stroke-width="1"/>
+<text x="32" y="854" font-size="10.5" font-weight="700" fill="#57606A" text-anchor="start">FOUNDATION (EXISTING)</text>
+<text x="34" y="878" font-size="12" font-weight="normal" fill="#1F2328" text-anchor="start">EKS, VPC, ECR, KMS, Secrets Manager, Istio (mTLS between gateway and tools, where already run), Karpenter (On-Demand/RI for tier-0, Spot for interruptible), Kyverno (admission rules that keep the gateway the only door)</text>
+<text x="34" y="930" font-size="11" font-weight="700" fill="#57606A" text-anchor="start">Status</text>
+<rect x="34" y="942" width="18" height="12" rx="3" fill="#E8F1FB" stroke="#2F6DB5"/>
+<text x="60" y="952.5" font-size="11" font-weight="normal" fill="#1F2328" text-anchor="start">Reuse: exists today</text>
+<rect x="34" y="962" width="18" height="12" rx="3" fill="#E9F6EE" stroke="#2E8A57"/>
+<text x="60" y="972.5" font-size="11" font-weight="normal" fill="#1F2328" text-anchor="start">Adopt: new OSS, run by the platform</text>
+<rect x="34" y="982" width="18" height="12" rx="3" fill="#FFF4E0" stroke="#B7791F"/>
+<text x="60" y="992.5" font-size="11" font-weight="normal" fill="#1F2328" text-anchor="start">Build: thin, organization-specific</text>
+<rect x="34" y="1002" width="18" height="12" rx="3" fill="#F3EEFB" stroke="#7A55B3" stroke-dasharray="4 3"/>
+<text x="60" y="1012.5" font-size="11" font-weight="normal" fill="#1F2328" text-anchor="start">Optional: per workload, after a gate</text>
+<rect x="34" y="1022" width="18" height="12" rx="3" fill="#F2F2F2" stroke="#8A8A8A" stroke-dasharray="4 3"/>
+<text x="60" y="1032.5" font-size="11" font-weight="normal" fill="#1F2328" text-anchor="start">Deferred: not built until a workload needs it</text>
+<text x="420" y="944" font-size="11" font-weight="700" fill="#57606A" text-anchor="start">Reading the arrows</text>
+<text x="420" y="962" font-size="11" font-weight="normal" fill="#1F2328" text-anchor="start">Arrows show request direction. Dashed boxes are optional or deferred.</text>
+<text x="420" y="980" font-size="11" font-weight="normal" fill="#1F2328" text-anchor="start">Every consumer reaches models, tools and agents through Agentgateway. Business authorization stays in tools.</text>
+<text x="420" y="998" font-size="11" font-weight="normal" fill="#1F2328" text-anchor="start">Nothing in Distribution or Telemetry is in the request path: their outage does not stop agents.</text>
+</svg>

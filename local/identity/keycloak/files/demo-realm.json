@@ -2,6 +2,12 @@
   "realm": "demo",
   "displayName": "Agentgateway demo (DEMO ONLY)",
   "enabled": true,
+  "eventsEnabled": true,
+  "eventsListeners": [
+    "jboss-logging"
+  ],
+  "adminEventsEnabled": true,
+  "adminEventsDetailsEnabled": false,
   "sslRequired": "none",
   "registrationAllowed": false,
   "resetPasswordAllowed": false,
@@ -31,6 +37,7 @@
   },
   "users": [
     {
+      "id": "00000000-0000-4000-8000-000000000001",
       "username": "developer",
       "enabled": true,
       "emailVerified": true,
@@ -55,6 +62,7 @@
       ]
     },
     {
+      "id": "00000000-0000-4000-8000-000000000002",
       "username": "developer-other-team",
       "enabled": true,
       "emailVerified": true,
@@ -79,6 +87,7 @@
       ]
     },
     {
+      "id": "00000000-0000-4000-8000-000000000003",
       "username": "incident-manager",
       "enabled": true,
       "emailVerified": true,
@@ -103,6 +112,7 @@
       ]
     },
     {
+      "id": "00000000-0000-4000-8000-000000000004",
       "username": "platform-engineer",
       "enabled": true,
       "emailVerified": true,
@@ -127,6 +137,7 @@
       ]
     },
     {
+      "id": "00000000-0000-4000-8000-000000000005",
       "username": "service-account-alert-automation",
       "enabled": true,
       "serviceAccountClientId": "alert-automation",
@@ -138,6 +149,17 @@
       "realmRoles": [
         "alert-automation"
       ]
+    },
+    {
+      "username": "service-account-reconciler",
+      "enabled": true,
+      "serviceAccountClientId": "reconciler",
+      "clientRoles": {
+        "realm-management": [
+          "view-users",
+          "manage-users"
+        ]
+      }
     }
   ],
   "clients": [
@@ -213,6 +235,21 @@
             "userinfo.token.claim": "true",
             "introspection.token.claim": "true"
           }
+        },
+        {
+          "name": "idp_sub",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "idp_sub",
+            "claim.name": "idp_sub",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
         }
       ]
     },
@@ -281,6 +318,21 @@
           "config": {
             "user.attribute": "team",
             "claim.name": "team",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        },
+        {
+          "name": "idp_sub",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "idp_sub",
+            "claim.name": "idp_sub",
             "jsonType.label": "String",
             "access.token.claim": "true",
             "id.token.claim": "true",
@@ -487,6 +539,283 @@
           }
         }
       ]
+    },
+    {
+      "clientId": "grafana",
+      "name": "Grafana (browser sign-in)",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "fullScopeAllowed": true,
+      "redirectUris": [
+        "http://localhost:18084/login/generic_oauth"
+      ],
+      "webOrigins": [],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:18084/login"
+      },
+      "defaultClientScopes": [
+        "basic",
+        "profile",
+        "email",
+        "web-origins",
+        "acr"
+      ],
+      "optionalClientScopes": [],
+      "clientAuthenticatorType": "client-secret",
+      "secret": "demo-only-grafana-secret",
+      "protocolMappers": [
+        {
+          "name": "roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "roles",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "langfuse",
+      "name": "Langfuse (browser sign-in)",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "fullScopeAllowed": true,
+      "redirectUris": [
+        "http://localhost:18085/api/auth/callback/keycloak"
+      ],
+      "webOrigins": [],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      },
+      "defaultClientScopes": [
+        "basic",
+        "profile",
+        "email",
+        "web-origins",
+        "acr"
+      ],
+      "optionalClientScopes": [],
+      "clientAuthenticatorType": "client-secret",
+      "secret": "demo-only-langfuse-secret"
+    },
+    {
+      "clientId": "agentgateway-ui",
+      "name": "Agentgateway admin UI (browser sign-in through its sign-in proxy)",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "fullScopeAllowed": true,
+      "redirectUris": [
+        "http://localhost:18088/oauth2/callback"
+      ],
+      "webOrigins": [],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      },
+      "defaultClientScopes": [
+        "basic",
+        "profile",
+        "email",
+        "web-origins",
+        "acr"
+      ],
+      "optionalClientScopes": [],
+      "clientAuthenticatorType": "client-secret",
+      "secret": "demo-only-agentgateway-ui-secret",
+      "protocolMappers": [
+        {
+          "name": "roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "roles",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "reconciler",
+      "name": "Reconciliation job (prototype): disables corp users removed at the IdP and ends their sessions",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "fullScopeAllowed": true,
+      "redirectUris": [],
+      "webOrigins": [],
+      "attributes": {},
+      "clientAuthenticatorType": "client-secret",
+      "secret": "demo-only-reconciler-secret"
+    }
+  ],
+  "identityProviders": [
+    {
+      "alias": "corp",
+      "displayName": "Corp (stand-in enterprise IdP)",
+      "providerId": "oidc",
+      "enabled": true,
+      "trustEmail": false,
+      "storeToken": false,
+      "addReadTokenRoleOnCreate": false,
+      "linkOnly": false,
+      "hideOnLogin": false,
+      "firstBrokerLoginFlowAlias": "corp first broker login",
+      "config": {
+        "issuer": "${KC_HOSTNAME}/realms/corp",
+        "authorizationUrl": "${KC_HOSTNAME}/realms/corp/protocol/openid-connect/auth",
+        "tokenUrl": "http://localhost:8080/realms/corp/protocol/openid-connect/token",
+        "userInfoUrl": "http://localhost:8080/realms/corp/protocol/openid-connect/userinfo",
+        "jwksUrl": "http://localhost:8080/realms/corp/protocol/openid-connect/certs",
+        "useJwksUrl": "true",
+        "validateSignature": "true",
+        "clientId": "agentplatform-demo",
+        "clientSecret": "demo-only-corp-broker-secret",
+        "clientAuthMethod": "client_secret_post",
+        "defaultScope": "openid profile email",
+        "pkceEnabled": "true",
+        "pkceMethod": "S256",
+        "syncMode": "IMPORT",
+        "backchannelSupported": "false",
+        "guiOrder": "1"
+      }
+    }
+  ],
+  "identityProviderMappers": [
+    {
+      "name": "username",
+      "identityProviderAlias": "corp",
+      "identityProviderMapper": "oidc-username-idp-mapper",
+      "config": {
+        "syncMode": "IMPORT",
+        "template": "${ALIAS}.${CLAIM.preferred_username}",
+        "target": "LOCAL"
+      }
+    },
+    {
+      "name": "app-agentplatform-developer to developer",
+      "identityProviderAlias": "corp",
+      "identityProviderMapper": "oidc-role-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "claim": "groups",
+        "claim.value": "app-agentplatform-developer",
+        "role": "developer"
+      }
+    },
+    {
+      "name": "app-agentplatform-incident-manager to incident-manager",
+      "identityProviderAlias": "corp",
+      "identityProviderMapper": "oidc-role-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "claim": "groups",
+        "claim.value": "app-agentplatform-incident-manager",
+        "role": "incident-manager"
+      }
+    },
+    {
+      "name": "app-agentplatform-platform-engineer to platform-engineer",
+      "identityProviderAlias": "corp",
+      "identityProviderMapper": "oidc-role-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "claim": "groups",
+        "claim.value": "app-agentplatform-platform-engineer",
+        "role": "platform-engineer"
+      }
+    },
+    {
+      "name": "primary_team to team",
+      "identityProviderAlias": "corp",
+      "identityProviderMapper": "oidc-user-attribute-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "claim": "primary_team",
+        "user.attribute": "team"
+      }
+    },
+    {
+      "name": "sub to idp_sub",
+      "identityProviderAlias": "corp",
+      "identityProviderMapper": "oidc-user-attribute-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "claim": "sub",
+        "user.attribute": "idp_sub"
+      }
+    }
+  ],
+  "authenticationFlows": [
+    {
+      "alias": "corp first broker login",
+      "description": "First sign-in through corp: create the user from corp's ID, never link to an existing account",
+      "providerId": "basic-flow",
+      "topLevel": true,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "idp-review-profile",
+          "authenticatorConfig": "corp review profile",
+          "authenticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 10,
+          "userSetupAllowed": false
+        },
+        {
+          "authenticator": "idp-create-user-if-unique",
+          "authenticatorConfig": "corp create user",
+          "authenticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 20,
+          "userSetupAllowed": false
+        }
+      ]
+    }
+  ],
+  "authenticatorConfig": [
+    {
+      "alias": "corp review profile",
+      "config": {
+        "update.profile.on.first.login": "missing"
+      }
+    },
+    {
+      "alias": "corp create user",
+      "config": {
+        "require.password.update.after.registration": "false"
+      }
     }
   ],
   "components": {
@@ -495,13 +824,42 @@
         "providerId": "declarative-user-profile",
         "config": {
           "kc.user.profile.config": [
-            "{\"attributes\":[{\"name\":\"username\",\"displayName\":\"${username}\",\"validations\":{\"length\":{\"min\":3,\"max\":255},\"username-prohibited-characters\":{},\"up-username-not-idn-homograph\":{}},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]},\"multivalued\":false},{\"name\":\"email\",\"displayName\":\"${email}\",\"validations\":{\"email\":{},\"length\":{\"max\":255}},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]},\"multivalued\":false},{\"name\":\"firstName\",\"displayName\":\"${firstName}\",\"validations\":{\"length\":{\"max\":255},\"person-name-prohibited-characters\":{}},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]},\"multivalued\":false},{\"name\":\"lastName\",\"displayName\":\"${lastName}\",\"validations\":{\"length\":{\"max\":255},\"person-name-prohibited-characters\":{}},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]},\"multivalued\":false},{\"name\":\"team\",\"displayName\":\"Team\",\"validations\":{\"length\":{\"max\":64}},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\"]},\"multivalued\":false}],\"groups\":[{\"name\":\"user-metadata\",\"displayHeader\":\"User metadata\",\"displayDescription\":\"Attributes, which refer to user metadata\"}]}"
+            "{\"attributes\":[{\"name\":\"username\",\"displayName\":\"${username}\",\"validations\":{\"length\":{\"min\":3,\"max\":255},\"username-prohibited-characters\":{},\"up-username-not-idn-homograph\":{}},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]},\"multivalued\":false},{\"name\":\"email\",\"displayName\":\"${email}\",\"validations\":{\"email\":{},\"length\":{\"max\":255}},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]},\"multivalued\":false},{\"name\":\"firstName\",\"displayName\":\"${firstName}\",\"validations\":{\"length\":{\"max\":255},\"person-name-prohibited-characters\":{}},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]},\"multivalued\":false},{\"name\":\"lastName\",\"displayName\":\"${lastName}\",\"validations\":{\"length\":{\"max\":255},\"person-name-prohibited-characters\":{}},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]},\"multivalued\":false},{\"name\":\"team\",\"displayName\":\"Team\",\"validations\":{\"length\":{\"max\":64}},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\"]},\"multivalued\":false},{\"name\":\"idp_sub\",\"displayName\":\"Immutable ID at the enterprise IdP\",\"validations\":{\"length\":{\"max\":255}},\"permissions\":{\"view\":[\"admin\"],\"edit\":[\"admin\"]},\"multivalued\":false}],\"groups\":[{\"name\":\"user-metadata\",\"displayHeader\":\"User metadata\",\"displayDescription\":\"Attributes, which refer to user metadata\"}]}"
+          ]
+        }
+      }
+    ],
+    "org.keycloak.keys.KeyProvider": [
+      {
+        "name": "stable-rs256",
+        "providerId": "rsa",
+        "config": {
+          "priority": [
+            "200"
+          ],
+          "algorithm": [
+            "RS256"
+          ],
+          "keyUse": [
+            "SIG"
+          ],
+          "active": [
+            "true"
+          ],
+          "enabled": [
+            "true"
+          ],
+          "privateKey": [
+            "${KC_REALM_DEMO_SIGNING_KEY}"
+          ],
+          "certificate": [
+            "${KC_REALM_DEMO_SIGNING_CERT}"
           ]
         }
       }
     ]
   },
   "attributes": {
-    "demo-only-notice": "DEMO ONLY. Stands in for Okta on a local kind cluster. Every password and client secret in this file are throwaway demo values, public by design. Contract: docs/contracts.md."
+    "demo-only-notice": "DEMO ONLY. Stands in for Okta on a local kind cluster. Every password and client secret in this file are throwaway demo values, public by design, including the secret of identity provider `corp` (realm corp, files/corp-realm.json). Contract: docs/contracts.md."
   }
 }

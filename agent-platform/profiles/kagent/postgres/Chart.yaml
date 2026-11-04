@@ -1,0 +1,7 @@
+apiVersion: v2
+name: kagent-postgresql
+description: The PostgreSQL database kagent and Agent Substrate share - neither chart brings one any more
+type: application
+version: 0.1.0
+# The kagent and Substrate versions the manifest and the setup scripts come from.
+appVersion: "1.0.0-rc1"

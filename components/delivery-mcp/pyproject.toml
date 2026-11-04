@@ -1,6 +1,6 @@
 [project]
 name = "delivery-mcp"
-version = "0.1.0"
+version = "0.2.2"
 description = "Incident and change state with separation-of-duties rules, enforced against the caller's verified identity"
 authors = [
     {name = "agentgateway-demo"}
@@ -17,6 +17,9 @@ dependencies = [
     "opentelemetry-exporter-otlp>=1.30.0,<2.0",
     "opentelemetry-instrumentation-httpx>=0.51b0",
     "opentelemetry-instrumentation-starlette>=0.51b0",
+    # The logging handler that sends the audit records as OTLP logs. The SDK's
+    # own LoggingHandler is deprecated in its favor (SDK 1.45.0).
+    "opentelemetry-instrumentation-logging>=0.66b0",
 ]
 
 [tool.uv]

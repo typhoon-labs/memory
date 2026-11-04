@@ -1,36 +1,45 @@
 # kagent 1.x on Agent Substrate.
 #
-#   substrate-crds   ate-system   WorkerPool, SandboxConfig, CSIDriverConfig
-#   substrate        ate-system   the Actor runtime: API server, controller,
-#                                 node agent, router, egress gateway, its own
-#                                 PostgreSQL and object store (snapshots)
+#   substrate-crds     ate-system   WorkerPool, SandboxConfig, CSIDriverConfig
+#   substrate-podcert  podcertificate-controller-system
+#                                   the certificate controller: service, pod
+#                                   and database login certificates
+#   kagent-postgresql  kagent       the database kagent and Substrate share
+#   substrate          ate-system   the Actor runtime: API server, identity
+#                                   server, controller, node agent, router,
+#                                   egress gateway, and its object store
+#                                   (snapshots)
 #   substrate-egress-boundary
-#                    ate-system   a NetworkPolicy: Actors reach pods of this
-#                                 cluster and nothing outside it
-#   kagent-crds      kagent       Harness, AgentTemplate, Agent, ModelConfig,
-#                                 RemoteMCPServer, SandboxTemplate, MCPServer
-#   kagent           kagent       controller (API and A2A on port 8083), its
-#                                 PostgreSQL, the kmcp controller, one WorkerPool
-#                                 and the NetworkPolicy that guards port 8083.
-#                                 No bundled tool servers: see
-#                                 agent-platform/profiles/kagent/kagent-values.yaml.
-#                                 The UI behind its sign-in proxy, at
-#                                 http://localhost:18087: see values.yaml
+#                      ate-system   a NetworkPolicy: Actors reach pods of this
+#                                   cluster and nothing outside it
+#   kagent-crds        kagent       Harness, AgentTemplate, Agent, ModelConfig,
+#                                   RemoteMCPServer, SandboxTemplate,
+#                                   EgressPolicy
+#   kagent             kagent       controller (API and A2A on port 8083), one
+#                                   WorkerPool and the NetworkPolicy that guards
+#                                   port 8083. No bundled tool servers: see
+#                                   agent-platform/profiles/kagent/kagent-values.yaml.
+#                                   The UI behind its sign-in proxy, at
+#                                   http://localhost:18087: see values.yaml
 #
-# Versions are the pair that
-# https://kagent.dev/docs/kagent/1.x/setup/installation/ names (read
-# 2026-10-06). Do not move one without the other: a kagent release is tested
-# against exactly one Substrate version, and Substrate's database does not
-# migrate between its own alphas.
+# Versions are a pair: Substrate's is the one in kagent's go/go.mod at that
+# tag, here kagent v1.0.0-rc1 and Substrate v1.0.0-rc1 (the installation
+# page no longer names it). Do not move one without the other: a kagent
+# release is tested against exactly one Substrate version, and Substrate
+# supports no upgrade between minor versions before 1.0 (its
+# docs/guides/upgrade.md says to reinstall), so 0.6 to 1.0 was a reinstall.
 #
 # Order matters and the charts do not enforce it:
 #
-#   1. substrate installs without waiting. Its pods cannot start yet.
-#   2. scripts/bootstrap-identity.sh creates the signing pools they mount
-#      (no chart does), then waits for them.
-#   3. kagent installs. Its controller connects to Substrate at startup.
+#   1. scripts/bootstrap-identity.sh creates the signing pools no chart
+#      creates, before the certificate controller that mounts them.
+#   2. The database starts, on certificates that controller issues, and
+#      scripts/postgres-setup.sh creates its roles and schemas.
+#   3. substrate installs. It needs the pools and the database, and
+#      scripts/wait-substrate.sh waits for it.
+#   4. kagent installs. Its controller connects to Substrate at startup.
 #
-# Apply all five:   task kagent:install
+# Apply all of it:  task kagent:install
 # Apply one:        task deploy -- -l name=<release>
 #
 # Not labeled layer=trunk: `task up:trunk` does not install this.
@@ -47,23 +56,59 @@ releases:
     namespace: ate-system
     createNamespace: true
     chart: oci://ghcr.io/kagent-dev/substrate/helm/substrate-crds
-    version: 0.3.0-alpha3
+    version: 1.0.0-rc1
+
+  - name: substrate-podcert
+    namespace: podcertificate-controller-system
+    createNamespace: true
+    chart: oci://ghcr.io/kagent-dev/substrate/helm/substrate-podcert
+    version: 1.0.0-rc1
+    needs:
+      - ate-system/substrate-crds
+    values:
+      # Who may ask for a database login certificate, besides Substrate's API
+      # server (the chart's default). One entry per login.
+      - postgresClients:
+          - kagent/kagent-controller=kagent_owner_user
+          - kagent/kagent-controller=kagent_readwrite_user
+    wait: true
+    timeout: 300
+    hooks:
+      # A hook runs in this file's directory. The scripts name the repo-local
+      # kubeconfig and the context themselves; see scripts/lib.sh.
+      - events: ["presync"]
+        showlogs: true
+        command: ./scripts/bootstrap-identity.sh
+
+  - name: kagent-postgresql
+    namespace: kagent
+    createNamespace: true
+    chart: ../../../../../agent-platform/profiles/kagent/postgres
+    needs:
+      - podcertificate-controller-system/substrate-podcert
+    wait: true
+    timeout: 300
+    hooks:
+      - events: ["postsync"]
+        showlogs: true
+        command: ./scripts/postgres-setup.sh
 
   - name: substrate
     namespace: ate-system
     chart: oci://ghcr.io/kagent-dev/substrate/helm/substrate
-    version: 0.3.0-alpha3
+    version: 1.0.0-rc1
     needs:
       - ate-system/substrate-crds
+      - kagent/kagent-postgresql
     values:
       - ../../../../../agent-platform/profiles/kagent/substrate-values.yaml
-    # No `wait`: the pods become ready only after the hook below.
+      - substrate-values.yaml
+    # Adds tracing to the egress proxy, which the chart has no setting for.
+    postRenderer: ./scripts/egress-tracing.sh
     hooks:
-      # A hook runs in this file's directory. The scripts name the repo-local
-      # kubeconfig and the context themselves; see scripts/lib.sh.
       - events: ["postsync"]
         showlogs: true
-        command: ./scripts/bootstrap-identity.sh
+        command: ./scripts/wait-substrate.sh
 
   # The outer limit of what any agent can reach: pods of this cluster. See the
   # chart's values.yaml for why kagent's own allowlist is not enough.
@@ -77,15 +122,16 @@ releases:
     namespace: kagent
     createNamespace: true
     chart: oci://ghcr.io/kagent-dev/kagent/helm/kagent-crds
-    version: 1.0.0-alpha7
+    version: 1.0.0-rc1
     wait: true
 
   - name: kagent
     namespace: kagent
     chart: oci://ghcr.io/kagent-dev/kagent/helm/kagent
-    version: 1.0.0-alpha7
+    version: 1.0.0-rc1
     needs:
       - kagent/kagent-crds
+      - kagent/kagent-postgresql
       - ate-system/substrate
     values:
       - ../../../../../agent-platform/profiles/kagent/kagent-values.yaml

@@ -6,10 +6,12 @@ has already required.
 */ -}}
 {{- /*
 And the agents that may use it on a caller's behalf: a token without `act`
-(`has` is false when the claim is absent), or one whose newest actor is
-listed. Without that test `jwt.act.sub` would be an error on a caller's own
-token, which the gateway counts as false.
+that the identity provider issued (`has` is false when the claim is absent),
+or one the token exchange issued whose newest actor is listed. Without the
+`has` test `jwt.act.sub` would be an error on a caller's own token, which the
+gateway counts as false. As in the chart route-auth.
 */ -}}
+{{- $own := printf "(!has(jwt.act) && jwt.iss == %q)" (required "identity.issuer: whose tokens are a caller's own (../../identity.yaml)" (.Values.identity | default dict).issuer) -}}
 {{- range $tool, $_ := .Values.toolActors -}}
   {{- if not (hasKey $.Values.tools $tool) -}}
     {{- fail (printf "toolActors.%s: not a tool in `tools`" $tool) -}}
@@ -25,10 +27,10 @@ token, which the gateway counts as false.
     {{- end -}}
     {{- $subs = append $subs $sub -}}
   {{- end -}}
-  {{- $act := "!has(jwt.act)" -}}
+  {{- $act := $own -}}
   {{- if $subs -}}
     {{- $issuer := required "delegation.issuer: the issuer whose `act` names the agents" ($.Values.delegation.issuer | default "") -}}
-    {{- $act = printf "!has(jwt.act) || (jwt.iss == %q && jwt.act.sub in %s)" $issuer (toJson $subs) -}}
+    {{- $act = printf "%s || (jwt.iss == %q && jwt.act.sub in %s)" $own $issuer (toJson $subs) -}}
   {{- end -}}
   {{- if has "*" $roles -}}
     {{- $clauses = append $clauses (printf "(mcp.tool.name == %q && (%s))" $tool $act) -}}

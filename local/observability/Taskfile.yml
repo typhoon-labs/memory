@@ -9,7 +9,7 @@
 #   task observability:open -- gateway      the ready-made Agentgateway dashboard
 #   task observability:open -- logs|traces  Explore, on Loki or Tempo
 #   task observability:urls             the addresses, printed
-#   task observability:login            the demo-only Grafana login, read from the cluster
+#   task observability:login            the login of user `admin`, for when Keycloak is down
 #   task observability:test-rules       unit tests of the alert rules (promtool)
 #
 # What the releases are: agent-deployments/clusters/dev/platform/40-observability/helmfile.yaml
@@ -26,7 +26,8 @@ tasks:
     cmds:
       # 1. The stack. kube-prometheus-stack first: it brings the ServiceMonitor,
       #    PodMonitor, PrometheusRule and AlertmanagerConfig kinds.
-      - for: [kube-prometheus-stack, loki, tempo, otel-collector]
+      #    kube-audit-forwarder sends the API server's audit log to the collector.
+      - for: [kube-prometheus-stack, loki, tempo, otel-collector, kube-audit-forwarder]
         task: :deploy
         vars: { CLI_ARGS: "-l name={{.ITEM}}" }
       # 2. The gateway: its chart's monitoring resources (they need the kinds
@@ -57,7 +58,7 @@ tasks:
     cmds:
       - |
         cat <<'TEXT'
-        Grafana              http://localhost:18084          login: task observability:login
+        Grafana              http://localhost:18084          sign in as platform-engineer
           Sample App         http://localhost:18084/d/sample-app
           Platform overview  http://localhost:18084/d/platform-overview
           Agentgateway       http://localhost:18084/d/agentgateway
@@ -93,10 +94,12 @@ tasks:
         echo "${url}"
 
   login:
-    desc: Print the demo-only Grafana login, read from the cluster
+    desc: Print the login of Grafana's user admin, for when Keycloak is down, read from the cluster
     silent: true
     cmds:
       - |
+        # Going to Grafana goes straight to Keycloak; this address shows its own form.
+        echo "url       http://localhost:18084/login?disableAutoLogin=true"
         echo "user      admin"
         echo "password  $(kubectl --kubeconfig "{{.ROOT_DIR}}/local/kind/kubeconfig" --context kind-agentgateway-demo -n telemetry get secret kube-prometheus-stack-grafana --output 'jsonpath={.data.admin-password}' | base64 -d)"
 

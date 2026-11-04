@@ -1,6 +1,6 @@
 apiVersion: v2
 name: keycloak
-description: One small Keycloak pod with the demo realm. Stands in for Okta on kind only.
+description: One small Keycloak pod with the demo realm, and a corp realm that stands in for the enterprise IdP the demo realm brokers. Kind only.
 type: application
-version: 0.1.0
+version: 0.2.0
 appVersion: "26.7.5"

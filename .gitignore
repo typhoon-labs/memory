@@ -24,3 +24,6 @@ __pycache__/
 # Scratch: pulled charts, downloads, experiments
 .scratch/
 .tools/
+
+# Browser automation output
+.playwright-mcp/

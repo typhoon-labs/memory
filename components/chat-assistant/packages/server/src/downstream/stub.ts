@@ -28,13 +28,18 @@ interface StubChange {
   status: ChangeStatus;
   operation_id: string;
   proposed_by: string;
+  /** Each person's `sub` beside their name, as delivery-mcp keeps it; null until that step. */
+  proposed_by_sub: string | null;
   proposed_at: string;
   approved_by?: string;
+  approved_by_sub: string | null;
   approved_at?: string;
   rejected_by?: string;
+  rejected_by_sub: string | null;
   rejected_at?: string;
   reject_reason?: string;
   applied_by?: string;
+  applied_by_sub: string | null;
   applied_at?: string;
   detail?: string;
   history: { status: ChangeStatus; at: string; by: string | null; detail: string | null }[];
@@ -77,6 +82,9 @@ const TOOL_ROLE: Record<string, string> = {
   post_status_update: 'incident-manager',
 };
 
+/** The caller as the stub reads it: who the token names, and its `sub`. */
+type Caller = Identity & { sub: string | null };
+
 export interface StubOptions {
   seed: boolean;
   /** How long the fake rollout spends in `applying`, then in `verifying`. */
@@ -98,7 +106,23 @@ export function createStubDownstreams(options: StubOptions): Downstreams {
   let changeSeq = 0;
 
   const iso = () => new Date(now()).toISOString();
-  const who = (token: string): Identity => identityFromClaims(decodeJwt(token), token);
+  /** The caller, and the token's `sub`, which the rule that the approver is not the proposer keys on. */
+  const who = (token: string): Caller => {
+    const claims = decodeJwt(token);
+    const sub = typeof claims.sub === 'string' && claims.sub.trim() ? claims.sub.trim() : null;
+    return { ...identityFromClaims(claims, token), sub };
+  };
+
+  /** As delivery-mcp: propose and approve refuse a token without `sub`, which the rule needs. */
+  function requireSub(caller: Caller, tool: string): string {
+    if (caller.sub === null) {
+      throw serviceRefusal(
+        'approver_is_not_proposer',
+        `${tool} needs the token's sub, which the rule that the approver is not the proposer keys on, and this token has none`,
+      );
+    }
+    return caller.sub;
+  }
 
   function serviceRefusal(rule: string, message: string): Refusal {
     return new Refusal({ layer: 'service', rule, detail: message });
@@ -165,7 +189,7 @@ export function createStubDownstreams(options: StubOptions): Downstreams {
     return change;
   }
 
-  const tools: Record<string, (caller: Identity, args: Record<string, unknown>) => unknown> = {
+  const tools: Record<string, (caller: Caller, args: Record<string, unknown>) => unknown> = {
     // Newest first, like the real service.
     list_incidents: () => ({ incidents: [...incidents.values()].reverse().map(view) }),
     get_incident: (_caller, args) => view(incidentOr404(args.incident_id)),
@@ -213,6 +237,7 @@ export function createStubDownstreams(options: StubOptions): Downstreams {
     },
 
     propose_change(caller, args) {
+      const sub = requireSub(caller, 'propose_change');
       const incident = incidentOr404(args.incident_id);
       const service = services[incident.service]!;
       const target = String(args.target_version ?? '');
@@ -241,7 +266,11 @@ export function createStubDownstreams(options: StubOptions): Downstreams {
         status: 'proposed',
         operation_id: `op-${crypto.randomUUID().slice(0, 8)}`,
         proposed_by: caller.user,
+        proposed_by_sub: sub,
         proposed_at: iso(),
+        approved_by_sub: null,
+        rejected_by_sub: null,
+        applied_by_sub: null,
         history: [{ status: 'proposed', at: iso(), by: caller.user, detail: null }],
       };
       changes.set(change.change_id, change);
@@ -252,8 +281,10 @@ export function createStubDownstreams(options: StubOptions): Downstreams {
     },
 
     approve_change(caller, args) {
+      const sub = requireSub(caller, 'approve_change');
       const change = changeOr404(args.change_id);
-      if (change.proposed_by === caller.user) {
+      // On `sub`, as delivery-mcp since 0.2.1: a name can change hands, `sub` stays.
+      if (change.proposed_by_sub === sub) {
         throw serviceRefusal('approver_is_not_proposer', 'the person who proposed a change cannot approve it');
       }
       if (change.status !== 'proposed') {
@@ -261,6 +292,7 @@ export function createStubDownstreams(options: StubOptions): Downstreams {
       }
       move(change, 'approved', caller.user);
       change.approved_by = caller.user;
+      change.approved_by_sub = sub;
       change.approved_at = iso();
       return { ...change };
     },
@@ -273,6 +305,7 @@ export function createStubDownstreams(options: StubOptions): Downstreams {
       change.reject_reason = String(args.reason ?? '');
       move(change, 'rejected', caller.user, change.reject_reason);
       change.rejected_by = caller.user;
+      change.rejected_by_sub = caller.sub;
       change.rejected_at = iso();
       return { ...change };
     },
@@ -287,6 +320,7 @@ export function createStubDownstreams(options: StubOptions): Downstreams {
       }
       move(change, 'applying', caller.user);
       change.applied_by = caller.user;
+      change.applied_by_sub = caller.sub;
       change.applyStartedAt = now();
       incident.status = 'mitigating';
       return { ...change, replayed: false };

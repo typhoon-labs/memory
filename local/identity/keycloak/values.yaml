@@ -17,3 +17,21 @@ resources:
   limits:
     memory: 768Mi
 javaHeap: "-Xms128m -Xmx384m"
+
+# Features beyond Keycloak's defaults, with their versions, so that an upgrade
+# cannot switch a feature's version underneath.
+features:
+  - opentelemetry-logs:v1
+
+# Keycloak's log, sign-in and admin events included, to the cluster's
+# collector over OTLP (preview feature opentelemetry-logs:v1 above, in
+# Keycloak since 26.5), and from there to Loki. The realm turns events on and
+# names the `jboss-logging` listener, which writes each event as a log line;
+# `eventsSuccessLevel` makes successful events INFO, so that they are exported
+# (Keycloak's default is DEBUG). Admin events are kept without their
+# representations, which could carry secrets.
+# https://www.keycloak.org/observability/telemetry
+telemetry:
+  endpoint: http://otel-collector.telemetry.svc.cluster.local:4317
+  logsLevel: info
+  eventsSuccessLevel: info

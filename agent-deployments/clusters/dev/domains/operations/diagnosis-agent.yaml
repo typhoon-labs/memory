@@ -19,6 +19,11 @@ target:
 # alert automation and every signed-in role may ask it.
 allow: []
 
+# The target chain-sts's tokens must be for (`delegation.resources` in
+# ../../identity.yaml). chat-assistant asks for this one before it calls; a
+# token issued for any other route is refused here (401).
+resource: diagnosis-agent
+
 # Who may call it on a caller's behalf: chat-assistant, which asks it for a
 # diagnosis from the alert hook and from the chat (chain [chat-assistant]).
 # A person or the machine client calling it directly sends their own token,
@@ -30,6 +35,7 @@ actors:
 # (claim preferred_username). It records that caller as the owner of the
 # conversation and does not verify the token: this policy is the verification.
 #
-# The token goes no further. The agent's own calls carry its own credential
-# (model route) or none (its tool server).
+# The token goes no further, and works on no other route: it was issued for
+# this one. The agent's own calls carry its own credential (model route) or
+# none (its tool server).
 passthrough: true

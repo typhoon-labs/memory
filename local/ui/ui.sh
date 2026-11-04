@@ -14,8 +14,8 @@
 #
 # A forward is also the right door for them. None has a login worth the name,
 # so a NodePort would hand each to every pod in the cluster. Agentgateway's
-# admin UI could not get one anyway: the proxy binds its admin port to the
-# pod's own localhost, and a forward is the only thing that reaches it.
+# admin UI is also published, behind a sign-in proxy, and is here as the way in
+# while that proxy is down.
 set -o nounset
 
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -43,10 +43,11 @@ clickhouse|langfuse|service/langfuse-clickhouse|8123|18096|/play|ClickHouse quer
 published='
 Chat UI|http://localhost:18083|http://localhost:18083/|developer, incident-manager or platform-engineer, password demo
 Sample App|http://localhost:18082|http://localhost:18082/|none
-Grafana|http://localhost:18084|http://localhost:18084/api/health|task observability:login
-Langfuse|http://localhost:18085|http://localhost:18085/api/public/health|task langfuse:login
+Grafana|http://localhost:18084|http://localhost:18084/api/health|platform-engineer, password demo
+Langfuse|http://localhost:18085|http://localhost:18085/api/public/health|press Keycloak, as platform-engineer
 Agentregistry|http://localhost:18086|http://localhost:18086/|none
 kagent|http://localhost:18087|http://localhost:18087/ping|platform-engineer, password demo
+Agentgateway UI|http://localhost:18088/ui/|http://localhost:18088/ping|platform-engineer, password demo
 Keycloak admin|http://localhost:18081/admin/|http://localhost:18081/realms/master|admin, password in Secret keycloak/keycloak-admin
 '
 
@@ -55,7 +56,7 @@ row() { printf '%s\n' "${forwarded}" | awk -F '|' -v name="$1" 'NF == 7 && $1 ==
 # The status after any redirect: Prometheus answers / with one.
 status_of() { curl --silent --location --output /dev/null --max-time 3 --write-out '%{http_code}' "$1" 2>/dev/null; }
 
-# What to sign in with, read from the cluster when it is asked for. The three
+# What to sign in with, read from the cluster when it is asked for. The two
 # with a login print it; these are the charts' own demo values.
 login() {
   case "$1" in

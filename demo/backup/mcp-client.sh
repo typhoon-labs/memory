@@ -43,7 +43,7 @@ fi
 
 answer="$(mcp "${gateway_url}/mcp/delivery" - list)"
 if [ "$(printf '%s' "${answer}" | jq -r '.http')" = "401" ]; then
-  line refused "the same address without a token" "HTTP 401: $(printf '%s' "${answer}" | jq -r '.error.message')"
+  line refused "the same address without a token" "HTTP 401: $(printf '%s' "${answer}" | jq -r '.error | if type == "object" then .message else . end // ""')"
 else
   unexpected "/mcp/delivery without a token answered: ${answer}"
 fi

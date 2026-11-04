@@ -1,0 +1,74 @@
+# What the API server records about requests: the Kubernetes part of the audit
+# trail, which answers who released or changed what in the cluster, including
+# changes that never pass the gateway (docs/cluster.md). Installed into the
+# kind node by enable.sh next to this file; on EKS the control plane's audit
+# log is turned on in the cluster's logging configuration instead.
+#
+# The first rule that matches decides. Reads and the cluster's own
+# bookkeeping are left out; every write by anyone else is kept, with the
+# request body except for Secrets, ConfigMaps and tokens, where only who did
+# what to which object is kept.
+# https://kubernetes.io/docs/tasks/debug/debug-cluster/audit/
+apiVersion: audit.k8s.io/v1
+kind: Policy
+omitStages: [RequestReceived]
+omitManagedFields: true
+rules:
+  - level: None
+    verbs: [get, list, watch]
+  - level: None
+    nonResourceURLs: ["/healthz*", "/livez*", "/readyz*", "/version", "/metrics", "/openid/*", "/.well-known/*"]
+  # The kubelet and the control plane's own controllers: status, leases,
+  # endpoints. Their writes follow from someone else's, which is recorded.
+  - level: None
+    userGroups: ["system:nodes", "system:serviceaccounts:kube-system"]
+  - level: None
+    users: ["system:kube-scheduler", "system:kube-controller-manager", "system:apiserver"]
+  # The platform's controllers, for the same reason: each writes what the
+  # objects someone else wrote ask for (statuses, generated Deployments and
+  # Services, Prometheus's configuration, the gateway's key cache), and some
+  # rewrite the same objects every few seconds. Seen on 2026-11-02: most of the
+  # records, a few hundred an hour, none of them asked for by a person.
+  - level: None
+    users:
+      - system:serviceaccount:agentgateway-system:agentgateway
+      - system:serviceaccount:ate-system:ate-controller
+      - system:serviceaccount:kagent:kagent-controller
+      - system:serviceaccount:kyverno:kyverno-admission-controller
+      - system:serviceaccount:local-path-storage:local-path-provisioner-service-account
+      - system:serviceaccount:podcertificate-controller-system:podcertificate-controller
+      - system:serviceaccount:telemetry:kube-prometheus-stack-operator
+  # Questions, not writes: is this token valid, may this user do that.
+  # chain-sts asks one for every exchange, and records the exchange itself.
+  - level: None
+    resources:
+      - group: authentication.k8s.io
+        resources: [tokenreviews]
+      - group: authorization.k8s.io
+        resources:
+          - subjectaccessreviews
+          - selfsubjectaccessreviews
+          - localsubjectaccessreviews
+          - selfsubjectrulesreviews
+  - level: None
+    resources:
+      - group: coordination.k8s.io
+        resources: [leases]
+      - group: ""
+        resources: [events]
+      - group: events.k8s.io
+        resources: [events]
+  # Who touched a secret, a config map or a token, never what is in it.
+  - level: Metadata
+    resources:
+      - group: ""
+        resources: [secrets, configmaps, serviceaccounts/token]
+  # Who created or changed which resource type, without its schema: a CRD's
+  # body reached 650 KB, and an install writes dozens.
+  - level: Metadata
+    resources:
+      - group: apiextensions.k8s.io
+        resources: [customresourcedefinitions]
+  - level: Request
+    verbs: [create, update, patch, delete, deletecollection]
+  - level: Metadata

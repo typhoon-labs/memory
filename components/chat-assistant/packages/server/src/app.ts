@@ -102,6 +102,7 @@ export function createApp(deps: AppDeps): Express {
       a2aUrl: config.ui.a2aUrl,
       a2aProtocolVersion: config.ui.a2aProtocolVersion,
       pollIntervalMs: config.ui.pollIntervalMs,
+      forceSignIn: config.ui.forceSignIn,
       appVersion: config.appVersion,
     });
   });

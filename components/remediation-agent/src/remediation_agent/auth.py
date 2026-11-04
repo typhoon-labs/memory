@@ -8,7 +8,11 @@ get the token chain-sts issued for it instead (delegation.py).
 
 Two issuers may be trusted: Keycloak, for a user's own token, and chain-sts,
 for a token it issued to an agent acting for a user. A token is verified
-against the keys of the issuer it names, and only those.
+against the keys of the issuer it names, and only those, and must carry one of
+that issuer's audiences: Keycloak's is the gateway's (OIDC_AUDIENCE), and
+chain-sts's is this agent's own resource (DELEGATION_AUDIENCE), because
+chain-sts issues each token for one target. A chain token issued for another
+target, delivery-mcp or the model route, is refused here.
 """
 
 from __future__ import annotations
@@ -23,6 +27,8 @@ import jwt
 from a2a.server.agent_execution import RequestContext
 from opentelemetry import trace
 from starlette.types import ASGIApp, Receive, Scope, Send
+
+from .config import TrustedIssuer
 
 logger = logging.getLogger(__name__)
 
@@ -68,15 +74,15 @@ def user_of(claims: Mapping[str, Any]) -> str | None:
 class TokenVerifier:
     """Verifies a JWT against the published keys of the issuer it names.
 
-    ``issuers`` maps each trusted issuer to the URL of its keys. Every issuer's
-    tokens must carry ``audience``.
+    ``issuers`` maps each trusted issuer to the URL of its keys and the
+    audiences its tokens must carry one of.
     """
 
-    def __init__(self, *, issuers: Mapping[str, str], audience: str) -> None:
-        self._audience = audience
+    def __init__(self, *, issuers: Mapping[str, TrustedIssuer]) -> None:
+        self._audiences = {issuer: list(trusted.audiences) for issuer, trusted in issuers.items()}
         self._keys = {
-            issuer: jwt.PyJWKClient(jwks_url, cache_keys=True, lifespan=3600, timeout=10)
-            for issuer, jwks_url in issuers.items()
+            issuer: jwt.PyJWKClient(trusted.jwks_url, cache_keys=True, lifespan=3600, timeout=10)
+            for issuer, trusted in issuers.items()
         }
 
     def verify(self, token: str) -> dict[str, Any]:
@@ -92,7 +98,7 @@ class TokenVerifier:
             token,
             key.key,
             algorithms=["RS256"],
-            audience=self._audience,
+            audience=self._audiences[issuer],
             issuer=issuer,
             leeway=CLOCK_SKEW_SECONDS,
             options={"require": ["exp", "iss", "aud"]},

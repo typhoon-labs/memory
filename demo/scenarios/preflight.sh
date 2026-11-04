@@ -187,7 +187,7 @@ for uid in sample-app platform-overview agentgateway; do
   [ "${code}" = "200" ] || grafana_missing="${grafana_missing}${grafana_missing:+, }${uid} (HTTP ${code})"
 done
 if [ -z "${grafana_missing}" ]; then
-  go "Grafana and its three dashboards" "${grafana_url}   login: task observability:login"
+  go "Grafana and its three dashboards" "${grafana_url}   sign in as platform-engineer"
 else
   no_go "Grafana and its three dashboards" "missing: ${grafana_missing}" \
     "task observability:install"
@@ -198,7 +198,7 @@ secret_key="$(secret langfuse langfuse-init LANGFUSE_INIT_PROJECT_SECRET_KEY)"
 langfuse() { printf 'user = "%s:%s"\n' "${public_key}" "${secret_key}" | curl --config - --silent --max-time 15 "$@" 2>/dev/null; }
 langfuse_health="$(http_code "${langfuse_url}/api/public/health")"
 if [ "${langfuse_health}" = "200" ]; then
-  go "Langfuse reachable" "${langfuse_url}   login: task langfuse:login"
+  go "Langfuse reachable" "${langfuse_url}   press Keycloak, as platform-engineer"
 else
   no_go "Langfuse reachable" "HTTP ${langfuse_health} from ${langfuse_url}/api/public/health" \
     "task langfuse:install"

@@ -1,24 +1,41 @@
 # Agentgateway demo
 
+> **Owner:** coordinator · **Type:** start · **Checked:** 2026-11-03 against Agentgateway 1.7.0, Keycloak 26.7.5, chain-sts 0.2.0, kagent and Agent Substrate 1.0.0-rc1
+
 A kind cluster that shows the EKS agent platform option from the architecture
 document (`../Docs/AgentGateway/architecture.md`, kept next to this repository,
 not in it) in under 10 minutes, through one incident. A Sample App's search breaks after a
 release. An alert starts a read-only diagnosis agent. Three signed-in roles
 (`developer`, `incident-manager`, `platform-engineer`) propose, approve and
 apply the rollback from an incident card in a chat UI. Every agent, tool and
-model call goes through Agentgateway, with the caller's verified identity.
+model call goes through Agentgateway, with the caller's verified identity,
+except diagnosis-agent's reads from its own read-only Kubernetes tool server,
+and its model and Grafana calls, which carry a key that names the workload,
+not a person ([`docs/system-architecture.md`](docs/system-architecture.md),
+section 7.7). `chat-assistant`, `remediation-agent` and `comms-agent` do not pass the
+caller's token on: each exchanges it at chain-sts, the token exchange built
+here, for one that names the same user and every agent the request passed
+through.
 
 This is a demonstration of what is possible. Its results are observations, not
 pilot evidence for the architecture decision.
 
-- **To present it:** [`demo/run-of-show.md`](demo/run-of-show.md), the script
-  with times, clicks, words and fallbacks.
-- **To change it:** [`docs/contracts.md`](docs/contracts.md), the identities,
-  bindings, tools and routes the parts agree on;
-  [`docs/cluster.md`](docs/cluster.md), the names, ports and commands; and
-  [`CONTRIBUTING.md`](CONTRIBUTING.md), the rules for working here. What was
-  measured is in [`docs/measurements.md`](docs/measurements.md), and each
-  component and platform service has a README next to it.
+## Documentation
+
+| You are | Read |
+|---|---|
+| New to the project | This README, then [`docs/system-architecture.md`](docs/system-architecture.md), sections 1 to 4: the parts and one incident hop by hop |
+| Presenting the demo | [`demo/run-of-show.md`](demo/run-of-show.md): times, clicks, words and fallbacks |
+| An architect or security reviewer | [`docs/system-architecture.md`](docs/system-architecture.md), sections 5 to 8: tokens, chain-sts, each path case by case, and what keeps the gateway the only door. Then [`docs/production-design.md`](docs/production-design.md): connecting Okta, Ping or another identity provider, the options compared, hardening and open decisions |
+| Building or changing a part | [`CONTRIBUTING.md`](CONTRIBUTING.md), [`docs/contracts.md`](docs/contracts.md) (what the parts agree on), and the README next to the part |
+| Operating the cluster | [`docs/cluster.md`](docs/cluster.md) (names, ports, every task), then the README of each platform release under `agent-deployments/clusters/dev/platform/` |
+| Checking a figure | [`docs/measurements.md`](docs/measurements.md): every timing, token count and cost, with its date |
+
+Each component has a README next to it, and so does each platform release
+except `30-model-route` and `80-policies`, whose helmfiles explain them.
+[`agent-platform/README.md`](agent-platform/README.md) says which chart,
+profile and policy each release uses. Where each kind of fact lives, and the
+rules for documents, are in [`CONTRIBUTING.md`](CONTRIBUTING.md#documentation).
 
 ## What you need
 
@@ -63,12 +80,18 @@ component's locked packages.
 |---|---|---|
 | Chat UI | <http://localhost:18083> | `developer`, `incident-manager` or `platform-engineer`, password `demo` (Keycloak, demo only) |
 | Sample App | <http://localhost:18082> (Search: `/search`) | none |
-| Grafana | <http://localhost:18084> | `admin`, password from `task observability:login` (demo only) |
-| Langfuse | <http://localhost:18085> | email and password from `task langfuse:login` (generated in the cluster) |
+| Grafana | <http://localhost:18084> | `platform-engineer`, password `demo`, is Admin; the other roles are Viewer |
+| Langfuse | <http://localhost:18085> | Press **Keycloak**, as `platform-engineer`; no other role is let in |
 | Agentregistry | <http://localhost:18086> | none |
 | kagent | <http://localhost:18087> | `platform-engineer`, password `demo`; no other role is let in |
+| Agentgateway UI | <http://localhost:18088/ui/>, and <http://localhost:18088/ui/llm/analytics> for cost and tokens | `platform-engineer`, password `demo`; no other role is let in |
 | Agentgateway | <http://localhost:18080> | a bearer token: `task token -- developer` |
-| Keycloak | <http://localhost:18081/realms/demo> | the sign-in pages of the above |
+| Keycloak | <http://localhost:18081/realms/demo>, and its admin console at <http://localhost:18081/admin/> | the sign-in pages of the above; the console is `admin`, password in Secret `keycloak/keycloak-admin` |
+
+One sign-in to Keycloak covers Grafana, Langfuse, kagent and the Agentgateway UI:
+the first one asks for the password and the others do not. `task sso:check` shows it for all but kagent. If Keycloak
+is down, `task observability:login` and `task langfuse:login` print each one's
+own login.
 
 A fourth user, `developer-other-team`, is a developer who does not own the
 search service; `task demo:drive` uses it to show a refusal by team.
@@ -86,7 +109,7 @@ answers now. Nothing in the cluster changes.
 
 | `task ui -- <name>` | Address while it runs | Shows | Login |
 |---|---|---|---|
-| `agentgateway` | <http://localhost:18090/ui> | Agentgateway's admin UI: the listeners, routes and policies the proxy holds. Read-only, because the configuration comes from the controller | none |
+| `agentgateway` | <http://localhost:18090/ui> | Agentgateway's admin UI, the same as at <http://localhost:18088/ui/> and for when that is down. The port has no login and can stop the proxy (`docs/cluster.md`) | none |
 | `prometheus` | <http://localhost:18091> | Targets, rules and queries | none |
 | `alertmanager` | <http://localhost:18092> | Alerts and silences | none |
 | `rustfs` | <http://localhost:18093/rustfs/console/> | The snapshots Agent Substrate keeps of its Actors | printed by the task |
@@ -101,29 +124,20 @@ name; [`local/ui/ui.sh`](local/ui/ui.sh) gives the reasons.
 
 | Task | Does |
 |---|---|
+| `task doctor` | Does this machine have the tools: one line each, and what to install under the failing lines |
 | `task up` | From no cluster to a ready demo. Safe to re-run |
-| `task up:trunk` | Its first step alone: cluster, registry, Agentgateway, Keycloak and the model route |
-| `task doctor` | Does this machine have the tools: one line each, and what to install under the failing lines. `-- --dev` adds node, npm and uv |
-| `task setup` | After `mise install`: fetches now what the tasks would fetch on first use. `-- --dev` adds every component's packages. Safe to re-run |
-| `task demo:preflight` | Go or no-go, with the fix under each failing line |
+| `task demo:preflight` | Go or no-go before a showing, with the fix under each failing line |
 | `task demo:reset` | Back to a clean start: search 2.0.0, no incident, the alert quiet. Before each showing |
 | `task demo:break` | Ships search-service 2.1.0, the release that starts the incident |
-| `task demo:drive` | The whole incident as a script, through the gateway, as each role (75 seconds) |
-| `task demo:alert` | Fallback: delivers the alert by hand when the card does not appear |
-| `task demo:chain` | One Apply from the Chat UI, followed through chain-sts, the gateway and delivery-mcp: what each recorded of it (2 minutes, then `demo:reset`) |
-| `task demo:backup:<name>` | Thirteen short drills for questions from the room; see the run of show |
+| `task demo:drive` | The whole incident as a script, through the gateway, as each role |
 | `task status` | What is running, the addresses, node memory |
-| `task ui` | Every web UI, its address and whether it answers. `-- <name>` forwards one that has no host port, `-- all` the seven: [Where things are](#where-things-are) |
+| `task ui` | Every web UI, its address and whether it answers: [Where things are](#where-things-are) |
 | `task token -- <user>` | An access token for a user, or for `alert-automation` |
-| `task smoke` | Positive and negative checks of the model route (one small model call) |
-| `task sts:check` | The token exchange's denied paths, each next to its allowed twin ([`agent-platform/tests`](agent-platform/tests/README.md)) |
-| `task model` | Which model provider the gateway uses. `-- bedrock` and `-- local` switch it: [Model provider](#model-provider) |
-| `task deploy -- -l name=<release>` | Applies one release again, after a change to its files |
-| `task langfuse:restart-clickhouse` | When Langfuse stops answering queries |
 | `task down` | Removes the cluster, the local registry and the kubeconfig. Nothing else on the machine |
 
-All tasks use the kubeconfig in `local/kind/kubeconfig` and never the default
-one.
+Every other task, and what each is for, is in
+[`docs/cluster.md`](docs/cluster.md#tasks). All tasks use the kubeconfig in
+`local/kind/kubeconfig` and never the default one.
 
 ## Layout
 
@@ -136,14 +150,15 @@ Each top-level directory answers one question.
 | `components/` | Source owned by one team. Each child stands in for a separate repository | Yes, as separate repositories |
 | `local/` | Everything that exists only because this is kind: the cluster's own configuration, Keycloak for Okta, a local registry for ECR, the Grafana stack for New Relic or Dynatrace, a traffic generator for the Sample App's visitors, and the forwards to the UIs that have no host port | No |
 | `demo/` | Presenting only: the run of show, break and reset scenarios, the pre-flight, backup drills | No |
-| `docs/` | What the parts agree on, the cluster reference, what was measured, and the architecture's section on layout | The contracts, yes |
+| `docs/` | What the parts agree on, the cluster reference, how the system fits together, what was measured, and the architecture's section on layout | The contracts, yes |
 | `scripts/` | Building the cluster in order (`up.sh`), checking and preparing this machine (`doctor.sh`, `setup.sh`), and the shell helpers every cluster script shares | No |
 
 ## Model provider
 
 Agentgateway is the only component that talks to a model provider. Agents and
-the chat assistant call the gateway's model route with the caller's token and
-never hold a provider key. The binding is one file:
+the chat assistant call the gateway's model route with the token chain-sts
+exchanged the caller's for, `diagnosis-agent` with a key the gateway issued
+to it, and none holds a provider key. The binding is one file:
 [`agent-deployments/clusters/dev/platform/30-model-route/model-provider.yaml`](agent-deployments/clusters/dev/platform/30-model-route/model-provider.yaml).
 
 It says `active: local`: the Anthropic Messages API on this machine at
@@ -242,5 +257,5 @@ What is still written for the local endpoint, and will need a look:
 
 The run of show lists them for the room. In short: a real MCP client cannot
 yet sign in through the gateway by itself; Langfuse shows an incident as
-several traces; the diagnosis agent's runbook is in its prompt; kagent, Agent
-Substrate and parts of Agentgateway are alpha.
+several traces; kagent and Agent Substrate are release candidates (1.0.0-rc1),
+and parts of Agentgateway are alpha.

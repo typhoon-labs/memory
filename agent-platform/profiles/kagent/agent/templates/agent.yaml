@@ -11,7 +11,8 @@ metadata:
   labels:
     {{- include "kagent-agent.labels" . | nindent 4 }}
 spec:
-  templateRef:
-    name: {{ .Release.Name }}
+  template:
+    ref:
+      name: {{ .Release.Name }}
   harnessRef:
     name: {{ .Release.Name }}

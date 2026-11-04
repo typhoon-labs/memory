@@ -9,7 +9,12 @@ image:
   # 0.1.2 also trusts chain-sts's tokens, for an agent acting for a user
   # (DELEGATION_* below). 0.1.3 records the agents of such a token, newest
   # first, next to the user in its audit lines and in every record it writes.
-  tag: 0.1.3
+  # 0.2.0 writes an audit record for each step of a change and each write to
+  # an incident, and sends them to the collector (OTEL_* below) for Loki.
+  # 0.2.1 decides that the approver is not the proposer on the token's sub,
+  # not on the user name, and keeps each person's sub with a change. 0.2.2
+  # takes chain-sts's tokens for its own route only (DELEGATION_AUDIENCE).
+  tag: 0.2.2
 
 port: 8080
 
@@ -23,11 +28,13 @@ env:
   OIDC_AUDIENCE: agentgateway
   OIDC_JWKS_URL: http://keycloak.keycloak.svc.cluster.local:8080/realms/demo/protocol/openid-connect/certs
   # The second issuer, chain-sts: `delegation` in the same file. Its tokens
-  # carry the user's claims for an agent acting for that user; their audience
-  # is OIDC_AUDIENCE above. The boundary of `tools` (platform/80-policies) lets
-  # the pod fetch the keys.
+  # carry the user's claims for an agent acting for that user, each for one
+  # target; delivery-mcp takes those for its own route, `delegation.resources`
+  # delivery-mcp, and refuses one issued for any other. The boundary of
+  # `tools` (platform/80-policies) lets the pod fetch the keys.
   DELEGATION_ISSUER: http://chain-sts.chain-sts.svc.cluster.local
   DELEGATION_JWKS_URL: http://chain-sts.chain-sts.svc.cluster.local/jwks
+  DELEGATION_AUDIENCE: http://agentgateway-proxy.agentgateway-system.svc.cluster.local/mcp/delivery
 
   # Changes are applied by upgrading the Helm release `sample-app` in namespace
   # `sample-app`, with the rights in rbac/ (release delivery-mcp-access).
@@ -68,5 +75,5 @@ resources:
 
 serviceAccount:
   create: true
-  # Named in access/values.yaml: the Role in `sample-app` is bound to it.
+  # Named in rbac/values.yaml: the Role in `sample-app` is bound to it.
   name: delivery-mcp

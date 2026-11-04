@@ -32,5 +32,5 @@ async def apply_change(change_id: str) -> ToolResult:
     return await run_tool(
         "apply_change",
         lambda service, caller: service.apply_change(caller, change_id),
-        target=change_id,
+        change_id=change_id,
     )

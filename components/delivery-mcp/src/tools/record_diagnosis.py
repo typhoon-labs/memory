@@ -34,5 +34,5 @@ async def record_diagnosis(
         lambda s, caller: s.record_diagnosis(
             caller, incident_id, suspected_cause, evidence, recommended_version
         ),
-        target=incident_id,
+        incident_id=incident_id,
     )

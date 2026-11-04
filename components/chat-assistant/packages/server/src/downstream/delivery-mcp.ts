@@ -11,7 +11,7 @@ import { DownstreamError, Refusal, type Delivery } from './types.js';
 
 const IDLE_MS = 60_000;
 const MAX_SESSIONS = 100;
-const UNKNOWN_TOOL = /unknown tool|tool not found|no such tool|tool .{0,80}not (found|available|allowed|permitted)/i;
+const UNKNOWN_TOOL = /unknown tool|unknown resource|tool not found|no such tool|tool .{0,80}not (found|available|allowed|permitted)/i;
 
 interface Session {
   client: Promise<Client>;
@@ -101,8 +101,9 @@ export function createDeliveryMcp(url: string, clientVersion: string): Delivery 
           });
         }
         // Agentgateway answers a tools/call for a tool the caller's role may not use with
-        // HTTP 400 and the JSON-RPC error "Unknown tool: <name>" in the body. The SDK reports
-        // the status with the body as text, not as an McpError.
+        // HTTP 400 and a JSON-RPC error in the body: "unknown resource" from 1.7 on, the same
+        // as for a tool that does not exist, and "Unknown tool: <name>" before it. The SDK
+        // reports the status with the body as text, not as an McpError.
         if (err instanceof StreamableHTTPError && err.code === 400 && UNKNOWN_TOOL.test(err.message)) {
           throw new Refusal({ layer: 'gateway', status: 400, detail: `the tool ${name} is not offered to you` });
         }

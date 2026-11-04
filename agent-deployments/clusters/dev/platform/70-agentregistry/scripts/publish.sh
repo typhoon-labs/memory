@@ -39,8 +39,12 @@ of_kind() {
 
 # Agents refer to MCP servers by name, and the registry refuses a reference to
 # an entry it does not have. So: MCP servers and skills first, agents last.
-# (There is no skill at present: a Skill needs a git repository the registry
-# can reach, and this repository has no remote.)
+# (There is no skill at present. Agentregistry 0.4.0, the latest, takes a
+# Skill's source as a git repository only; OCI is for plugins. diagnosis-agent's
+# runbook is a skill in an OCI image, and this repository has no remote. A
+# Skill without a source is accepted, and an Agent's `skills` may name it
+# with `compatibleHarnesses` set, but it stays Ready=False, SourceMissing.
+# Tried on 2026-11-02.)
 newline='
 '
 for kind in MCPServer Skill Agent; do

@@ -1,5 +1,6 @@
 # Keycloak with the demo realm. Stands in for Okta; exists only on kind, so the
-# chart and the realm live under local/identity/.
+# chart and the realm live under local/identity/. A second realm, corp, stands
+# in for the enterprise IdP that the demo realm brokers: README.md.
 commonLabels:
   layer: trunk
 
@@ -16,3 +17,10 @@ releases:
     chart: ../../../../../local/identity/keycloak
     wait: true
     timeout: 420
+    hooks:
+      # The realm's signing key, made once and kept in a Secret, so that a
+      # restarted Keycloak signs with the key the gateway already has. The
+      # script names the repo-local kubeconfig and the context itself.
+      - events: ["presync"]
+        showlogs: true
+        command: ../../../../../local/identity/keycloak/scripts/realm-keys.sh

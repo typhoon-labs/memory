@@ -15,9 +15,9 @@ RULE_TEAM_OWNS_SERVICE = "team_owns_service"
 RULE_RETAINED_EARLIER_VERSION = "target_is_retained_earlier_version"
 RULE_APPROVER_NOT_PROPOSER = "approver_is_not_proposer"
 RULE_CHANGE_IS_APPROVED = "change_is_approved"
+RULE_AUTHENTICATED_CALLER = "authenticated_caller"
 
 # Not refusals: the request cannot be carried out as asked.
-RULE_AUTHENTICATED_CALLER = "authenticated_caller"
 RULE_INCIDENT_EXISTS = "incident_exists"
 RULE_CHANGE_EXISTS = "change_exists"
 RULE_SERVICE_IS_KNOWN = "service_is_known"

@@ -1,0 +1,58 @@
+# The way to the proxy's admin port, for the UI's sign-in proxy (release
+# `agentgateway-ui`). It has one pod behind it, and the admin UI shows the
+# configuration of one pod, so more replicas would show a different one each time.
+apiVersion: v1
+kind: Service
+metadata:
+  name: agentgateway-proxy-admin
+  namespace: {{ .Release.Namespace }}
+spec:
+  type: ClusterIP
+  selector:
+    gateway.networking.k8s.io/gateway-name: agentgateway-proxy
+  ports:
+    - name: admin
+      port: 15000
+      targetPort: 15000
+      protocol: TCP
+---
+# Who may open a connection to the admin port. It has no login, and besides the
+# UI it serves POST /quitquitquit, which shuts the proxy down, so reaching it is
+# the same as being allowed to stop every route.
+#
+#   the sign-in proxy   the only way in; it verifies the session and forwards
+#                       the UI's paths and nothing else
+#
+# This selects the proxy's pods for all ingress, so the rule above it has to
+# keep every other port open to everyone, or the routes stop. It names ranges
+# and not ports so that a listener added later keeps working. The kubelet's
+# probes and `kubectl port-forward` come from the node, or from inside the pod,
+# and are not affected.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: agentgateway-proxy-admin
+  namespace: {{ .Release.Namespace }}
+spec:
+  podSelector:
+    matchLabels:
+      gateway.networking.k8s.io/gateway-name: agentgateway-proxy
+  policyTypes:
+    - Ingress
+  ingress:
+    - ports:
+        - protocol: TCP
+          port: 1
+          endPort: 14999
+        - protocol: TCP
+          port: 15001
+          endPort: 65535
+    - ports:
+        - protocol: TCP
+          port: 15000
+      from:
+        # The labels of release `agentgateway-ui`.
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: oauth2-proxy
+              app.kubernetes.io/instance: agentgateway-ui

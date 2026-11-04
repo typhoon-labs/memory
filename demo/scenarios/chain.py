@@ -66,6 +66,11 @@ from drive import (
 A2UI_MIME = "application/a2ui+json"
 A2UI_VERSION = "v0.9.1"
 STS_URL = "http://chain-sts.chain-sts.svc.cluster.local"
+# The targets chain-sts issues for, by the address a pod calls each at
+# (`delegation.resources` in the cluster's identity.yaml): a token is for one.
+GATEWAY_IN_CLUSTER = "http://agentgateway-proxy.agentgateway-system.svc.cluster.local"
+REMEDIATION_ROUTE = f"{GATEWAY_IN_CLUSTER}/a2a/remediation-agent"
+DELIVERY_ROUTE = f"{GATEWAY_IN_CLUSTER}/mcp/delivery"
 POD_PROBE = REPO / "agent-platform/tests/pod_probe.py"
 
 
@@ -130,14 +135,14 @@ class ChainDrill(Driver):
         print(f'      chat-assistant: {task["status"]["state"]}, "{text[:200]}"')
         return task
 
-    def exchange(self, subject: str, agent: str) -> str:
-        """The subject exchanged at chain-sts with ``agent``'s own token, from inside remediation-agent's pod."""
+    def exchange(self, subject: str, agent: str, resource: str) -> str:
+        """The subject exchanged at chain-sts with ``agent``'s own token for one target, from inside remediation-agent's pod."""
         actor = kubectl("--namespace", "agents", "create", "token", agent, "--audience", "chain-sts", "--duration", "10m").strip()
         fields = {
             "grant_type": "urn:ietf:params:oauth:grant-type:token-exchange",
             "subject_token": subject, "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
             "actor_token": actor, "actor_token_type": "urn:ietf:params:oauth:token-type:jwt",
-            "audience": "agentgateway",
+            "resource": resource,
         }  # fmt: skip
         done = subprocess.run(
             ["kubectl", "--kubeconfig", str(KUBECONFIG), "--context", CONTEXT,
@@ -252,8 +257,9 @@ class ChainDrill(Driver):
                     f'  user.id {g.get("user.id", "-")} actor.chain {g.get("actor.chain", "-")}')  # fmt: skip
             rows.append((utc(g["time"]), "gateway", said))
         for stamp, d in delivery:
-            if d.get("user") == "platform-engineer":
-                rows.append((utc(stamp), "delivery-mcp", f'{d["tool"]} {d.get("target", "")} {d["outcome"]} user {d["user"]} chain {d.get("chain")}'))
+            if d.get("user.id") == "platform-engineer":
+                what = f'{d["audit.event"]} {d.get("gen_ai.tool.name", "")} {d.get("change.id") or d.get("incident.id") or ""}'
+                rows.append((utc(stamp), "delivery-mcp", f'{" ".join(what.split())} {d["audit.outcome"]} user.id {d["user.id"]} actor.chain {d.get("actor.chain", "-")}'))
         # chat-assistant pushes the card every second while the apply runs, and
         # remediation-agent polls the incident: a line seen again is counted.
         seen: dict[tuple[str, str], list[Any]] = {}
@@ -274,7 +280,8 @@ class ChainDrill(Driver):
               "the gateway saw /a2a/remediation-agent with actor.chain chat-assistant")  # fmt: skip
         check(("/mcp/delivery", "apply_change", "remediation-agent,chat-assistant") in hops,
               "the gateway saw apply_change with actor.chain remediation-agent,chat-assistant")  # fmt: skip
-        check(any(d["tool"] == "apply_change" and d["chain"] == ["remediation-agent", "chat-assistant"] and d["outcome"] == "allowed"
+        check(any(d.get("audit.event") == "tool.call" and d.get("gen_ai.tool.name") == "apply_change"
+                  and d.get("actor.chain") == "remediation-agent,chat-assistant" and d.get("audit.outcome") == "allowed"
                   for _, d in delivery), "delivery-mcp's audit line for apply_change names the same chain")  # fmt: skip
 
         change = self.tool("developer", "get_incident", incident_id=incident_id)[1]["changes"][0]
@@ -284,7 +291,10 @@ class ChainDrill(Driver):
         check(change.get("applied_via") == ["remediation-agent", "chat-assistant"] and change.get("applied_by") == "platform-engineer",
               "applied by platform-engineer, applied_via [remediation-agent, chat-assistant]")  # fmt: skip
 
-        made = self.exchange(self.exchange(self.ui_token("platform-engineer"), "chat-assistant"), "remediation-agent")
+        # As the two agents ask: chat-assistant for remediation-agent's route, remediation-agent for delivery-mcp's.
+        made = self.exchange(
+            self.exchange(self.ui_token("platform-engineer"), "chat-assistant", REMEDIATION_ROUTE), "remediation-agent", DELIVERY_ROUTE
+        )
         payload = claims(made)
         print("      a token chain-sts issued for the same chain, made by this drill, its payload:")
         for line in json.dumps(payload, indent=2).splitlines():

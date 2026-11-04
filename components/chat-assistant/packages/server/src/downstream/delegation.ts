@@ -5,14 +5,19 @@
  * which proves itself with this pod's projected service-account token
  * (audience chain-sts).
  *
+ * - Each token is for one target. The exchange names it as `resource` (RFC
+ *   8707): the address chat-assistant calls the target at (see `resourcesOf`).
+ *   chain-sts issues the token for that audience, and the gateway accepts a
+ *   chain token on a route only when its audience is that route's own, so a
+ *   token handed to one agent or tool cannot be replayed at another.
  * - The request is a form POST to the metadata's `token_endpoint`, used as
  *   given, with no client authentication: the actor token is the credential.
  * - The actor token file is read again for every exchange, since the kubelet
  *   replaces it before it expires.
- * - Issued tokens are kept per caller token (by its SHA-256) until shortly
- *   before they expire, so the 2-second card poll does not exchange every time
- *   and delivery-mcp's sessions, kept per token, last. Concurrent exchanges
- *   for one caller token are one request.
+ * - Issued tokens are kept per caller token (by its SHA-256) and target until
+ *   shortly before they expire, so the 2-second card poll does not exchange
+ *   every time and delivery-mcp's sessions, kept per token, last. Concurrent
+ *   exchanges for one caller token and target are one request.
  * - Nothing falls back to the caller's token. chain-sts's RFC 6749 answer is a
  *   Refusal naming its `error` code; anything else that goes wrong is a
  *   DownstreamError. Either way no downstream request is made.
@@ -20,6 +25,7 @@
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { decodeJwt } from 'jose';
+import type { Config } from '../config.js';
 import { AGENT_CALL_MS } from './a2a-agents.js';
 import { DownstreamError, Refusal, type Downstreams } from './types.js';
 
@@ -31,22 +37,45 @@ const MARGIN_MS = 30_000;
 const MAX_TOKENS = 200;
 
 /**
- * The token to send downstream for the caller: one that stays valid for at
- * least `validForMs` (default: 30 seconds), if chain-sts issues one that long.
+ * The token to send to one target for the caller: one for that target's
+ * `resource` that stays valid for at least `validForMs` (default: 30
+ * seconds), if chain-sts issues one that long.
  */
-export type DownstreamToken = (callerToken: string, validForMs?: number) => Promise<string>;
+export type DownstreamToken = (callerToken: string, resource: string, validForMs?: number) => Promise<string>;
+
+/**
+ * The resource (RFC 8707) of each target that takes a chain token: the
+ * address chat-assistant calls it at, without a trailing slash. In a cluster
+ * these are the gateway's routes, and each route accepts a token from
+ * chain-sts only for its own (docs/contracts.md).
+ */
+export interface Resources {
+  delivery: string;
+  remediation: string;
+  comms: string;
+  diagnosis: string;
+  /** The model route: MODEL_BASE_URL with `/v1`, the base of the paths it serves and of the model client's requests. */
+  model: string;
+}
+
+const bare = (url: string) => url.replace(/\/+$/, '');
+
+export function resourcesOf(config: Pick<Config, 'downstream' | 'model'>): Resources {
+  return {
+    delivery: bare(config.downstream.deliveryMcpUrl),
+    remediation: bare(config.downstream.remediationAgentUrl),
+    comms: bare(config.downstream.commsAgentUrl),
+    diagnosis: bare(config.downstream.diagnosisAgentUrl),
+    model: `${bare(config.model.baseUrl)}/v1`,
+  };
+}
 
 const target = 'chain-sts';
 /** fetch says only "fetch failed"; the cause says why. */
 const reason = (err: unknown) =>
   err instanceof Error ? (err.cause instanceof Error ? `${err.message} (${err.cause.message})` : err.message) : String(err);
 
-export function createTokenExchange(options: {
-  metadataUrl: string;
-  actorTokenFile: string;
-  /** The audience asked for: the gateway's, which every downstream route checks. */
-  audience: string;
-}): DownstreamToken {
+export function createTokenExchange(options: { metadataUrl: string; actorTokenFile: string }): DownstreamToken {
   let endpoint: Promise<string> | undefined;
   const issued = new Map<string, { token: string; expiresAt: number }>();
   const pending = new Map<string, Promise<{ token: string; expiresAt: number }>>();
@@ -85,7 +114,7 @@ export function createTokenExchange(options: {
     return token;
   }
 
-  async function exchange(subjectToken: string): Promise<{ token: string; expiresAt: number }> {
+  async function exchange(subjectToken: string, resource: string): Promise<{ token: string; expiresAt: number }> {
     const actor = await actorToken();
     const url = await tokenEndpoint();
     const body = new URLSearchParams({
@@ -94,8 +123,9 @@ export function createTokenExchange(options: {
       subject_token_type: JWT_TYPE,
       actor_token: actor,
       actor_token_type: JWT_TYPE,
-      audience: options.audience,
     });
+    // Without a target chain-sts issues nothing: it issues for several.
+    if (resource) body.set('resource', resource);
     let res: Response;
     try {
       res = await fetch(url, { method: 'POST', headers: { accept: 'application/json' }, body, signal: AbortSignal.timeout(TIMEOUT_MS) });
@@ -128,13 +158,13 @@ export function createTokenExchange(options: {
     if (entry.expiresAt - MARGIN_MS > now) issued.set(key, entry);
   }
 
-  return async (callerToken, validForMs = MARGIN_MS) => {
-    const key = createHash('sha256').update(callerToken).digest('hex');
+  return async (callerToken, resource, validForMs = MARGIN_MS) => {
+    const key = `${createHash('sha256').update(callerToken).digest('hex')} ${resource}`;
     const cached = issued.get(key);
     if (cached && cached.expiresAt - Date.now() >= validForMs) return cached.token;
     let running = pending.get(key);
     if (!running) {
-      running = exchange(callerToken)
+      running = exchange(callerToken, resource)
         .then((entry) => (remember(key, entry), entry))
         .finally(() => pending.delete(key));
       pending.set(key, running);
@@ -158,22 +188,28 @@ function expiryOf(token: string, expiresIn: unknown): number {
 
 /**
  * The downstreams, each called with the token chain-sts issues for the caller
- * instead of the caller's own. The one place delegation is wired for
- * delivery-mcp and the agents; the model call takes it in ../chat/agent.ts.
+ * and that target, instead of the caller's own. The one place delegation is
+ * wired for delivery-mcp and the agents; the model call takes it in
+ * ../chat/agent.ts, for `resources.model`.
  *
  * An agent goes on using the token it was called with, for its own exchanges
  * and tool calls, until it answers, and chain-sts never issues a token that
  * outlives the one it is given. So an agent is sent a token that lasts as
  * long as an A2A call may.
  */
-export function delegated(d: Downstreams, tokenFor: DownstreamToken): Downstreams {
+export function delegated(d: Downstreams, tokenFor: DownstreamToken, resources: Resources): Downstreams {
   return {
-    delivery: { callTool: async (token, name, args) => d.delivery.callTool(await tokenFor(token), name, args) },
-    remediation: { applyAndVerify: async (token, changeId) => d.remediation.applyAndVerify(await tokenFor(token, AGENT_CALL_MS), changeId) },
-    comms: { draftStatusUpdate: async (token, incidentId) => d.comms.draftStatusUpdate(await tokenFor(token, AGENT_CALL_MS), incidentId) },
+    delivery: { callTool: async (token, name, args) => d.delivery.callTool(await tokenFor(token, resources.delivery), name, args) },
+    remediation: {
+      applyAndVerify: async (token, changeId) =>
+        d.remediation.applyAndVerify(await tokenFor(token, resources.remediation, AGENT_CALL_MS), changeId),
+    },
+    comms: {
+      draftStatusUpdate: async (token, incidentId) => d.comms.draftStatusUpdate(await tokenFor(token, resources.comms, AGENT_CALL_MS), incidentId),
+    },
     diagnosis: {
       configured: d.diagnosis.configured,
-      diagnose: async (token, question) => d.diagnosis.diagnose(await tokenFor(token, AGENT_CALL_MS), question),
+      diagnose: async (token, question) => d.diagnosis.diagnose(await tokenFor(token, resources.diagnosis, AGENT_CALL_MS), question),
     },
   };
 }

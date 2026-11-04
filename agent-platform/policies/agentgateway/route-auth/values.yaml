@@ -1,8 +1,9 @@
 # One AgentgatewayPolicy for one route: the caller must present a bearer token
 # from a trusted issuer with the expected audience. Install it in the route's
-# namespace, before or together with the route.
+# namespace, before or together with the route. A second policy, for an MCP
+# client's own sign-in, is `mcpAuthentication` at the end.
 #
-# Schema: Agentgateway 1.6, AgentgatewayPolicy `traffic.jwtAuthentication` and
+# Schema: Agentgateway 1.7, AgentgatewayPolicy `traffic.jwtAuthentication` and
 # `traffic.authorization`
 # (https://agentgateway.dev/docs/kubernetes/latest/documentation/security/jwt/setup/).
 #
@@ -35,21 +36,38 @@ identity:
 extraAudiences: []
 
 # Optional: a second trusted issuer, a token exchange (chain-sts) that issues
-# tokens to an agent acting for a user. Same three keys, from the same
-# identity.yaml. Its tokens carry the user's claims, so the rules in `allow`
-# apply to them unchanged. Empty `issuer`: the issuer above alone is trusted.
+# tokens to an agent acting for a user, from the same identity.yaml. Its
+# tokens carry the user's claims, so the rules in `allow` apply to them
+# unchanged. It is trusted only on a route that names its `resource` below.
+# Empty `issuer`: the issuer above alone is trusted.
 # Checked with Agentgateway 1.6.0: while one issuer's keys have never been
 # fetched (its service is not installed yet), its tokens are refused with 401
 # and the other issuer's are accepted. The controller retries about every 15
 # seconds.
 delegation:
   issuer: ""
-  audience: ""
   jwksUrl: ""
+  # Each target that takes the exchange's tokens, by name, with its resource
+  # identifier (RFC 8707): an absolute URI, the token's `aud`. Each token is
+  # for one target. `resource` below names this route's entry.
+  resources: {}
+  # Optional, for a rollout only: an audience every route with a `resource`
+  # accepts besides its own, such as the one audience the exchange issued
+  # for before it issued one per target. Empty: each route takes its own.
+  audience: ""
   # The agents that may act for a user, by name, each with the `sub` the
   # token exchange writes for it in `act` (its Kubernetes service account).
   # `actors` below names agents from this map.
   agents: {}
+
+# Which entry of `delegation.resources` this route is. The gateway then
+# accepts a token from `delegation.issuer` only when its `aud` holds that
+# URI (or `delegation.audience`, while set), so a token the exchange issued
+# for another target is refused here with 401, and one issued for this route
+# works nowhere else: the backend that receives it (`passthrough`) cannot
+# replay it. Empty: the route does not trust `delegation.issuer` at all, and
+# `actors` must be empty.
+resource: ""
 
 # Which agent may call this route on a user's behalf. A token whose `act`
 # claim names an acting agent is let in only when `delegation.issuer` signed
@@ -70,3 +88,53 @@ allow: []
 # `Authorization: Bearer <token>`, so it can apply its own rules and call its
 # own next hop as the caller. false: the header is removed (the model route).
 passthrough: false
+
+# Optional: let an MCP client of a person's own (an IDE or a CLI) find where
+# to sign in by itself (MCP authorization, RFC 9728). Off by default. Only for
+# a route of the mcp-route chart with its own `mcpAuthentication.enabled`,
+# which adds the rule `sign-in` this targets. Both releases read the same
+# route file.
+#
+# Schema: Agentgateway 1.7.0, AgentgatewayPolicy
+# `traffic.jwtAuthentication.mcp` with `provider`, `clientId` and
+# `resourceMetadata`
+# (https://agentgateway.dev/docs/kubernetes/latest/documentation/mcp/auth/setup/,
+# and for what each provider does
+# https://agentgateway.dev/docs/standalone/latest/documentation/configuration/security/mcp-authn/).
+#
+# On, a second AgentgatewayPolicy, <target.name>-sign-in, on that rule only.
+# The gateway then:
+#   - answers a request without a token with 401 and
+#     `WWW-Authenticate: Bearer resource_metadata="<origin>/.well-known/oauth-protected-resource<path>"`
+#   - serves that protected resource metadata, which names the gateway
+#     itself, at <origin><path>, as the authorization server
+#   - serves /.well-known/oauth-authorization-server<path>, made from the
+#     provider's OIDC discovery document, which it fetches from
+#     `identity.issuer` when asked. So the issuer must be reachable from the
+#     gateway's pods, and the dev cluster's is not.
+#   - answers client registration at that path + /client-registration
+# Each address is made from the request's own, unless resourceMetadata says
+# otherwise.
+# Why a second policy: Agentgateway 1.7.0 refuses `mcp` on a jwtAuthentication
+# with more than one provider. Its CRD says "jwtAuthentication.mcp requires
+# exactly one provider", and its controller and proxy check the same. A route
+# with `delegation` trusts two issuers. So the requests that bring a token
+# keep the policy above, and this one serves only those that bring none.
+mcpAuthentication:
+  enabled: false
+  # Agentgateway's adapter for the authorization server: Auth0, Authentik,
+  # Descope, Entra, Keycloak or Okta. Keycloak: metadata from its OIDC
+  # discovery. Registration is proxied to Keycloak, which sends CORS headers
+  # on its registration endpoint only for the origins a realm policy allows.
+  provider: Keycloak
+  # A client registered beforehand, public with PKCE. Set: the gateway itself
+  # answers every registration request with this client ID and proxies none.
+  # Empty: registration goes to the provider (Keycloak: anonymous
+  # registration, which its "Trusted Hosts" policy refuses by default).
+  clientId: ""
+  # More fields of the protected resource metadata, in camelCase. The gateway
+  # writes them in snake_case. Unset, `resource` and `authorizationServers`
+  # come from the request's address. Set them only when clients reach the
+  # gateway at an address it does not see.
+  # Example: bearerMethodsSupported: [header]
+  resourceMetadata: {}

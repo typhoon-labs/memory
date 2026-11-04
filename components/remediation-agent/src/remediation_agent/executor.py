@@ -2,8 +2,10 @@
 
 Whether the change is applied is decided by delivery-mcp, from the caller's
 token, or from the token chain-sts exchanged it for (delegation.py), which is
-for the same user and names this agent. Nothing here asks a model whether to
-act, and nothing here acts under an identity other than the caller's.
+for the same user, names this agent, and is for delivery-mcp alone. The model
+call gets a token of its own, exchanged for the model route. Nothing here asks
+a model whether to act, and nothing here acts under an identity other than the
+caller's.
 """
 
 from __future__ import annotations
@@ -140,21 +142,30 @@ class RemediationExecutor(AgentExecutor):
 
     # -- the work ----------------------------------------------------------
 
-    async def _apply_and_verify(self, updater: TaskUpdater, token: str, change_id: str) -> None:
+    async def _token_for(self, caller: str, resource: str) -> str:
+        """What a call to ``resource`` carries: chain-sts's token for it, or the caller's own.
+
+        With the exchange configured, the caller's token is exchanged for each
+        target, never a token issued for another one, and never goes out itself.
+        Raises :class:`ExchangeFailed`.
+        """
+        if self._exchange is None:
+            return caller
+        return await self._exchange.exchange(caller, resource)
+
+    async def _apply_and_verify(self, updater: TaskUpdater, caller: str, change_id: str) -> None:
         await self._working(updater, f"Calling apply_change for {change_id} as the caller.", {})
-        if self._exchange is not None:
-            # Every call of this task carries chain-sts's token, and never the caller's.
-            try:
-                token = await self._exchange.exchange(token)
-            except ExchangeFailed as exc:
-                await self._finish(
-                    updater,
-                    change_id,
-                    outcome="error",
-                    text=f"chain-sts did not exchange the caller's token ({exc.error}),"
-                    f" so apply_change was not called for {change_id}.",
-                )
-                return
+        try:
+            token = await self._token_for(caller, self._settings.delivery_resource)
+        except ExchangeFailed as exc:
+            await self._finish(
+                updater,
+                change_id,
+                outcome="error",
+                text=f"chain-sts did not exchange the caller's token ({exc.error}),"
+                f" so apply_change was not called for {change_id}.",
+            )
+            return
         change: dict[str, Any] | None = None
         try:
             async with open_delivery(self._settings.delivery_mcp_url, token) as delivery:
@@ -212,8 +223,14 @@ class RemediationExecutor(AgentExecutor):
             "detail": change.get("detail"),
         }
         try:
-            text = await phrase_result(self._settings, token, facts)
+            # The model route gets a token of its own, exchanged from the caller's.
+            model_token = await self._token_for(caller, self._settings.model_resource)
+            text = await phrase_result(self._settings, model_token, facts)
             phrased_by = "model"
+        except ExchangeFailed as exc:  # logged by delegation.py, without a token
+            logger.warning("no token for the model (%s), using the template", exc.error)
+            text = template_result(facts)
+            phrased_by = "template"
         except Exception as exc:  # the result stands whether or not it can be worded
             logger.warning("model call failed, using the template: %s", type(exc).__name__)
             text = template_result(facts)

@@ -5,7 +5,9 @@
 # regenerated, so the project keys and the login do not rotate.
 #
 #   langfuse/langfuse-init         headless initialization: organization,
-#                                  project, project keys, admin user
+#                                  project, project keys, the one user
+#   langfuse/langfuse-keycloak     client `langfuse` in Keycloak. Its secret is
+#                                  a demo-only value, read from the realm file
 #   langfuse/langfuse-clickhouse   password of the ClickHouse user
 #   telemetry/langfuse-ingest      key `authorization`: the header value the
 #                                  OTel Collector sends, `Basic <base64 pk:sk>`
@@ -14,7 +16,9 @@
 # keys and is restored if the namespace `telemetry` was recreated.
 #
 # The names below are not secret. They are written into langfuse-init with the
-# generated values so that one Secret is the whole of the initialization.
+# generated values so that one Secret is the whole of the initialization. The
+# user is `platform-engineer`, with the realm file's email: a sign-in with
+# Keycloak joins this user by that email, and nobody else has a user to join.
 set -o errexit
 set -o nounset
 
@@ -22,11 +26,12 @@ org_id="agentgateway-demo"
 org_name="Agentgateway demo"
 project_id="agentgateway-demo"
 project_name="agentgateway-demo"
-user_email="demo-admin@example.com"
-user_name="Demo Admin"
+user_email="platform-engineer@demo.invalid"
+user_name="Pat Engineer"
 
 here="$(cd "$(dirname "$0")" && pwd)"
 repo="$(cd "${here}/../../../../../.." && pwd)"
+realm_file="${repo}/local/identity/keycloak/files/demo-realm.json"
 # The kubeconfig, the context and `k` come from scripts/lib/cluster.sh.
 . "${repo}/scripts/lib/cluster.sh"
 
@@ -61,6 +66,13 @@ else
     --from-literal=LANGFUSE_INIT_USER_PASSWORD="Lf1-$(openssl rand -hex 8)" >/dev/null
   echo "init-secrets: langfuse/langfuse-init created"
 fi
+
+jq -jre '.clients[] | select(.clientId == "langfuse") | .secret' "${realm_file}" |
+  k -n langfuse create secret generic langfuse-keycloak \
+    --from-literal=AUTH_KEYCLOAK_CLIENT_ID=langfuse \
+    --from-file=AUTH_KEYCLOAK_CLIENT_SECRET=/dev/stdin \
+    --dry-run=client -o yaml | k apply -f - >/dev/null
+echo "init-secrets: langfuse/langfuse-keycloak in step with the realm file"
 
 if exists langfuse langfuse-clickhouse; then
   echo "init-secrets: langfuse/langfuse-clickhouse exists, kept"

@@ -31,5 +31,5 @@ async def open_incident(service: str, severity: str, summary: str, impact: str) 
     return await run_tool(
         "open_incident",
         lambda s, caller: s.open_incident(caller, service, severity, summary, impact),
-        target=service,
+        service=service,
     )

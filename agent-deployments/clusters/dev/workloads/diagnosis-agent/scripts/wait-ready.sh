@@ -5,7 +5,7 @@
 # Ready alone is not enough after an edit: the Agent stays Ready on its last
 # good revision while a new one is prepared, or after a new one failed. And the
 # two revisions agreeing once is not enough either: for a moment after an edit
-# to the prompt, the runbook or the model, kagent has not noticed it yet, and a
+# to the prompt, the skill or the model, kagent has not noticed it yet, and a
 # conversation started in that moment runs the old definition. Nothing on the
 # Agent says "I have seen the edit" (a ConfigMap has no generation), so this
 # waits until the answer has been the same for a few seconds.

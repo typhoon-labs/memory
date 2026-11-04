@@ -1,8 +1,8 @@
 """The one thing the model does here: phrase a result that code has already established.
 
 The model endpoint is called with the caller's bearer token, or the token
-chain-sts exchanged it for, which is for the same user, so the gateway
-attributes the usage to the user. No provider key exists in this process; the
+chain-sts exchanged it for the model route alone, which is for the same user,
+so the gateway attributes the usage to the user. No provider key exists in this process; the
 client is given the token explicitly, which also stops the Anthropic SDK from
 reading ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN from the environment.
 """

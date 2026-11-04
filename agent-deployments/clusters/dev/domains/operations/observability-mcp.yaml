@@ -11,10 +11,10 @@
 #   observability-mcp                   route.path, allowedTools
 #   observability-mcp-workload-access   route.path, workloads
 #
-# Any caller with a valid token for audience `agentgateway` may open a session;
-# there is no rule by role, because every tool only reads. The caller's token
-# stops at the gateway: the server reads Grafana with its own Viewer
-# credential, the same for every caller.
+# Any caller with a valid Keycloak token for audience `agentgateway` may open a
+# session; there is no rule by role, because every tool only reads. The
+# caller's token stops at the gateway: the server reads Grafana with its own
+# Viewer credential, the same for every caller.
 
 route:
   path: /mcp/observability
@@ -22,9 +22,11 @@ route:
 # Which agent may call it on a user's behalf: none. No agent that exchanges
 # tokens at chain-sts calls it; people do (demo/backup/mcp-client.sh), with
 # their own token, and diagnosis-agent, the one agent that reads it, comes in
-# with its gateway key on its own door below. A token with `act` is refused
-# until an agent that needs it is listed here, from `delegation.agents` in
-# ../../identity.yaml.
+# with its gateway key on its own door below. The route names no `resource`
+# (`delegation.resources` in ../../identity.yaml), so it does not trust
+# chain-sts at all, and refuses its tokens (401). An agent that needs the
+# route is listed here, with `resource: observability-mcp` and that entry
+# added to the map and to chain-sts's audiences.
 actors: []
 
 # Workloads that cannot present a user's token and come in with the key the

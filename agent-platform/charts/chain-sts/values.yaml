@@ -66,7 +66,8 @@ issuer: ""
 publicUrl: ""
 
 # The service's keys: one Secret per key, in the release namespace, created
-# outside Git, each with an RSA private key (PEM) in data key `key`. The
+# outside Git, each with an RSA private key (PEM) in the data key that
+# `signingKey.key` names, `key.pem` by default. The
 # chart only mounts them; /jwks publishes every one, and one signs.
 #
 # A rotation never writes to the Secret of a key in use: the new key gets a
@@ -122,6 +123,16 @@ identity:
   audience: ""
   # Where the service fetches the issuer's keys, from inside the cluster.
   jwksUrl: ""
+
+# Optional: the targets the gateway accepts this service's tokens for, as a
+# cluster's identity.yaml names them (`delegation.resources`, a name for each
+# URI, and during a rollout `delegation.audience`). When set, the chart
+# refuses to render unless policy.audiences lists exactly these, so that an
+# agent never asks for a target this service will not issue for, and this
+# service issues for no target that no route accepts. Unset: no check.
+delegation:
+  resources: {}
+  audience: ""
 
 # How the calling agent is proven: its service-account token (see THE ACTOR
 # CHECK above).

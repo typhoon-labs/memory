@@ -1,6 +1,6 @@
 name: delivery-mcp
 framework: fastmcp-python
-version: 0.1.0
+version: 0.2.2
 description: Incident and change state with separation-of-duties rules, enforced against the caller's verified identity
 author: agentgateway-demo
 # No secret is needed: the service holds no credential of its own. It verifies

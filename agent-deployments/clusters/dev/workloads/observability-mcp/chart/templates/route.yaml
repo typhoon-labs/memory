@@ -8,10 +8,26 @@
   {{- end -}}
   {{- $subs = append $subs $sub -}}
 {{- end -}}
-{{- $act := "!has(jwt.act)" -}}
+{{- /* chain-sts's tokens are trusted only for this route's own `resource`,
+       as route-auth does it; none named: chain-sts is not trusted here. */ -}}
+{{- $delegated := list -}}
+{{- with .Values.resource -}}
+  {{- $uri := index ($.Values.delegation.resources | default dict) . -}}
+  {{- if not $uri -}}
+    {{- fail (printf "resource: %q is not in delegation.resources" .) -}}
+  {{- end -}}
+  {{- $delegated = append $delegated $uri -}}
+  {{- with $.Values.delegation.audience -}}
+    {{- $delegated = append $delegated . -}}
+  {{- end -}}
+{{- end -}}
+{{- if and $subs (not $delegated) -}}
+  {{- fail "actors: a route that agents call on a user's behalf needs `resource`, the target their tokens are for" -}}
+{{- end -}}
+{{- $act := printf "(!has(jwt.act) && jwt.iss == %q)" (required "identity.issuer" .Values.identity.issuer) -}}
 {{- if $subs -}}
   {{- $issuer := required "delegation.issuer: the issuer whose `act` names the agents" ($.Values.delegation.issuer | default "") -}}
-  {{- $act = printf "!has(jwt.act) || (jwt.iss == %q && jwt.act.sub in %s)" $issuer (toJson $subs) -}}
+  {{- $act = printf "%s || (jwt.iss == %q && jwt.act.sub in %s)" $act $issuer (toJson $subs) -}}
 {{- end -}}
 apiVersion: agentgateway.dev/v1alpha1
 kind: AgentgatewayBackend
@@ -75,12 +91,14 @@ spec:
               url: {{ required "identity.jwksUrl" .Values.identity.jwksUrl | quote }}
               cacheDuration: 5m
         {{- with .Values.delegation }}
-        {{- if .issuer }}
-        # chain-sts's tokens for an agent acting for a user. A token is
-        # checked by the provider whose issuer is its `iss`.
+        {{- if and .issuer $delegated }}
+        # chain-sts's tokens for an agent acting for a user, issued for this
+        # route. A token is checked by the provider whose issuer is its `iss`.
         - issuer: {{ .issuer | quote }}
           audiences:
-            - {{ required "delegation.audience" .audience | quote }}
+            {{- range $delegated }}
+            - {{ . | quote }}
+            {{- end }}
           jwks:
             remote:
               url: {{ required "delegation.jwksUrl" .jwksUrl | quote }}

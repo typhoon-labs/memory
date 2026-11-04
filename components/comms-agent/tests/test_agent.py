@@ -15,6 +15,7 @@ import pytest
 from a2a.types import Task
 from conftest import (
     AUDIENCE,
+    DELEGATION_AUDIENCE,
     DRAFT,
     DRAFT_REQUEST,
     JWT_TYPE,
@@ -30,7 +31,7 @@ from conftest import (
 )
 
 from comms_agent.auth import TokenVerifier, user_of
-from comms_agent.config import ConfigError, load_settings
+from comms_agent.config import ConfigError, TrustedIssuer, load_settings
 from comms_agent.delegation import ExchangeFailed, TokenExchange, token_exchange
 from comms_agent.delivery import ALLOWED_TOOLS, open_delivery
 from comms_agent.model import incident_facts, limit_words, word_count
@@ -117,6 +118,57 @@ async def test_a_chain_token_that_does_not_verify_is_401(
     assert delivery.calls == [] and model.requests == []
 
 
+@pytest.mark.parametrize(
+    "aud",
+    [
+        pytest.param(AUDIENCE, id="the gateway's, as every chain token had before"),
+        pytest.param("http://agentgateway-proxy.test/mcp/delivery", id="delivery-mcp's"),
+        pytest.param("http://agentgateway-proxy.test/v1", id="the model route's"),
+    ],
+)
+async def test_a_chain_token_for_another_target_is_401(
+    http, agent_url, chain, delivery, model, aud
+):
+    # chain-sts issues each token for one target. One meant for somewhere else,
+    # replayed here by whoever received it, is refused.
+    response = await send(http, agent_url, chain.delegate(aud=aud))
+    assert response.status_code == 401
+    assert delivery.calls == [] and model.requests == []
+
+
+async def test_a_keycloak_token_for_this_agents_resource_is_401(
+    http, agent_url, issuer, delivery, model
+):
+    # Keycloak's tokens are for the gateway; DELEGATION_AUDIENCE is chain-sts's alone.
+    response = await send(http, agent_url, issuer.mint(aud=DELEGATION_AUDIENCE))
+    assert response.status_code == 401
+    assert delivery.calls == [] and model.requests == []
+
+
+def test_during_a_rollout_two_chain_audiences_are_accepted(issuer, chain):
+    # DELEGATION_AUDIENCE "<own resource>,agentgateway": the old shared audience
+    # and the new one, until the old one is dropped. Keycloak's is unchanged.
+    rollout = load_settings(
+        {
+            **ENV,
+            "OIDC_ISSUER": issuer.issuer,
+            "OIDC_JWKS_URL": issuer.jwks_url,
+            "DELEGATION_ISSUER": chain.issuer,
+            "DELEGATION_JWKS_URL": chain.jwks_url,
+            "DELEGATION_AUDIENCE": f"{DELEGATION_AUDIENCE}, {AUDIENCE}",
+        }
+    )
+    assert rollout.delegation_audiences == (DELEGATION_AUDIENCE, AUDIENCE)
+    verifier = TokenVerifier(issuers=rollout.trusted_issuers())
+    for aud in (DELEGATION_AUDIENCE, AUDIENCE, [AUDIENCE, "elsewhere"]):
+        assert verifier.verify(chain.delegate(aud=aud))["aud"] == aud
+    with pytest.raises(jwt.InvalidAudienceError):
+        verifier.verify(chain.delegate(aud="http://agentgateway-proxy.test/mcp/delivery"))
+    assert verifier.verify(issuer.mint())["aud"] == AUDIENCE
+    with pytest.raises(jwt.InvalidAudienceError):
+        verifier.verify(issuer.mint(aud=DELEGATION_AUDIENCE))
+
+
 async def test_a_token_from_an_issuer_that_is_not_configured_is_401(
     http, agent_url, delivery, model
 ):
@@ -153,7 +205,7 @@ async def test_a_bearer_that_is_not_a_jwt_is_401(http, agent_url, delivery, mode
 
 
 def test_without_the_delegation_bindings_only_keycloak_is_trusted(issuer, chain):
-    verifier = TokenVerifier(issuers={issuer.issuer: issuer.jwks_url}, audience=AUDIENCE)
+    verifier = TokenVerifier(issuers={issuer.issuer: TrustedIssuer(issuer.jwks_url, (AUDIENCE,))})
     assert verifier.verify(issuer.mint("incident-manager"))["preferred_username"] == (
         "incident-manager"
     )
@@ -164,7 +216,10 @@ def test_without_the_delegation_bindings_only_keycloak_is_trusted(issuer, chain)
 def test_chain_sts_out_of_reach_leaves_keycloak_tokens_alone(issuer, chain):
     closed = f"http://127.0.0.1:{free_port()}/jwks"
     verifier = TokenVerifier(
-        issuers={issuer.issuer: issuer.jwks_url, chain.issuer: closed}, audience=AUDIENCE
+        issuers={
+            issuer.issuer: TrustedIssuer(issuer.jwks_url, (AUDIENCE,)),
+            chain.issuer: TrustedIssuer(closed, (DELEGATION_AUDIENCE,)),
+        }
     )
     assert verifier.verify(issuer.mint("incident-manager"))["preferred_username"] == (
         "incident-manager"
@@ -192,19 +247,38 @@ ENV = {
 DELEGATION = {
     "DELEGATION_ISSUER": "http://chain-sts.chain-sts.svc.cluster.local",
     "DELEGATION_JWKS_URL": "http://chain-sts.chain-sts.svc.cluster.local/jwks",
+    "DELEGATION_AUDIENCE": "http://gateway/a2a/comms-agent",
 }
+KEYCLOAK = TrustedIssuer(ENV["OIDC_JWKS_URL"], (AUDIENCE,))
 
 
-def test_chain_sts_is_trusted_only_with_both_of_its_bindings():
-    assert load_settings(ENV).trusted_issuers() == {ENV["OIDC_ISSUER"]: ENV["OIDC_JWKS_URL"]}
+def test_chain_sts_is_trusted_only_with_all_three_of_its_bindings():
+    assert load_settings(ENV).trusted_issuers() == {ENV["OIDC_ISSUER"]: KEYCLOAK}
     assert load_settings({**ENV, **DELEGATION}).trusted_issuers() == {
-        ENV["OIDC_ISSUER"]: ENV["OIDC_JWKS_URL"],
-        DELEGATION["DELEGATION_ISSUER"]: DELEGATION["DELEGATION_JWKS_URL"],
+        ENV["OIDC_ISSUER"]: KEYCLOAK,
+        DELEGATION["DELEGATION_ISSUER"]: TrustedIssuer(
+            DELEGATION["DELEGATION_JWKS_URL"], (DELEGATION["DELEGATION_AUDIENCE"],)
+        ),
     }
-    issuer, jwks_url = DELEGATION
-    for given, absent in ((issuer, jwks_url), (jwks_url, issuer)):
+    for absent in DELEGATION:
+        given = next(name for name in DELEGATION if name != absent)
         with pytest.raises(ConfigError, match=f"{given} is set and {absent} is not"):
-            load_settings({**ENV, given: DELEGATION[given]})
+            load_settings({**ENV, **{k: v for k, v in DELEGATION.items() if k != absent}})
+    with pytest.raises(ConfigError, match="DELEGATION_AUDIENCE names no audience"):
+        load_settings({**ENV, **DELEGATION, "DELEGATION_AUDIENCE": " , "})
+
+
+def test_each_target_is_asked_for_by_its_address():
+    settings = load_settings(
+        {
+            **ENV,
+            "DELIVERY_MCP_URL": "http://gateway/mcp/delivery/",
+            "MODEL_BASE_URL": "http://gateway/",
+        }
+    )
+    assert settings.delivery_resource == "http://gateway/mcp/delivery"
+    # The model route's paths all start /v1; never the gateway's bare address.
+    assert settings.model_resource == "http://gateway/v1"
 
 
 def test_chain_sts_is_not_keycloak():
@@ -216,8 +290,9 @@ def test_chain_sts_is_not_keycloak():
 # -- chain-sts's token exchange -----------------------------------------------
 #
 # With DELEGATION_METADATA_URL and DELEGATION_ACTOR_TOKEN_FILE set, the caller's
-# token is exchanged once per task, before the first call, and only the token
-# chain-sts issued goes out. Without them, as the tests above: it goes out as is.
+# token is exchanged once for each target, before its first call, and each
+# target gets only the token chain-sts issued for it. Without them, as the
+# tests above: it goes out as is.
 
 EXCHANGE = {
     "DELEGATION_METADATA_URL": "http://chain-sts.chain-sts.svc.cluster.local"
@@ -232,7 +307,7 @@ def test_the_exchange_is_made_only_with_both_of_its_bindings():
     assert token_exchange(load_settings({**ENV, **DELEGATION})) is None
     exchanging = load_settings({**ENV, **EXCHANGE})
     assert isinstance(token_exchange(exchanging), TokenExchange)
-    assert exchanging.trusted_issuers() == {ENV["OIDC_ISSUER"]: ENV["OIDC_JWKS_URL"]}
+    assert exchanging.trusted_issuers() == {ENV["OIDC_ISSUER"]: KEYCLOAK}
     metadata_url, token_file = EXCHANGE
     for given, absent in ((metadata_url, token_file), (token_file, metadata_url)):
         with pytest.raises(ConfigError, match=f"{given} is set and {absent} is not"):
@@ -255,35 +330,68 @@ def test_one_exchange_binding_alone_stops_the_start():
     )
 
 
-async def test_the_exchange_names_the_caller_this_agent_and_the_audience(
+async def test_the_exchange_names_the_caller_this_agent_and_each_target(
     http, exchanging_agent_url, chain, sts, actor_token_file, delivery, model
 ):
     caller = chain.delegate(agents=("chat-assistant",))
     events = await stream(http, exchanging_agent_url, caller, rpc("message/stream", DRAFT_REQUEST))
     assert events[-1]["status"]["state"] == "completed"
 
-    (request,) = sts.requests  # one exchange for the whole task
-    assert request == {
-        "grant_type": [TOKEN_EXCHANGE],
-        "subject_token": [caller],
-        "subject_token_type": [JWT_TYPE],
-        "actor_token": [actor_token_file.token],
-        "actor_token_type": [JWT_TYPE],
-        "audience": [AUDIENCE],
-    }
+    # One exchange per target, each of the caller's token, each naming the
+    # target by its address as `resource` (RFC 8707).
+    def form(resource: str) -> dict[str, list[str]]:
+        return {
+            "grant_type": [TOKEN_EXCHANGE],
+            "subject_token": [caller],
+            "subject_token_type": [JWT_TYPE],
+            "actor_token": [actor_token_file.token],
+            "actor_token_type": [JWT_TYPE],
+            "resource": [resource],
+        }
+
+    assert sts.requests == [form(delivery.url), form(f"{model.url}/v1")]
 
 
-async def test_only_the_issued_token_goes_out(
+async def test_each_target_gets_only_the_token_issued_for_it(
     http, exchanging_agent_url, issuer, sts, actor_token_file, delivery, model
 ):
     caller = issuer.mint("incident-manager")
     events = await stream(http, exchanging_agent_url, caller, rpc("message/stream", DRAFT_REQUEST))
     assert events[-1]["status"]["state"] == "completed"
 
-    (issued,) = sts.issued
-    assert issued != caller
-    assert [auth for _, _, auth in delivery.calls] == [f"Bearer {issued}"]
-    assert [r["headers"]["authorization"] for r in model.requests] == [f"Bearer {issued}"]
+    for_delivery, for_model = sts.issued
+    assert caller not in sts.issued
+    assert jwt.decode(for_delivery, options={"verify_signature": False})["aud"] == delivery.url
+    assert jwt.decode(for_model, options={"verify_signature": False})["aud"] == f"{model.url}/v1"
+    assert [auth for _, _, auth in delivery.calls] == [f"Bearer {for_delivery}"]
+    assert [r["headers"]["authorization"] for r in model.requests] == [f"Bearer {for_model}"]
+
+
+async def test_a_refused_exchange_for_the_model_writes_no_draft(
+    http, exchanging_agent_url, issuer, sts, actor_token_file, delivery, model, caplog
+):
+    sts.refusals[f"{model.url}/v1"] = (
+        400,
+        {"error": "invalid_target", "error_description": "not an audience"},
+    )
+    caller = issuer.mint("incident-manager")
+    events = await stream(http, exchanging_agent_url, caller, rpc("message/stream", DRAFT_REQUEST))
+
+    text, data = artifact_parts(events)
+    assert data["outcome"] == "error" and data["draft"] is None and data["posted"] is False
+    assert text == (
+        "No draft was written for INC-0001: chain-sts did not exchange the caller's token"
+        " for the model (invalid_target)."
+    )
+    assert events[-1]["status"]["state"] == "failed"
+    # The incident was read with delivery-mcp's own token; the model was not called.
+    (for_delivery,) = sts.issued
+    assert [auth for _, _, auth in delivery.calls] == [f"Bearer {for_delivery}"]
+    assert model.requests == []
+    (line,) = [r.getMessage() for r in caplog.records if r.name == "comms_agent.delegation"]
+    assert "invalid_target" in line and f"{model.url}/v1" in line
+    for token in (caller, for_delivery, actor_token_file.token):
+        assert token not in line and token not in json.dumps(events)
 
 
 async def test_the_actor_token_is_read_again_for_each_exchange(
@@ -294,7 +402,8 @@ async def test_the_actor_token_is_read_again_for_each_exchange(
     second = actor_token_file.rotate()
     await stream(http, exchanging_agent_url, issuer.mint(), rpc("message/stream", DRAFT_REQUEST))
     assert first != second
-    assert [r["actor_token"] for r in sts.requests] == [[first], [second]]
+    # Two exchanges a task: delivery-mcp, then the model.
+    assert [r["actor_token"] for r in sts.requests] == [[first], [first], [second], [second]]
 
 
 @pytest.mark.parametrize(
@@ -314,6 +423,7 @@ async def test_a_refused_exchange_fails_the_task_and_calls_nothing(
     assert f"({error})" in text and "INC-0001 was not read" in text
     assert events[-1]["status"]["state"] == "failed"
     assert delivery.calls == [] and model.requests == []
+    assert [r["resource"] for r in sts.requests] == [[delivery.url]]
 
     (line,) = [r.getMessage() for r in caplog.records if r.name == "comms_agent.delegation"]
     assert error in line
@@ -341,9 +451,9 @@ async def test_without_an_actor_token_nothing_is_called(
 
 async def test_chain_sts_out_of_reach_is_a_network_error(actor_token_file):
     closed = f"http://127.0.0.1:{free_port()}/.well-known/oauth-authorization-server"
-    exchange = TokenExchange(closed, str(actor_token_file.path), audience=AUDIENCE)
+    exchange = TokenExchange(closed, str(actor_token_file.path))
     with pytest.raises(ExchangeFailed) as failed:
-        await exchange.exchange("the-callers-token")
+        await exchange.exchange("the-callers-token", "http://gateway/mcp/delivery")
     assert failed.value.error == "network_error"
 
 
@@ -359,9 +469,9 @@ async def test_chain_sts_out_of_reach_is_a_network_error(actor_token_file):
 )
 async def test_an_answer_that_is_not_a_token_is_an_invalid_response(sts, actor_token_file, body):
     sts.refusal = (200, body)
-    exchange = TokenExchange(sts.metadata_url, str(actor_token_file.path), audience=AUDIENCE)
+    exchange = TokenExchange(sts.metadata_url, str(actor_token_file.path))
     with pytest.raises(ExchangeFailed) as failed:
-        await exchange.exchange("the-callers-token")
+        await exchange.exchange("the-callers-token", "http://gateway/mcp/delivery")
     assert failed.value.error == "invalid_response"
 
 

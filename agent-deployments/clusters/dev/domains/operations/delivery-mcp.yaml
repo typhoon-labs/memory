@@ -6,7 +6,8 @@
 #
 # Values for two releases in the helmfile.yaml next to this file:
 # `delivery-mcp-route` (route, backend, tools, toolActors) and
-# `delivery-mcp-route-auth` (allow, actors, passthrough). Apply a change with
+# `delivery-mcp-route-auth` (allow, actors, passthrough). Both read
+# mcpAuthentication. Apply a change with
 # `task deploy -- -l name=delivery-mcp-route` or `-l name=delivery-mcp-route-auth`.
 
 route:
@@ -19,23 +20,51 @@ backend:
   port: 8080
 
 # Who may open an MCP session at all: CEL expressions on the verified token,
-# any one of which allows the caller. Empty: anyone with a valid token for
-# audience `agentgateway`. What they may do then is the table below.
+# any one of which allows the caller. Empty: anyone with a valid token: a
+# Keycloak token for audience `agentgateway`, or chain-sts's for this route.
+# What they may do then is the table below.
 allow: []
 
+# The target chain-sts's tokens must be for (`delegation.resources` in
+# ../../identity.yaml): a token an agent got for another route is refused
+# here (401), and the token delivery-mcp receives works nowhere else.
+resource: delivery-mcp
+
 # Which agent may open a session on a user's behalf: the three that call
-# delivery-mcp with a token chain-sts issued, whose newest actor is the agent
-# itself. What each may then do is `toolActors` below.
+# delivery-mcp with a token chain-sts issued for it, whose newest actor is
+# the agent itself. What each may then do is `toolActors` below.
 actors:
   - chat-assistant
   - remediation-agent
   - comms-agent
 
 # delivery-mcp receives the caller's token: a user's own, or the one chain-sts
-# issued to the agent calling it. It checks every role again, records the
+# issued to the agent calling it, for this route (its DELEGATION_AUDIENCE).
+# It checks every role again, records the
 # chain of agents, and applies the rules only it can know (team ownership,
 # approval, and so on).
 passthrough: true
+
+# An MCP client of a person's own (an IDE or a CLI) finds where to sign in by
+# itself. Read by both releases: `delivery-mcp-route` adds the rule
+# `sign-in` and the metadata paths, and `delivery-mcp-route-auth` adds the
+# policy delivery-mcp-sign-in for that rule, with Agentgateway's Keycloak
+# provider. What each answers is in the two charts' values.yaml. Requests
+# with a token, the agents' included, are checked as before.
+# Still missing: Keycloak's issuer, http://localhost:18081/realms/demo, is
+# not reachable from the gateway's pods. So
+# /.well-known/oauth-authorization-server/mcp/delivery answers 500
+# (docs/production-design.md, section 2.4, gap 3).
+# `task demo:backup:mcp-oauth-check` shows each step.
+mcpAuthentication:
+  enabled: true
+  # Keycloak's public client for MCP clients on this machine: PKCE S256, and
+  # loopback redirect URIs on any port. The gateway gives it to every client
+  # that registers. Keycloak refuses anonymous registration.
+  clientId: mcp-client
+  resourceMetadata:
+    # The route's policy reads the token from the Authorization header only.
+    bearerMethodsSupported: [header]
 
 # Tool -> the roles that may see it in tools/list and call it. "*" is any
 # signed-in caller. This is the gateway's half of the tool table in

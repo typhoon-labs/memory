@@ -27,7 +27,10 @@ langfuse:
 
   features:
     # No usage statistics to langfuse.com, and nobody signs up: the one user
-    # comes from the headless initialization below.
+    # comes from the headless initialization below. This also decides who may
+    # sign in with Keycloak: a first sign-in fails unless that user exists, so
+    # only `platform-engineer` gets in, and the other roles do not read the
+    # prompts and completions held here.
     telemetryEnabled: false
     signUpDisabled: true
 
@@ -65,6 +68,22 @@ langfuse:
       additionalEnvFrom:
         - secretRef:
             name: langfuse-init
+        # Keys AUTH_KEYCLOAK_CLIENT_ID and AUTH_KEYCLOAK_CLIENT_SECRET.
+        - secretRef:
+            name: langfuse-keycloak
+      additionalEnv:
+        # Sign-in with Keycloak, client `langfuse`. Langfuse takes one address
+        # and reads the rest from discovery. Asked on its Service, the one a
+        # pod can reach, Keycloak answers with the browser's address for the
+        # sign-in page and for the issuer in tokens, and its Service for the
+        # token and key endpoints, so one address covers both.
+        - name: AUTH_KEYCLOAK_ISSUER
+          value: http://keycloak.keycloak.svc.cluster.local:8080/realms/demo
+        # Joins the sign-in to the user that the headless initialization made,
+        # by email. Keycloak is the only provider, and its users are fixed in
+        # the realm file.
+        - name: AUTH_KEYCLOAK_ALLOW_ACCOUNT_LINKING
+          value: "true"
     resources:
       requests:
         cpu: 100m

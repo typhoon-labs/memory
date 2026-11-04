@@ -97,7 +97,7 @@ case "${answer}" in
 esac
 
 lines="$(delivery_lines "${since}")"
-ours="$(printf '%s\n' "${lines}" | jq -c 'select(.user == "developer-other-team" or .user == "service-account-alert-automation" or .target == "CHG-0000" or .target == "INC-0000" or .tool == "open_incident")' 2>/dev/null)"
+ours="$(printf '%s\n' "${lines}" | jq -c 'select(."user.id" == "developer-other-team" or ."user.id" == "service-account-alert-automation" or ."change.id" == "CHG-0000" or ."incident.id" == "INC-0000" or ."gen_ai.tool.name" == "open_incident" or ."audit.event" == "incident.opened")' 2>/dev/null)"
 others="$(printf '%s\n' "${lines}" | jq -c 'select(.)' 2>/dev/null | grep -c . )"
 if [ -z "${ours}" ]; then
   line nothing "delivery-mcp's audit lines since ${since} UTC" "none of the four calls reached it$([ "${others}" -gt 0 ] && printf ' (%s line(s) of other callers, such as an open Chat UI on a token exchanged before the outage)' "${others}")"
@@ -127,9 +127,9 @@ else
 fi
 # The audit lines read above are the ones this call has now added to: the
 # "none" earlier was read from the right place.
-applied="$(delivery_lines "${since}" | jq -c 'select(.target == "CHG-0000")' 2>/dev/null | tail -n 1)"
+applied="$(delivery_lines "${since}" | jq -c 'select(."change.id" == "CHG-0000")' 2>/dev/null | tail -n 1)"
 if [ -n "${applied}" ]; then
-  line works "delivery-mcp's audit lines again" "$(printf '%s' "${applied}" | jq -r '"\(.tool) \(.target) \(.outcome), user \(.user), chain \(.chain | join(", "))"')"
+  line works "delivery-mcp's audit lines again" "$(printf '%s' "${applied}" | jq -r '"\(."gen_ai.tool.name" // ."audit.event") \(."change.id") \(."audit.outcome"), user \(."user.id"), chain \(."actor.chain" // "-")"')"
 else
   unexpected "delivery-mcp's audit lines show no line for the call that reached it, so the \"none\" above shows nothing"
 fi

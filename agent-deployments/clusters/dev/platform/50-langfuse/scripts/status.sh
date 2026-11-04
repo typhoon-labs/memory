@@ -45,7 +45,7 @@ probe "UI" "${ui_url}"
 probe "Health" "${ui_url}/api/public/health"
 
 echo "== Addresses"
-echo "  UI, from the host        ${ui_url}   (login: task langfuse:login)"
+echo "  UI, from the host        ${ui_url}   (press Keycloak, as platform-engineer)"
 echo "  OTLP, in the cluster     http://langfuse-web.langfuse.svc.cluster.local:3000/api/public/otel"
 echo "                           HTTP only; an exporter adds /v1/traces"
 echo "  Headers                  Authorization: the value in telemetry/langfuse-ingest"

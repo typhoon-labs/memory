@@ -1,5 +1,7 @@
 # chat-assistant
 
+> **Owner:** chat-assistant maintainers · **Type:** reference · **Checked:** 2026-11-03 against chat-assistant 0.1.14
+
 The chat assistant and the Chat UI of the demo, in one image.
 
 - **Server** (`packages/server`): an A2A endpoint with the A2UI extension
@@ -8,39 +10,108 @@ The chat assistant and the Chat UI of the demo, in one image.
   alert webhook.
 - **UI** (`packages/ui`): a React page (Vite, Tailwind CSS, shadcn/ui) that
   signs in with Keycloak, talks A2A to the server from the browser, and draws
-  the card with A2UI's React renderer. The incident is in the middle, the
-  chat pane on its right and, once there is more than one incident, the list
-  of incidents on its left; in a narrow window the chat comes after the
-  incident. The page is white and gray, and color says two things. Whose tab it is: a
-  line along the top, the role's name beside the app's, the step it is the
-  viewer's turn on and the tab's icon take the role's color, blue for
-  `developer`, violet for `incident-manager`, teal for `platform-engineer`.
-  And what a status or an outcome means: red for an incident that is open or
-  critical and for a refusal by the gateway, amber for an incident being
-  mitigated and for a refusal by the service, green for resolved. The theme
-  is in `packages/ui/src/index.css`.
+  the card with A2UI's React renderer. Its layout, its colors and the panels
+  beside the card are in [`docs/ui.md`](docs/ui.md).
+
+| | |
+|---|---|
+| Built with | Server: Mastra and the A2A JavaScript SDK, TypeScript. UI: React (Vite, Tailwind CSS, shadcn/ui) and A2UI's React renderer |
+| Serves | A2A 1.0 and 0.3 over JSON-RPC with the A2UI extension v0.9.1, the alert hook and the built UI, on port 8080; local dev ports 18193 (server) and 18194 (UI) |
+| Gateway route | `/a2a/chat-assistant`, for any signed-in role; on a user's behalf, no agent. The alert hook, `POST /hooks/alert`, for role `alert-automation` only; on its behalf, no agent. See [Routes](../../docs/contracts.md#routes) |
+| Model | `MODEL_ID` (`claude-sonnet-5-5`) through the model route, for chat text only; the card and the button actions are handled by code |
+| Running version | 0.1.14 in the dev cluster (`image.tag` in its values) |
+| Values and routes | [`values.yaml`](../../agent-deployments/clusters/dev/workloads/chat-assistant/values.yaml); routes [`chat-assistant.yaml`](../../agent-deployments/clusters/dev/domains/operations/chat-assistant.yaml) and [`chat-assistant-alert-hook.yaml`](../../agent-deployments/clusters/dev/domains/operations/chat-assistant-alert-hook.yaml) |
+
+## Identity
 
 The server holds no credential of its own, other than, with
 [delegation](#delegation), the service-account token its pod is given. It
 verifies the caller's bearer token on every request, and every call it makes,
 to `delivery-mcp`, to the other agents and to the model route, acts as that
 caller: by default with that same token, and with delegation only with a token
-`chain-sts` issues for the caller in exchange, which names `chat-assistant` in
-its `act` claim. Who may do what is decided by the gateway and by
-`delivery-mcp`, never here.
+`chain-sts` issues for the caller and for that one target in exchange, which
+names `chat-assistant` in its `act` claim. Who may do what is decided by the
+gateway and by `delivery-mcp`, never here.
 
 **Whose tokens it takes.** A token from `OIDC_ISSUER` for one of
 `OIDC_ACCEPTED_AUDIENCES`: in the dev cluster `agentgateway`, the audience of
 `task token` and of the alert's machine client, and `chat-assistant`, the
 audience of a Chat UI sign-in (Keycloak client `chat-ui`), which no other
-route of the gateway accepts. Without the variable, `OIDC_AUDIENCE` alone.
+route of the gateway accepts ([Identity](../../docs/contracts.md#identity)).
+Without the variable, `OIDC_AUDIENCE` alone.
 A token that verifies but carries `act`, so names an agent acting for the
 caller, is refused with 403 (`{"error": "forbidden", "layer":
 "chat-assistant"}`), on the A2A endpoint and on the alert hook alike: nobody
 calls this agent on a person's behalf, and the gateway's routes refuse such a
-token too. Since version 0.1.11.
+token too ([Routes](../../docs/contracts.md#routes)). Since version 0.1.11.
 
-## What it serves
+### Delegation
+
+With `DELEGATION_METADATA_URL` and `DELEGATION_ACTOR_TOKEN_FILE` set, the
+caller's token never leaves this process. Before a call to `delivery-mcp`, to
+an agent or to the model route, the server exchanges it at
+[`chain-sts`](../chain-sts/README.md) (RFC 8693, as kagent's STS clients ask)
+and sends the issued token instead: a token for the same user whose `act`
+claim names `chat-assistant`, for that target alone; what else it carries is
+in [`docs/contracts.md`](../../docs/contracts.md#agents-acting-for-a-user-chain-sts).
+The alert hook's token is exchanged the same way. The code is
+`packages/server/src/downstream/delegation.ts`.
+
+- **One token per target.** Each exchange names its target as `resource`
+  (RFC 8707), and `chain-sts` issues the token for that audience. The
+  resource is the address the server calls the target at, without a trailing
+  slash: `DELIVERY_MCP_URL`, `REMEDIATION_AGENT_URL`, `COMMS_AGENT_URL`,
+  `DIAGNOSIS_AGENT_URL`, and for the model route `MODEL_BASE_URL` with `/v1`,
+  the base of the paths that route serves and of the model client's requests.
+  In the dev cluster these are the gateway's routes, and each accepts a token
+  from `chain-sts` only for its own resource, so a token this server hands to
+  one agent cannot be replayed by that agent at another route
+  ([`docs/contracts.md`](../../docs/contracts.md#agents-acting-for-a-user-chain-sts)).
+  Since version 0.1.14; before, every exchange asked for `OIDC_AUDIENCE`.
+- **The request** is a form POST to the `token_endpoint` that
+  `DELEGATION_METADATA_URL` (RFC 8414 metadata) names, used as given, with
+  `resource` and no `audience`; its parameters are in chain-sts's
+  [The protocol](../chain-sts/README.md#the-protocol) and
+  [How agents call it](../chain-sts/README.md#how-agents-call-it). A target
+  whose address is not set is asked for with no `resource`, which `chain-sts`
+  refuses, so nothing is sent to it.
+- **The actor token** is this pod's service-account token for the audience
+  `chain-sts`, at `DELEGATION_ACTOR_TOKEN_FILE`, read again for every
+  exchange; how it is mounted and renewed is in
+  [How agents call it](../chain-sts/README.md#how-agents-call-it).
+- **Kept, not asked for every time.** The metadata is read once, and again
+  after an exchange that could not reach `chain-sts`. An issued token is kept
+  per caller token (by its SHA-256) and target, at most 200, and reused while
+  it stays valid for 30 more seconds (from `expires_in`, else its `exp`), so
+  the card's 2-second poll does not exchange every time and `delivery-mcp`'s
+  sessions, kept per token, last; they move to a new session when the token
+  changes. A caller who reads the card and asks the chat holds two tokens, one
+  for `delivery-mcp` and one for the model route. Concurrent calls for one
+  caller and one target share one exchange. Two kinds of call need
+  the token for longer: a chat answer for `MODEL_TIMEOUT_SECONDS`, and a call
+  to an agent for 3 minutes, as long as an A2A call may, since the agent goes
+  on using the token for its own exchanges and calls. For those, a kept token
+  that does not last that long is replaced by a new one. How long `chain-sts`'s
+  tokens live is in
+  [`docs/contracts.md`](../../docs/contracts.md#agents-acting-for-a-user-chain-sts).
+- **No fallback.** When the exchange fails, the call is not made, and the
+  caller's own token is never sent instead. `chain-sts`'s refusal (an RFC 6749
+  `{error, error_description}` with an HTTP 4xx) is shown as "Refused by the
+  token exchange (`error`)" with its description, in red like a gateway's
+  refusal: on the card, in the chat pane, and as a rejected chat answer. A
+  `chain-sts` that answers 5xx (`temporarily_unavailable`, `server_error`) or
+  cannot be reached, and an actor token file that is missing or empty, make
+  the call fail ("chain-sts: …"). The alert hook answers a refusal with 403
+  and a failure with 502, which Alertmanager retries. Nothing here logs a
+  token.
+
+Neither variable set: the caller's own token is forwarded, as before, for
+local runs and the tests. Only one set stops the server at start. The dev
+cluster sets both since version 0.1.10, with the token file mounted by the
+shared chart's `projectedToken`, set in its
+[values](../../agent-deployments/clusters/dev/workloads/chat-assistant/values.yaml).
+
+## What it serves and returns
 
 | Request | Does | Caller |
 |---|---|---|
@@ -60,23 +131,19 @@ writes it; over 0.3 the SDK wraps the array as `{"value": [...]}`.
 
 In the cluster the browser reaches the A2A endpoint through the gateway at
 `http://localhost:18080/a2a/chat-assistant` and the UI at
-`http://localhost:18083`.
+`http://localhost:18083` ([`docs/cluster.md`](../../docs/cluster.md)).
 
 ### Behind the gateway
 
 - The gateway route `/a2a/chat-assistant` must strip the prefix, pass
-  `Authorization` through, answer the CORS preflight without a token for
-  origin `http://localhost:18083` (methods GET and POST; headers
-  Authorization, Content-Type, Accept, A2A-Version, A2A-Extensions,
-  X-A2A-Extensions, traceparent, tracestate), and pass `text/event-stream`
-  unbuffered for 5 minutes.
+  `Authorization` through, answer the CORS preflight from the Chat UI without
+  a token, and pass `text/event-stream` unbuffered for 5 minutes. The origin,
+  methods, headers and timeouts are in its route file,
+  [`chat-assistant.yaml`](../../agent-deployments/clusters/dev/domains/operations/chat-assistant.yaml),
+  and its chart, [`a2a-route`](../../agent-platform/profiles/gateway/a2a-route/values.yaml),
+  strips the prefix. Neither file says the stream is passed unbuffered.
 - Keycloak client `chat-ui` already accepts `http://localhost:18083` and
   `http://localhost:18194`.
-
-The route's settings are
-`agent-deployments/clusters/dev/domains/operations/chat-assistant.yaml`. The
-alert hook has a route of its own, `chat-assistant-alert-hook.yaml` next to
-it: `POST /hooks/alert` on the gateway, for the role `alert-automation` only.
 
 ### Why the A2A endpoint is not Mastra's
 
@@ -87,7 +154,7 @@ set values in the request context. `task chat-assistant:spike` shows each of
 these. The endpoint is therefore built with the A2A JavaScript SDK in the same
 process, and its executor calls the Mastra agent for chat text.
 
-## One message, three kinds
+### One message, three kinds
 
 The executor (`src/a2a/executor.ts`) sorts each incoming message:
 
@@ -101,7 +168,7 @@ A2UI travels in a data part with `metadata.mimeType: application/a2ui+json`
 whose `data` is an array of `createSurface`, `updateComponents`,
 `updateDataModel` and `deleteSurface` messages.
 
-## The incident card
+### The incident card
 
 `src/card/incident-card.ts` builds the card from `get_incident`. No model is
 involved. Its components come from the incident catalog: A2UI's basic catalog
@@ -172,7 +239,7 @@ Propose step: "Waiting for the diagnosis", with the button disabled. Without a
 recommended version the developer can type the version to roll back to;
 `delivery-mcp` checks it.
 
-## More than one incident
+### More than one incident
 
 The card shows one incident. With nothing picked that is the current one: the
 newest that is not resolved, or, when every one is resolved, the most recent.
@@ -200,27 +267,10 @@ with one the page is the card and the chat.
   incident while the action runs, whichever incident is current.
 - **A newly opened incident takes the card**, whatever the viewer had picked.
 
-### The panels beside the card
+How the list and the chat open and close beside the card is in
+[`docs/ui.md`](docs/ui.md#the-panels-beside-the-card).
 
-The list and the chat each have a button on their edge, halfway down the
-window, that closes the panel and brings it back. Closed, the panel is gone,
-the card has its room, and the button is on the window's edge. The choice is
-kept in the browser (`localStorage`, `chat-assistant.panel.*`).
-
-- Until the viewer chooses, the list is open only where the window has room
-  for it beside the chat without narrowing the card: from 85rem. With the
-  chat closed the list has the chat's room, and is open from 60rem. A viewer
-  who opens it in a narrower window gets a narrower card, whose steps then
-  stack.
-- A button pressed on the card reports in the chat. While the chat is closed
-  its edge button carries a dot for anything that arrived there.
-- The window scrolls the incident, and the bar at the top, the list and the
-  chat stay in place. The incident's scrollbar is then the window's, at the
-  far right, and not on the edge of the chat, where the chat's button is.
-- In one column (a window under 60rem) the chat is under the incident and is
-  not closed, and the list opens over the page from its edge button.
-
-## Actions
+### Actions
 
 | Button | Action name | Calls, as the signed-in user |
 |---|---|---|
@@ -243,7 +293,7 @@ who refused, why in a sentence, and the name of the service's rule if one
 did.
 
 - **Refused by the gateway** (red): HTTP 401 or 403 from a route, or a tool
-  the gateway does not offer the caller (it answers HTTP 400, `Unknown tool`).
+  the gateway does not offer the caller (it answers HTTP 400, `unknown resource`).
   An agent's report that its own tool call was turned away before it reached
   the service (`outcome: rejected`) is shown the same way, and so is a 401 or
   403 from the model route on a chat answer. With delegation, `chain-sts`
@@ -278,14 +328,15 @@ would show if a grant were removed at the gateway while the card still offered
 the button, or for a request sent without the card (`task chat-assistant:walk`
 does this against the stubs).
 
-## Alert hook
+### Alert hook
 
 `POST /hooks/alert` takes a standard Alertmanager webhook body. For each firing
 alert (the service is the label `service`, else `app`, else `job`):
 
 1. `open_incident`, so the card exists at once;
 2. answer the webhook, with the incident id and `diagnosis: started`;
-3. ask `diagnosis-agent` (measured: 14 to 18 seconds) while the card says "Diagnosing…";
+3. ask `diagnosis-agent` while the card says "Diagnosing…" (how long that
+   takes: [`docs/measurements.md`](../../docs/measurements.md#diagnosis-agent));
 4. `record_diagnosis`; the card fills in on each viewer's next poll.
 
 There is one open incident per service, and the hook is safe to repeat: a
@@ -294,64 +345,13 @@ incident has none and none is running. The "diagnosing" and "failed" notes are
 kept in this process's memory; after a restart the card says only that no
 diagnosis is recorded.
 
-## Chat
+### Chat
 
 Chat text goes to a Mastra agent on the model at `MODEL_BASE_URL` (Anthropic
-Messages API), called with the user's token, or with delegation the exchanged
-one, as `Authorization: Bearer`. The agent can read incidents
+Messages API), called with the user's token, or with delegation the one
+exchanged for the model route, as `Authorization: Bearer`. The agent can read incidents
 (`list_incidents`, `get_incident`) and ask `diagnosis-agent`. It has no tool
 that changes anything.
-
-## Delegation
-
-With `DELEGATION_METADATA_URL` and `DELEGATION_ACTOR_TOKEN_FILE` set, the
-caller's token never leaves this process. Before a call to `delivery-mcp`, to
-an agent or to the model route, the server exchanges it at
-[`chain-sts`](../chain-sts/README.md) (RFC 8693, as kagent's STS clients ask)
-and sends the issued token instead: a token for the same user, with the same
-`preferred_username`, `roles` and `team`, whose `act` claim names
-`chat-assistant`. The alert hook's token is exchanged the same way. The code is
-`packages/server/src/downstream/delegation.ts`.
-
-- **The request.** A form POST to the `token_endpoint` that
-  `DELEGATION_METADATA_URL` (RFC 8414 metadata) names, used as given, with no
-  client authentication: `grant_type`
-  `urn:ietf:params:oauth:grant-type:token-exchange`, the caller's token as
-  `subject_token`, this pod's service-account token as `actor_token` (both of
-  type `urn:ietf:params:oauth:token-type:jwt`), and `audience` set to
-  `OIDC_AUDIENCE` (`agentgateway`), which every route checks.
-- **The actor token** is a projected service-account token for audience
-  `chain-sts`, at `DELEGATION_ACTOR_TOKEN_FILE`. The file is read again for
-  every exchange, since the kubelet replaces it before it expires.
-- **Kept, not asked for every time.** The metadata is read once, and again
-  after an exchange that could not reach `chain-sts`. An issued token is kept
-  per caller token (by its SHA-256, at most 200) and reused while it stays
-  valid for 30 more seconds (from `expires_in`, else its `exp`), so the card's
-  2-second poll does not exchange every time and `delivery-mcp`'s sessions,
-  kept per token, last; they move to a new session when the token changes.
-  Concurrent calls for one caller share one exchange. Two kinds of call need
-  the token for longer: a chat answer for `MODEL_TIMEOUT_SECONDS`, and a call
-  to an agent for 3 minutes, as long as an A2A call may, since the agent goes
-  on using the token for its own exchanges and calls. For those, a kept token
-  that does not last that long is replaced by a new one. `chain-sts` issues
-  tokens for 5 minutes in the dev cluster, and never past the caller's own
-  token's expiry.
-- **No fallback.** When the exchange fails, the call is not made, and the
-  caller's own token is never sent instead. `chain-sts`'s refusal (an RFC 6749
-  `{error, error_description}` with an HTTP 4xx) is shown as "Refused by the
-  token exchange (`error`)" with its description, in red like a gateway's
-  refusal: on the card, in the chat pane, and as a rejected chat answer. A
-  `chain-sts` that answers 5xx (`temporarily_unavailable`, `server_error`) or
-  cannot be reached, and an actor token file that is missing or empty, make
-  the call fail ("chain-sts: …"). The alert hook answers a refusal with 403
-  and a failure with 502, which Alertmanager retries. Nothing here logs a
-  token.
-
-Neither variable set: the caller's own token is forwarded, as before, for
-local runs and the tests. Only one set stops the server at start. The dev
-cluster sets both since version 0.1.10, with the token file mounted by the
-shared chart's `projectedToken` (audience `chain-sts`, 600 seconds) at
-`/var/run/secrets/chain-sts/token`.
 
 ## Settings
 
@@ -361,11 +361,11 @@ All settings are environment variables (`packages/server/src/config.ts`).
 |---|---|---|
 | `PORT`, `HOST` | Where the server listens | `8080`, `0.0.0.0` |
 | `APP_VERSION` | Reported in `/healthz`, the agent card and telemetry | `0.0.0-dev` |
-| `OIDC_ISSUER`, `OIDC_JWKS_URL`, `OIDC_AUDIENCE` | Whose tokens are trusted. The issuer is what tokens say; the keys may be fetched from another address. `OIDC_AUDIENCE` is also the audience asked for at `chain-sts` | Required, unless `DEV_TEST_ISSUER=1`; audience `agentgateway` |
+| `OIDC_ISSUER`, `OIDC_JWKS_URL`, `OIDC_AUDIENCE` | Whose tokens are trusted. The issuer is what tokens say; the keys may be fetched from another address. Nothing is asked for `OIDC_AUDIENCE` at `chain-sts` since version 0.1.14: each target's address is its `resource` there ([Delegation](#delegation)) | Required, unless `DEV_TEST_ISSUER=1`; audience `agentgateway` |
 | `OIDC_ACCEPTED_AUDIENCES` | Comma-separated audiences a caller's token may carry, one being enough; in the dev cluster `agentgateway,chat-assistant` | `OIDC_AUDIENCE` |
-| `MODEL_BASE_URL`, `MODEL_ID` | The model route and the chat model | `http://localhost:7070`, `claude-sonnet-5-5` |
+| `MODEL_BASE_URL`, `MODEL_ID` | The model route and the chat model. With delegation, `MODEL_BASE_URL` with `/v1` is the resource asked for at `chain-sts` | `http://localhost:7070`, `claude-sonnet-5-5` |
 | `MODEL_TIMEOUT_SECONDS` | All the time one chat answer may take | `60` |
-| `DELIVERY_MCP_URL` | `delivery-mcp`. A URL with a path is used as given; without one, `/mcp` is added | Required unless stubs |
+| `DELIVERY_MCP_URL` | `delivery-mcp`. A URL with a path is used as given; without one, `/mcp` is added. With delegation, also its resource at `chain-sts`, as set, without a trailing slash; so are the three agents' URLs below | Required unless stubs |
 | `REMEDIATION_AGENT_URL`, `COMMS_AGENT_URL` | The agents' A2A URLs | Empty |
 | `DIAGNOSIS_AGENT_URL` | `diagnosis-agent`'s A2A URL. Empty: no diagnosis is attempted | Empty |
 | `DIAGNOSIS_TIMEOUT_SECONDS` | How long one diagnosis may take | `60` |
@@ -376,17 +376,18 @@ All settings are environment variables (`packages/server/src/config.ts`).
 | `UI_A2A_URL` | The A2A URL the UI is told to use. Empty: the origin the UI was loaded from | Empty |
 | `UI_A2A_PROTOCOL_VERSION` | `1.0` or `0.3` | `1.0` |
 | `UI_OIDC_ISSUER`, `UI_OIDC_CLIENT_ID`, `UI_OIDC_SCOPE` | Sign-in settings for the UI | `OIDC_ISSUER`, `chat-ui`, `openid profile` |
+| `UI_FORCE_SIGN_IN` | `true`: the UI signs in with `prompt=login`, so Keycloak shows its form even to a browser that has a session there, and each tab can sign in as another role, as the demo needs. `false`: the UI asks with no `prompt`, so an existing session is reused and a user behind an enterprise IdP is not sent back through it on every visit, as production wants ([production design, 2.8](../../docs/production-design.md#28-what-it-changes-in-the-code)). `1` and `0` work too; any other value stops the start. Since version 0.1.13 | `true` |
 | `UI_POLL_INTERVAL_MS` | How often the UI polls | `2000` |
 | `UI_DIST_DIR` | Where the built UI is | `packages/ui/dist` |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` and the other `OTEL_*` | Traces are exported when the endpoint is set | Off |
 | `DEPLOYMENT_ENVIRONMENT` | `deployment.environment` in telemetry | `dev` |
-| `STUB_DOWNSTREAMS=1` | In-memory fakes for `delivery-mcp` and the three agents, with the same rules. `STUB_SEED=0` starts without an incident; `STUB_PHASE_MS` (2500) and `STUB_DIAGNOSIS_MS` (3000) set how long the fake rollout phases and the fake diagnosis take | Off |
+| `STUB_DOWNSTREAMS=1` | In-memory fakes for `delivery-mcp` and the three agents, with the same rules: the approver is not the proposer is decided on the token's `sub`, as `delivery-mcp` decides it, and each change keeps every person's `sub` beside their name. `STUB_SEED=0` starts without an incident; `STUB_PHASE_MS` (2500) and `STUB_DIAGNOSIS_MS` (3000) set how long the fake rollout phases and the fake diagnosis take | Off |
 | `DEV_TEST_ISSUER=1` | A sign-in issuer for local work, with a key made at start-up and no passwords. It refuses to start in a cluster or with `NODE_ENV=production` | Off |
 
 The selection for the dev cluster is
-`agent-deployments/clusters/dev/workloads/chat-assistant/values.yaml`.
+[`agent-deployments/clusters/dev/workloads/chat-assistant/values.yaml`](../../agent-deployments/clusters/dev/workloads/chat-assistant/values.yaml).
 
-## Tasks
+## Run and test
 
 From the repository root, `mise exec -- task chat-assistant:<task>`:
 
@@ -401,13 +402,16 @@ From the repository root, `mise exec -- task chat-assistant:<task>`:
 | `build`, `push` | The image `localhost:5002/chat-assistant:<version>` |
 | `spike` | Shows what Mastra's built-in A2A endpoint can and cannot do |
 
-To deploy a new version: raise `CHAT_ASSISTANT_VERSION` in `Taskfile.yml`,
-`image.tag` in the selection and `version` in `catalog.yaml`, then
+## Release
+
+To deploy a new version: raise `CHAT_ASSISTANT_VERSION` in
+[`Taskfile.yml`](Taskfile.yml), `image.tag` in the selection and `version` in
+[`catalog.yaml`](catalog.yaml), then
 `task chat-assistant:build chat-assistant:push`,
 `task deploy -- -l name=chat-assistant` and, for the catalog,
 `task registry:publish`.
 
-## Known limits
+## Limits
 
 - One replica. Tasks, chat history and the diagnosis notes are in memory.
 - The list of incidents is what `delivery-mcp` holds, which is in memory
@@ -431,4 +435,7 @@ To deploy a new version: raise `CHAT_ASSISTANT_VERSION` in `Taskfile.yml`,
   step and not when.
 - Two users in one browser profile share Keycloak's session cookie. To sign in
   as a second role in another tab, choose "Restart login" on Keycloak's
-  re-authentication page, or use a private window per role.
+  re-authentication page, or use a private window per role. With
+  `UI_FORCE_SIGN_IN=false` there is no such page: another tab is signed in as
+  the same user, so a second role needs a private window (**documented
+  upstream**, as OpenID Connect's `prompt`; not yet run here).

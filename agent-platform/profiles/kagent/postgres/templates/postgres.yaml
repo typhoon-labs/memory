@@ -1,0 +1,176 @@
+# kagent v1.0.0-rc1's bundled_postgres.yaml, as a chart. See values.yaml.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kagent-postgresql
+  namespace: {{ .Release.Namespace }}
+data:
+  postgresql.conf: |
+    listen_addresses = '*'
+    ssl = on
+    ssl_cert_file = '/run/servicedns.podcert.ate.dev/credential-bundle.pem'
+    ssl_key_file = '/run/servicedns.podcert.ate.dev/credential-bundle.pem'
+    ssl_ca_file = '/run/postgres.podcert.ate.dev/trust-bundle.pem'
+    hba_file = '/etc/postgresql/pg_hba.conf'
+  pg_hba.conf: |
+    local all all trust
+    hostssl all postgres all reject
+    hostssl kagent kagent_owner_user,kagent_readwrite_user,substrate_owner_user,substrate_readwrite_user all cert
+  reload-tls.sh: |
+    set -eu
+    trap 'exit 0' TERM INT
+
+    CERT=/run/servicedns.podcert.ate.dev/credential-bundle.pem
+    CA=/run/postgres.podcert.ate.dev/trust-bundle.pem
+    reloaded=""
+    while true; do
+      current="$(sha256sum "$CERT" "$CA" /etc/postgresql/pg_hba.conf)"
+      if [ "$current" != "$reloaded" ] \
+        && psql -U "$POSTGRES_USER" -d postgres -Atc 'SELECT pg_reload_conf()' >/dev/null 2>&1; then
+        reloaded="$current"
+      fi
+      sleep 60 &
+      wait $!
+    done
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kagent-postgresql
+  namespace: {{ .Release.Namespace }}
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: {{ .Values.storage }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kagent-postgresql
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kagent-postgresql.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "kagent-postgresql.labels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "kagent-postgresql.labels" . | nindent 8 }}
+    spec:
+      securityContext:
+        fsGroup: 70
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+      - name: tls-reloader
+        restartPolicy: Always
+        image: {{ .Values.image }}
+        securityContext:
+          runAsUser: 70
+        env:
+        - name: POSTGRES_USER
+          value: postgres
+        command: [/bin/sh, /etc/postgresql/reload-tls.sh]
+        volumeMounts:
+        - name: config
+          mountPath: /etc/postgresql
+        - name: servicedns
+          mountPath: /run/servicedns.podcert.ate.dev
+          readOnly: true
+        - name: postgres-ca
+          mountPath: /run/postgres.podcert.ate.dev
+          readOnly: true
+        - name: socket
+          mountPath: /var/run/postgresql
+        resources:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+      containers:
+      - name: postgresql
+        image: {{ .Values.image }}
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: POSTGRES_DB
+          value: kagent
+        - name: POSTGRES_USER
+          value: postgres
+        - name: POSTGRES_HOST_AUTH_METHOD
+          value: trust
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        args: ["-c", "config_file=/etc/postgresql/postgresql.conf"]
+        ports:
+        - name: postgresql
+          containerPort: 5432
+        readinessProbe:
+          exec:
+            command: [sh, -c, 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"']
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        livenessProbe:
+          exec:
+            command: [sh, -c, 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"']
+          initialDelaySeconds: 20
+          periodSeconds: 10
+        resources:
+          {{- toYaml .Values.resources | nindent 10 }}
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/postgresql/data
+        - name: config
+          mountPath: /etc/postgresql
+        - name: servicedns
+          mountPath: /run/servicedns.podcert.ate.dev
+          readOnly: true
+        - name: postgres-ca
+          mountPath: /run/postgres.podcert.ate.dev
+          readOnly: true
+        - name: socket
+          mountPath: /var/run/postgresql
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: kagent-postgresql
+      - name: config
+        configMap:
+          name: kagent-postgresql
+      - name: servicedns
+        projected:
+          defaultMode: 0600
+          sources:
+          - podCertificate:
+              signerName: servicedns.podcert.ate.dev/identity
+              keyType: ECDSAP256
+              credentialBundlePath: credential-bundle.pem
+      - name: postgres-ca
+        projected:
+          sources:
+          - clusterTrustBundle:
+              signerName: postgres.podcert.ate.dev/identity
+              labelSelector:
+                matchLabels:
+                  podcert.ate.dev/canarying: live
+              path: trust-bundle.pem
+      - name: socket
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kagent-postgresql
+  namespace: {{ .Release.Namespace }}
+spec:
+  selector:
+    {{- include "kagent-postgresql.labels" . | nindent 4 }}
+  ports:
+  - name: postgresql
+    port: 5432
+    targetPort: postgresql

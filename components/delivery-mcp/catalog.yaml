@@ -11,7 +11,7 @@ metadata:
   labels:
     built-with: fastmcp
     runs-in: tools
-    version: 0.1.3
+    version: 0.2.2
 spec:
   title: Delivery MCP
   description: >-
@@ -26,7 +26,8 @@ spec:
     approver is not the proposer, a change is applied only once approved.
     apply_change upgrades the Helm release and verifies with a real search.
     MCP over Streamable HTTP, a token required: Keycloak's, or chain-sts's
-    for an agent acting for a user, with that user's role; every record and
+    for an agent acting for a user, issued for this route alone, with that
+    user's role; every record and
     audit line names the agents of such a token next to the user. Gateway
     route /mcp/delivery.
   remote:

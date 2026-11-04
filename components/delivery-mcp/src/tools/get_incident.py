@@ -27,5 +27,5 @@ async def get_incident(incident_id: str) -> ToolResult:
     return await run_tool(
         "get_incident",
         lambda service, caller: service.get_incident(caller, incident_id),
-        target=incident_id,
+        incident_id=incident_id,
     )

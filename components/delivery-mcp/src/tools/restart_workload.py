@@ -28,5 +28,5 @@ async def restart_workload(service: str) -> ToolResult:
     return await run_tool(
         "restart_workload",
         lambda s, caller: s.restart_workload(caller, service),
-        target=service,
+        service=service,
     )

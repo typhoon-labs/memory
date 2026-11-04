@@ -29,8 +29,8 @@ tasks:
     cmds:
       - "{{.TASKFILE_DIR}}/scripts/tools.sh"
       - 'echo "node memory before (whole node, every workstream): $(docker stats --no-stream --format "{{`{{.MemUsage}}`}}" agentgateway-demo-control-plane)"'
-      # This directory's helmfile only: five releases, in order, with the
-      # identity bootstrap as a hook after the second.
+      # This directory's helmfile only: its releases, in order, with the
+      # identity bootstrap as a hook before the certificate controller.
       - KUBECONFIG="{{.ROOT_DIR}}/local/kind/kubeconfig" helmfile --kubeconfig "{{.ROOT_DIR}}/local/kind/kubeconfig" --kube-context kind-agentgateway-demo --file "{{.TASKFILE_DIR}}/helmfile.yaml" sync
       # Helm does not wait for the WorkerPool, and nothing runs without a ready Worker.
       - "{{.TASKFILE_DIR}}/scripts/wait-kagent.sh"

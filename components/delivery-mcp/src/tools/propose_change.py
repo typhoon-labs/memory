@@ -21,8 +21,9 @@ async def propose_change(incident_id: str, target_version: str) -> ToolResult:
 
     Needs the role `developer`. The caller's team must own the service (rule
     `team_owns_service`), and the target must be a retained version earlier than the one
-    running (rule `target_is_retained_earlier_version`). The change starts as `proposed`;
-    nothing is applied.
+    running (rule `target_is_retained_earlier_version`). The change keeps the proposer's
+    token `sub`, so a token without one is refused (rule `approver_is_not_proposer`). The
+    change starts as `proposed`; nothing is applied.
 
     Args:
         incident_id: The incident, for example `INC-0001`.
@@ -31,5 +32,5 @@ async def propose_change(incident_id: str, target_version: str) -> ToolResult:
     return await run_tool(
         "propose_change",
         lambda s, caller: s.propose_change(caller, incident_id, target_version),
-        target=incident_id,
+        incident_id=incident_id,
     )

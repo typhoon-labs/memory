@@ -9,11 +9,18 @@ target:
   name: model
 
 # CEL expressions on the verified token; any one that is true allows the call.
-# Empty: every caller with a valid token for audience `agentgateway`, human or
-# machine. To limit the route to some roles, list them, for example:
+# Empty: every caller with a valid token, human or machine: a Keycloak token
+# for audience `agentgateway`, or chain-sts's for this route. To limit the
+# route to some roles, list them, for example:
 #   - '"developer" in jwt.roles'
 #   - '"alert-automation" in jwt.roles'
 allow: []
+
+# The target chain-sts's tokens must be for (`delegation.resources` in
+# ../../identity.yaml): <gateway>/v1. A token an agent got for another route,
+# the one it was called with included, is refused here (401). The gateway
+# removes the token before it calls the model.
+resource: model
 
 # Which agent may call it on a user's behalf: the three that exchange their
 # caller's token at chain-sts and then ask the model, each as the newest

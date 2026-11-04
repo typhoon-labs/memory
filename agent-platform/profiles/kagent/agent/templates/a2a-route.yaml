@@ -15,7 +15,7 @@
 # agent-platform/policies/agentgateway/route-auth that targets HTTPRoute
 # `{{ .Release.Name }}`, with `passthrough: true`: kagent reads the caller's
 # name from the token the gateway has verified. Never apply this route
-# without that policy: kagent itself verifies nothing.
+# without that policy: kagent itself verifies no caller's token.
 apiVersion: agentgateway.dev/v1alpha1
 kind: AgentgatewayBackend
 metadata:

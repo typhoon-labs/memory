@@ -6,9 +6,12 @@ the service applies it to the identity in the token.
 
 from __future__ import annotations
 
+import jwt
+import pytest
 from conftest import assert_error, assert_refused
 from fastmcp import Client
 from fastmcp.client.transports import StreamableHttpTransport
+from test_issuer import subject
 
 from delivery.service import TOOL_ROLES
 
@@ -269,6 +272,10 @@ async def test_approve_change_permitted_for_incident_manager(call, incident):
     assert result.data["status"] == "approved"
     assert result.data["approved_by"] == "incident-manager"
     assert result.data["proposed_by"] == "developer"
+    assert (result.data["proposed_by_sub"], result.data["approved_by_sub"]) == (
+        subject("developer"),
+        subject("incident-manager"),
+    )
 
 
 async def test_approve_change_refused_without_the_role(call, incident):
@@ -300,6 +307,95 @@ async def test_approver_is_not_the_proposer(call, incident):
     assert not other.is_error and other.data["approved_by"] == "incident-manager"
 
 
+async def _proposed_by(call, incident_id: str, **who) -> str:
+    """Propose a change to 2.0.0, as test-two-roles unless a token is given."""
+    who = who or {"identity": "test-two-roles"}
+    proposed = await call("propose_change", **who, incident_id=incident_id, target_version="2.0.0")
+    assert not proposed.is_error, proposed.data
+    return proposed.data["change_id"]
+
+
+async def _still_proposed(call, incident_id: str) -> None:
+    change = (await call("get_incident", "developer", incident_id=incident_id)).data["changes"][0]
+    assert change["status"] == "proposed"
+    assert (change["approved_by"], change["approved_by_sub"]) == (None, None)
+
+
+async def test_approver_is_the_same_sub_whatever_the_user_name(call, issuer, incident):
+    """A renamed login is still the proposer: the rule keys on sub."""
+    incident_id = await incident()
+    change_id = await _proposed_by(call, incident_id)
+    renamed = issuer.mint("test-two-roles", preferred_username="renamed-person")
+    own = await call("approve_change", token=renamed, change_id=change_id)
+    assert_refused(own, "approver_is_not_proposer")
+    await _still_proposed(call, incident_id)
+
+
+@pytest.mark.parametrize("proposed_with", ["keycloak", "chain-sts"])
+async def test_approver_is_not_the_proposer_across_the_two_issuers(
+    call, issuer, chain, incident, proposed_with
+):
+    """The same person, one sub, two issuers: their own token and their chain token."""
+    incident_id = await incident()
+    own_token = issuer.mint("test-two-roles")
+    chain_token = chain.delegate("test-two-roles", "chat-assistant")
+    first, second = (own_token, chain_token)
+    if proposed_with == "chain-sts":
+        first, second = second, first
+    a, b = (jwt.decode(t, options={"verify_signature": False}) for t in (first, second))
+    assert a["iss"] != b["iss"] and a["sub"] == b["sub"]
+
+    change_id = await _proposed_by(call, incident_id, token=first)
+    assert_refused(
+        await call("approve_change", token=second, change_id=change_id),
+        "approver_is_not_proposer",
+    )
+    await _still_proposed(call, incident_id)
+
+
+async def test_a_different_sub_can_approve_even_under_the_proposers_name(call, issuer, incident):
+    """A login name given to someone else does not make them the proposer."""
+    incident_id = await incident()
+    change_id = await _proposed_by(call, incident_id)
+    someone_else = issuer.mint("test-two-roles", sub="another-person")
+    result = await call("approve_change", token=someone_else, change_id=change_id)
+    assert not result.is_error, result.data
+    assert result.data["status"] == "approved"
+    assert (result.data["proposed_by"], result.data["proposed_by_sub"]) == (
+        "test-two-roles",
+        subject("test-two-roles"),
+    )
+    assert (result.data["approved_by"], result.data["approved_by_sub"]) == (
+        "test-two-roles",
+        "another-person",
+    )
+
+
+@pytest.mark.parametrize("issued_by", ["keycloak", "chain-sts"])
+async def test_a_token_without_sub_can_neither_propose_nor_approve(
+    call, issuer, chain, incident, issued_by
+):
+    """Fail closed: without sub the rule cannot be checked, so nothing passes it."""
+
+    def token(identity: str) -> str:
+        if issued_by == "keycloak":
+            return issuer.mint(identity, sub=None)
+        return chain.delegate(identity, "chat-assistant", sub=None)
+
+    incident_id = await incident()
+    proposed = await call(
+        "propose_change", token=token("developer"), incident_id=incident_id, target_version="2.0.0"
+    )
+    assert_refused(proposed, "approver_is_not_proposer")
+    incident_now = (await call("get_incident", "developer", incident_id=incident_id)).data
+    assert incident_now["changes"] == [] and incident_now["status"] == "open"
+
+    change_id = await _proposed_by(call, incident_id, identity="developer")
+    approved = await call("approve_change", token=token("incident-manager"), change_id=change_id)
+    assert_refused(approved, "approver_is_not_proposer")
+    await _still_proposed(call, incident_id)
+
+
 async def test_approve_change_twice_is_an_invalid_state(call, approved_change):
     _, change_id = await approved_change()
     again = await call("approve_change", "incident-manager", change_id=change_id)
@@ -320,6 +416,7 @@ async def test_reject_change_permitted_for_incident_manager(call, incident):
     assert not result.is_error
     assert result.data["status"] == "rejected"
     assert result.data["rejected_by"] == "incident-manager"
+    assert result.data["rejected_by_sub"] == subject("incident-manager")
     assert result.data["reject_reason"] == "wrong service"
     # A rejected change can be neither approved nor applied.
     assert_error(
@@ -361,6 +458,12 @@ async def test_apply_change_permitted_for_platform_engineer_on_an_approved_chang
         "incident-manager",
         "platform-engineer",
     )
+    assert (change["proposed_by_sub"], change["approved_by_sub"], change["applied_by_sub"]) == (
+        subject("developer"),
+        subject("incident-manager"),
+        subject("platform-engineer"),
+    )
+    assert change["rejected_by_sub"] is None
     assert [h["status"] for h in change["history"]] == [
         "proposed",
         "approved",

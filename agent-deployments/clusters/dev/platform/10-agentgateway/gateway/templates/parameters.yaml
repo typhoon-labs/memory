@@ -10,6 +10,38 @@ metadata:
   name: agentgateway-proxy
   namespace: {{ .Release.Namespace }}
 spec:
+  env:
+    # Opens the admin port to the pod's address, for release `agentgateway-ui`.
+    # By default it answers on the pod's own localhost only, which is what any
+    # other cluster should keep: the port has no login and can stop the proxy.
+    # The NetworkPolicy in admin.yaml is what keeps other pods off it.
+    - name: ADMIN_ADDR
+      value: 0.0.0.0:15000
+    # Without this the proxy runs in `file` mode, and the UI's calls that write
+    # the configuration are refused only because the file is a read-only mount.
+    # This refuses them first, with 403.
+    - name: UI_READ_ONLY
+      value: "true"
+    # Filled into the URL below when the proxy starts, so that no password is in
+    # the configuration. Secret from release `agentgateway-postgresql`.
+    - name: DATABASE_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: agentgateway-postgresql
+          key: password
+  # What the admin UI's Analytics and Logs pages read. There is no typed field for
+  # either setting. The proxy exits if it cannot connect when it starts: see
+  # ../../postgres/values.yaml.
+  rawConfig:
+    config:
+      database:
+        url: postgres://agentgateway:${DATABASE_PASSWORD}@agentgateway-postgresql:5432/agentgateway
+    # Do not add frontendPolicies.accessLog here. It is the only way to set
+    # `database.llm: metadata`, which would keep prompts out of the database, but
+    # the proxy takes one access log policy and the oldest wins, so this one would
+    # replace `telemetry`, with its attributes and its OTLP export. Measured:
+    # `task demo:chain` and `task diagnosis-agent:checks` fail. So the database
+    # keeps what is captured for Langfuse: ../../postgres/values.yaml.
   service:
     spec:
       type: NodePort

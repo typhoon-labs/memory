@@ -1,0 +1,131 @@
+# The Kubernetes API server's audit log, from the kind node to the cluster's
+# collector, which sends it on to Loki with every other log. The API server
+# writes it to a file in the node (local/kind/audit/enable.sh), so this runs
+# on that node and reads the file: who released or changed what, including
+# what never passes the gateway, such as `kubectl` and Helm from this machine.
+#
+# Values for the release `kube-audit-forwarder` (chart opentelemetry-collector,
+# the same chart and build as `otel-collector`). On EKS the control plane's
+# audit log goes to CloudWatch instead, and this does not exist.
+mode: deployment
+
+image:
+  repository: otel/opentelemetry-collector-contrib
+command:
+  name: otelcol-contrib
+
+# It listens on nothing: it reads a file and sends. No Service either: the
+# chart's would have no ports, which Kubernetes refuses.
+service:
+  enabled: false
+ports:
+  otlp:
+    enabled: false
+  otlp-http:
+    enabled: false
+  jaeger-compact:
+    enabled: false
+  jaeger-thrift:
+    enabled: false
+  jaeger-grpc:
+    enabled: false
+  zipkin:
+    enabled: false
+  metrics:
+    enabled: false
+
+# One pod at a time: its read position is a file on the node that only one
+# process can open, so a new pod beside the old one fails to start ("storage
+# client: timeout") and the upgrade never finishes.
+rollout:
+  strategy: Recreate
+  rollingUpdate: null
+
+# The file is root's, mode 0600, in the control-plane node.
+nodeSelector:
+  node-role.kubernetes.io/control-plane: ""
+tolerations:
+  - key: node-role.kubernetes.io/control-plane
+    operator: Exists
+    effect: NoSchedule
+securityContext:
+  runAsUser: 0
+  runAsGroup: 0
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: [ALL]
+
+extraVolumes:
+  - name: audit-log
+    hostPath:
+      path: /var/log/kubernetes/audit
+      type: DirectoryOrCreate
+  # Where it has read up to, so that a restart neither repeats nor skips lines.
+  - name: offsets
+    hostPath:
+      path: /var/lib/kube-audit-forwarder
+      type: DirectoryOrCreate
+extraVolumeMounts:
+  - name: audit-log
+    mountPath: /var/log/kubernetes/audit
+    readOnly: true
+  - name: offsets
+    mountPath: /var/lib/kube-audit-forwarder
+
+resources:
+  requests:
+    cpu: 10m
+    memory: 32Mi
+  limits:
+    memory: 128Mi
+
+# The whole configuration; the chart's default configuration is not merged in.
+alternateConfig:
+  extensions:
+    file_storage:
+      directory: /var/lib/kube-audit-forwarder
+    health_check:
+      endpoint: ${env:MY_POD_IP}:13133
+  receivers:
+    filelog:
+      # The current file and the ones the API server rotated away (50 MB each,
+      # 4 kept); the reader follows a file by its content, not its name.
+      include: [/var/log/kubernetes/audit/audit*.log]
+      start_at: beginning
+      storage: file_storage
+      operators:
+        # One JSON event per line: its fields become attributes, and the line
+        # stays the body, as the API server wrote it.
+        - type: json_parser
+          parse_to: attributes
+          timestamp:
+            parse_from: attributes.stageTimestamp
+            layout_type: gotime
+            layout: "2006-01-02T15:04:05.999999999Z07:00"
+  processors:
+    resource:
+      attributes:
+        - key: service.name
+          value: kube-apiserver-audit
+          action: upsert
+    # At most 200 records a request. The collector refuses a request over
+    # 4 MiB, and that refusal is permanent: the whole batch is dropped. The
+    # backlog of a new cluster's install was 1,463 records in one batch. With
+    # the CRDs' schemas left out (local/kind/audit/policy.yaml) a line was at
+    # most 10 KB on 2026-11-02, so a batch stays under 1 MiB.
+    batch:
+      send_batch_size: 200
+      send_batch_max_size: 200
+  exporters:
+    otlp:
+      endpoint: otel-collector.telemetry.svc.cluster.local:4317
+      tls:
+        insecure: true
+  service:
+    extensions: [file_storage, health_check]
+    pipelines:
+      logs:
+        receivers: [filelog]
+        processors: [resource, batch]
+        exporters: [otlp]

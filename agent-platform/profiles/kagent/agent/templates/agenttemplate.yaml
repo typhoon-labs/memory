@@ -14,11 +14,25 @@ spec:
   systemPromptFrom:
     name: {{ .Release.Name }}-prompt
     key: system
-  # Go templating of the prompt, with the runbooks as {{ "{{" }} include "runbooks/<key>" {{ "}}" }}.
-  promptTemplate:
-    dataSources:
-      - name: {{ .Release.Name }}-runbooks
-        alias: runbooks
+  # Present, even empty, so that kagent renders the prompt as a Go template
+  # ({{ "{{" }} .ToolNames {{ "}}" }} and the like); without it the model gets the braces.
+  promptTemplate: {}
+  {{- with .Values.skills }}
+  # What the agent may load, each from a source that cannot change under it.
+  skills:
+    {{- range $name := keys . | sortAlpha }}
+    {{- $source := (index $.Values.skills $name).source | default dict }}
+    {{- if and $source.oci (not (regexMatch "^[^[:space:]@]+@sha256:[0-9a-f]{64}$" $source.oci)) }}
+    {{- fail (printf "skills.%s.source.oci is %q: kagent takes an image pinned by digest, <registry>/<repository>@sha256:<digest>" $name $source.oci) }}
+    {{- end }}
+    {{- if not (or $source.oci $source.git $source.bucket) }}
+    {{- fail (printf "skills.%s.source has no oci, git or bucket: the skill would come from nowhere" $name) }}
+    {{- end }}
+    - name: {{ $name }}
+      source:
+        {{- toYaml $source | nindent 8 }}
+    {{- end }}
+  {{- end }}
   {{- with .Values.outputSchema }}
   # Per kagent's documentation, not tried here: the runtime validates the
   # final answer against this schema and returns it as a JSON data part, with
@@ -37,8 +51,10 @@ spec:
         {{- if not .tools }}
         {{- fail (printf "tools[%s].tools is empty: kagent would expose every tool the server has. List the tools." .name) }}
         {{- end }}
-        # Only these reach the model. kagent does not check the names against
-        # the server: a misspelt tool is simply never offered.
+        # Of this server's tools, only these reach the model; kagent's
+        # built-in tools are offered as well (60-kagent/README.md). kagent
+        # does not check the names against the server: a misspelled tool is
+        # simply never offered.
         tools:
           {{- toYaml .tools | nindent 10 }}
     {{- end }}

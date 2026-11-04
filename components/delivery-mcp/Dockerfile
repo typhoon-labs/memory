@@ -27,7 +27,7 @@ RUN uv sync --frozen --no-dev --no-cache
 
 # -- runtime -----------------------------------------------------------------
 FROM python:3.13-slim
-ARG VERSION=0.1.0
+ARG VERSION=0.2.2
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates \

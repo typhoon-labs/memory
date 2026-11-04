@@ -7,13 +7,16 @@
 # https://agentgateway.dev/docs/kubernetes/latest/documentation/observability/otel-stack/
 #
 # Traces arrive from the OTel Collector over OTLP gRPC on 4317; Grafana queries
-# port 3100. Nothing is persistent: a restarted Tempo starts empty.
+# port 3100. On a volume and kept 7 days, so a restarted Tempo keeps its
+# traces. The Sample App's traffic is traced all day: measured on 2026-11-02,
+# about 10 MiB an hour, so 7 days come to about 1.7 GiB.
 persistence:
-  enabled: false
+  enabled: true
+  size: 4Gi
 
 tempo:
   reportingEnabled: false
-  retention: 24h
+  retention: 168h
   # The receiver the collector uses. The chart's other default receivers
   # (Jaeger, OpenCensus, OTLP over HTTP) stay: its Service template reads them,
   # so they cannot be removed. Nothing sends to them.
@@ -29,6 +32,6 @@ tempo:
     limits:
       # Not 1Gi: Tempo idles near 300 MiB here, but when it cuts a block (every
       # half hour) or answers a burst of trace queries it took 500 to 700 MiB
-      # more for a while, reached 1Gi, and was restarted. Nothing is persistent,
-      # so a restart loses every trace: in the middle of a demo, the trace view.
+      # more for a while, reached 1Gi, and was restarted. Traces outlive a
+      # restart now, but the trace view still goes blank while it restarts.
       memory: 2Gi

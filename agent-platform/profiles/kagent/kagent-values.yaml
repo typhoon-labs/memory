@@ -1,10 +1,10 @@
 # kagent 1.x: the controller, its API and A2A endpoint, and one WorkerPool.
-# Values for chart oci://ghcr.io/kagent-dev/kagent/helm/kagent, 1.0.0-alpha7.
+# Values for chart oci://ghcr.io/kagent-dev/kagent/helm/kagent, 1.0.0-rc1.
 #
 # Reusable baseline. What one cluster changes goes in that cluster's own values
 # file, listed after this one (agent-deployments/clusters/<name>/platform/60-kagent/).
 #
-# Three decisions differ from the chart's defaults, all for the same reason:
+# Two decisions differ from the chart's defaults, both for the same reason:
 # an agent gets only what its own workload directory grants it.
 #
 #   1. No provider key. The chart's default ModelConfig points at the gateway's
@@ -16,47 +16,93 @@
 #      workload that needs Kubernetes tools installs its own instance of the
 #      same server, read-only, with a Role in the one namespace it may read
 #      (agent-deployments/clusters/dev/workloads/diagnosis-agent/ shows how).
-#   3. No Grafana MCP server. It needs a Grafana token and tracks an unpinned
-#      `latest` image.
 
 controller:
-  # Agent Substrate must already run in ate-system. The controller connects to
-  # it at startup and restarts until it can.
-  substrate:
+  # Substrate's API takes mutual TLS: the controller's pod certificate is who it
+  # is there (`ateApi.authorization.bootstrapOwners` in substrate-values.yaml).
+  substrateClientCertificate:
     enabled: true
-    ateApiEndpoint: dns:///api.ate-system.svc:443
-    atenetRouterURL: http://atenet-router.ate-system.svc:80
 
-  # Lets grpcurl discover the API. Sessions, checkpoints and the Substrate
-  # status call have no HTTP form, so this is the only way to look at them
-  # without the kagent CLI. Turn off outside a development cluster.
-  grpc:
-    reflection: true
+# Database logins are client certificates. The Secrets the chart's defaults
+# name come from release `kagent-postgresql`.
+database:
+  postgres:
+    clientCertificate:
+      enabled: true
 
-  # WHO IS CALLING. Port 8083 carries everything on one port: A2A (JSON-RPC and
-  # gRPC), kagent's own API (create, edit and delete agents and templates, read
-  # conversations) and an MCP endpoint. The open source build does not really
-  # authenticate it:
+# The controller's own configuration. The chart passes this through without a
+# schema: a key anywhere else in this file is ignored without a word, and the
+# controller then runs on the default, which for `server.auth` is `insecure`.
+config:
+  # Agent Substrate must already run in ate-system. The controller connects to
+  # it at startup and restarts until it can. The router takes mutual TLS only,
+  # with the same pod certificate as the API, and admits the controller by
+  # name (`atenetRouter.ingressAllowedSPIFFEIDs` in substrate-values.yaml).
+  substrate:
+    apiEndpoint: dns:///api.ate-system.svc:443
+    routerUrl: https://atenet-router.ate-system.svc:443
+
+  # WHAT AN AGENT HAS BESIDES ITS OWN TOOLS. kagent's runtime gives every agent
+  # built-in tools that no workload asked for, whatever its `tools` list says.
+  # `bash` is the one that matters: it runs as root in the sandbox and its
+  # traffic leaves through the egress gateway, which swaps the placeholders in
+  # the agent's environment for the stored credentials. Measured on
+  # diagnosis-agent (kagent 1.0.0-alpha17): it listed every tool of both MCP
+  # servers (9 and 20, all read tools, where the template offers 7), and could
+  # call the model route.
   #
-  #   insecure        every request is admitted, and every caller is the same
-  #                   user, admin@kagent.dev, unless it names another in the
-  #                   X-User-Id header. A token is ignored.
-  #   trusted-proxy   a bearer token is required, and its payload is DECODED
-  #                   BUT NOT VERIFIED: neither signature nor expiry. A token
-  #                   that nobody signed is accepted.
-  #
-  # Either way kagent trusts whatever reaches it, so two things outside it do
-  # the work: the gateway route in front of an agent verifies the token and
-  # passes it on, and the NetworkPolicy at the end of this file lets nothing
-  # else reach the port.
-  #
-  # trusted-proxy is chosen because it makes that verified token count: the
-  # owner of a conversation is the token's user, and another user who asks for
-  # it gets "not found".
-  auth:
-    mode: trusted-proxy
-    # Keycloak and Okta both carry the login name here; `sub` is an opaque id.
-    userIdClaim: preferred_username
+  # These switches remove `bash`, `list_files`, `grep_file` and `ask_user`.
+  # `ask_user` stops a turn to wait for an answer, and nobody answers an agent
+  # that an alert or another agent calls. Nothing switches off `read_file`,
+  # `write_file` or `edit_file`: they stay, and they reach the Actor's own
+  # sandbox and no further. The agent's checks (`task diagnosis-agent:checks`)
+  # fail if what it is offered changes.
+  runtimeDefaults:
+    builtinTools:
+      disableBash: true
+      disableFileSearch: true
+      disableAskUser: true
+
+  server:
+    # Lets grpcurl discover the API. Sessions, checkpoints and the Substrate
+    # status call have no HTTP form, so this is the only way to look at them
+    # without the kagent CLI. Turn off outside a development cluster.
+    grpcReflection: true
+
+    # WHO IS CALLING. Port 8083 carries everything on one port: A2A (JSON-RPC and
+    # gRPC), kagent's own API (create, edit and delete agents and templates, read
+    # conversations) and an MCP endpoint. The open source build does not really
+    # authenticate a person on it (read in alpha17's source, and again in
+    # 1.0.0-rc1's):
+    #
+    #   insecure        every request is admitted, and every caller is the same
+    #                   user, admin@kagent.dev, unless it names another in the
+    #                   X-User-Id header. A token is ignored.
+    #   trusted-proxy   one bearer token is required, and its payload is DECODED
+    #                   BUT NOT VERIFIED: the signature is not checked, so a
+    #                   token that nobody signed is accepted. Since rc1 an
+    #                   expired one is refused.
+    #
+    # The one exception, in either mode: a token that presents itself as an
+    # Actor's (claim `actor.ate.dev`, or Substrate's issuer) is verified against
+    # Substrate's keys and never falls through to the above. Such a caller may
+    # reach its own agent, session and memory and nothing else. A person is not
+    # authorized at all: the open source controller sets no authorizer, so
+    # whoever is admitted may do everything the API offers.
+    #
+    # So kagent trusts any person's token that reaches it, and two things
+    # outside it do the work: the gateway route in front of an agent verifies
+    # the token and passes it on, and the NetworkPolicy at the end of this file
+    # lets nothing else reach the port.
+    #
+    # trusted-proxy is chosen because it makes that verified token count: the
+    # owner of a conversation is the token's user (since rc1 an opaque id made
+    # from the token's issuer and user), and another user who asks for it gets
+    # "not found".
+    auth:
+      mode: trusted-proxy
+      # Keycloak and Okta both carry the login name here; `sub` is an opaque id.
+      userIdClaim: preferred_username
 
 # The bundled UI is off in this profile. In trusted-proxy mode it needs a
 # sign-in proxy in front of it to obtain a token (the chart's `oauth2-proxy`);
@@ -81,7 +127,8 @@ substrateWorkerPool:
   replicas: 2
   # kagent compiles every agent for the gVisor sandbox class; keep the pool on it.
   sandboxClass: gvisor
-  workerImage: ghcr.io/kagent-dev/substrate/ateom-gvisor:v0.3.0-alpha3
+  # Substrate's release, pinned by digest.
+  workerImage: ghcr.io/kagent-dev/substrate/ateworker-gvisor:v1.0.0-rc1@sha256:e56eb227908c5cca0edcabb5c72a9f20f6c525ab66e5131837084379d4095279
 
 # The default ModelConfig (`default-model-config`). OpenAI wire format, because
 # that is what Agentgateway's model route serves to kagent: kagent appends
@@ -99,18 +146,11 @@ providers:
 kagent-tools:
   enabled: false
 
-grafana-mcp:
-  enabled: false
-
-# The MCPServer controller (kmcp). Small, and other workloads may use it.
-kmcp:
-  enabled: true
-
 # Rendered by the chart as part of the release.
 extraObjects:
   # Who may open a connection to the controller's port. kagent verifies no
-  # token (see controller.auth above), so reaching the port is the same as
-  # being allowed to do anything with it, as anyone.
+  # person's token (see config.server.auth above), so reaching the port is the
+  # same as being allowed to do anything with it, as anyone.
   #
   #   the gateway's proxy    callers, after the route's policy verified their token
   #   Substrate's egress     Actors: the runtime stores each turn's task through

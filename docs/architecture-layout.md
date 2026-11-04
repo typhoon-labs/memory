@@ -1,5 +1,7 @@
 # Architecture, section 11: repositories and configuration authority
 
+> **Owner:** coordinator · **Type:** reference · **Checked:** 2026-11-03 against `../Docs/AgentGateway/architecture.md`, section 11.1
+
 Copied on 2026-10-06 from section 11 of `Docs/AgentGateway/architecture.md`,
 the architecture document this demo illustrates. That document is kept next
 to this repository, not in it, and is the one to trust if the two differ. It
@@ -20,6 +22,7 @@ Where this repository differs from section 11.1:
   `platform/30-model-route/access.yaml`. The demo found nothing that every
   cluster would share.
 - **Only what the demo uses is here.** `agent-platform/` has `charts/agent/`,
+  `charts/chain-sts/` (the token exchange, which 11.1 does not name),
   `profiles/`, `policies/` and `tests/`, and no `charts/mcp-server/`,
   `packages/`, `templates/`, `starters/` or `docs/`: the one tool server built
   here, `delivery-mcp`, is deployed with `charts/agent/`.

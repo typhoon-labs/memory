@@ -20,8 +20,4 @@ async def list_incidents() -> ToolResult:
 
     Any signed-in caller may call this. Returns `{"incidents": [...]}`.
     """
-    return await run_tool(
-        "list_incidents",
-        lambda service, caller: service.list_incidents(caller),
-        target="",
-    )
+    return await run_tool("list_incidents", lambda service, caller: service.list_incidents(caller))

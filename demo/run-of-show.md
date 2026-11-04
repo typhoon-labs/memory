@@ -1,5 +1,7 @@
 # Run of show
 
+> **Owner:** coordinator · **Type:** runbook · **Checked:** 2026-11-03 against Agentgateway 1.7.0, Keycloak 26.7.5, chain-sts 0.2.0, kagent and Agent Substrate 1.0.0-rc1
+
 One incident in ten beats. **Target 9:15. Hard limit 10:00.**
 
 The times below come from three rehearsals on 2026-10-06, two of them on a
@@ -53,18 +55,18 @@ every card and dashboard fits and only the last scroll of beat 9 is needed. At
 | Tab | Page | Sign-in and arrangement |
 |---|---|---|
 | 1 | Sample App search: <http://localhost:18082/search> | None. It refreshes itself every 3 seconds |
-| 2 | Grafana, Sample App: <http://localhost:18084/d/sample-app?refresh=5s&kiosk> | `admin` and the password from `task observability:login`. You land on the dashboard |
+| 2 | Grafana, Sample App: <http://localhost:18084/d/sample-app?refresh=5s&kiosk> | `platform-engineer`, password `demo`. You land on the dashboard |
 | 3 | Registry: <http://localhost:18086> | None. Leave it on **Servers**. Never press **Deploy**: the registry is a catalog and has no rights in the cluster |
 | 4 | Chat as `developer`: <http://localhost:18083> | See "10 minutes before" |
 | 5 | Chat as `incident-manager`: same address | |
 | 6 | Chat as `platform-engineer`: same address | |
-| 7 | Langfuse, model calls only: <http://localhost:18085/project/agentgateway-demo/traces?filter=type%3BstringOptions%3B%3Bany+of%3BGENERATION> | Email and password from `task langfuse:login`. Then the columns, below |
+| 7 | Langfuse, model calls only: <http://localhost:18085/project/agentgateway-demo/traces?filter=type%3BstringOptions%3B%3Bany+of%3BGENERATION> | Press **Keycloak**, and no password is asked for. You land on the list. Then the columns, below |
 | 8 | Grafana, Platform overview: <http://localhost:18084/d/platform-overview?refresh=10s&kiosk> | Already signed in |
 | 9 | Grafana, Agentgateway: <http://localhost:18084/d/agentgateway?refresh=10s&kiosk> | Click the row titles **Overview** and **Requests** to fold them, then **LLM** and **MCP** to open them. Do not reload this tab: the rows fold back |
 
 **Langfuse columns, once per browser.** Without the link above the table is a
 wall of `POST /mcp http send` rows: use the link. Then press **Columns** and
-untick Input, Output, Metadata, Status, Time To First Token, Prompt Name,
+uncheck Input, Output, Metadata, Status, Time To First Token, Prompt Name,
 Environment and Trace Tags; check **User ID**; open **Usage** and check **Total
 Tokens**. Press **Hide filters** (the icon left of the word Filters) and fold
 the sidebar (the icon at the top left). The browser remembers all of it. At
@@ -83,14 +85,24 @@ task demo:backup:refused-by-service
 
 ### 10 minutes before: sign in the three chat tabs
 
-On tab 4 press **Sign in**, user `developer`, password `demo`.
+Press **Sign in** on each tab, in this order. Keycloak does not offer a user
+field. It shows the last user's name and "Please re-authenticate to
+continue". Click the small **Restart login** arrow beside the name, then sign
+in as `developer` (tab 4), `incident-manager` (tab 5) and `platform-engineer`
+(tab 6), password `demo`. Each tab names its role beside "Incident chat", in
+the role's own color, with a line of that color along its top: blue, violet
+and teal.
 
-On tabs 5 and 6 Keycloak does not offer a user field. It shows the last
-user's name and "Please re-authenticate to continue". Click the small
-**Restart login** arrow beside the name, then sign in as `incident-manager`
-(tab 5) and `platform-engineer` (tab 6), password `demo`. Each tab names its
-role beside "Incident chat", in the role's own color, with a line of that
-color along its top: blue, violet and teal.
+**Finish on `platform-engineer`.** Grafana and Langfuse sign in through
+Keycloak's one session for this browser, and the last sign-in decides whose it
+is. As `developer`, a new Grafana sign-in opens read-only and Langfuse shows
+`OAuthCreateAccount`. If it does, open <http://localhost:18083> in a new tab,
+sign in there as `platform-engineer`, and press **Keycloak** again. Tab 6
+itself cannot do this: while it is signed in it has no **Sign in**.
+
+Tabs already signed in keep their own session, so unlike the chat tabs they do
+not end at 30 minutes: tab 2 ran 31 minutes 46 seconds past its sign-in, and
+stayed signed in through a reload (2026-10-31).
 
 **A sign-in lasts 30 minutes.** With three tabs in one browser only the tab
 that signed in last renews itself; the other two end 30 minutes after their
@@ -102,7 +114,7 @@ For a session longer than the show, with questions at the cards afterward,
 give each role its own browser profile (three profiles, or three different
 browsers; private windows of one browser share a session). Then every sign-in
 is a plain user and password form, and all three renewed themselves in a
-32-minute test.
+32-minute test. Open tabs 2, 7, 8 and 9 in the `platform-engineer` profile.
 
 Each chat tab must say "No incident right now.", and its chat pane must hold
 no conversation: only "Ask about the incident" and three example questions.
@@ -190,11 +202,12 @@ again. If tab 1 is not red 10 seconds after the command returned, reload it.
    Suspected cause. If you arrive early, wait here.
    *Say:* "Nobody typed anything. The alert called the platform, and an
    incident card appears for everyone who is signed in."
-2. Stay on the card. The diagnosis fills in 12 seconds after the card
-   appeared (18 for the first diagnosis after a rebuild), and **Propose
-   rollback to 2.0.0** turns blue.
+2. Stay on the card. The diagnosis fills in about 15 seconds after the card
+   appeared (measured 11.6 to 12.5 on 2026-11-02, the agent first loading its
+   runbook; the first diagnosis after a rebuild can take longer), and
+   **Propose rollback to 2.0.0** turns blue.
    *Say:* "A read-only diagnosis agent is already reading the logs, the
-   metrics and the traces. It can look, and it cannot change anything."
+   metrics and the traces. It can look, and it cannot change the cluster."
    Then: "There it is: the suspected cause, the evidence, and the version to
    go back to."
 
@@ -219,8 +232,9 @@ card and carry on.
 3. **Terminal.** `task demo:backup:refused-by-gateway`. Half a second. Three
    entries of two lines each, between a `Showing:` and a `Result:` line: the
    developer is offered three tools, listed by name; the call to
-   `apply_change` is refused with "HTTP 400 from the gateway: Unknown tool:
-   apply_change"; the platform engineer is offered four.
+   `apply_change` is refused with "HTTP 400 from the gateway: unknown
+   resource", and the reason the gateway logged, "authorization denied for
+   tool: apply_change"; the platform engineer is offered four.
    *Say:* "If the developer calls apply directly, without the card, the
    gateway does not even offer the tool. This role is offered three tools;
    the platform engineer is offered four."
@@ -251,11 +265,12 @@ refusals of earlier runs.
    own rule."
 
 The click takes the same path as the apply in beat 7: the chat assistant asks
-the remediation agent with the platform engineer's token, and the remediation
-agent calls `apply_change`. Nothing is applied and no model is called. The
-other two roles' cards do not change. Apply stays enabled, and a second click
-is refused again in the same words. The amber box on the card goes away when
-the incident manager approves.
+the remediation agent with a token chain-sts issued for the platform engineer,
+and the remediation agent exchanges it again and calls `apply_change`.
+Nothing is applied and no model is called. The other two roles' cards do
+not change. Apply stays enabled, and a second click is refused again in the
+same words. The amber box on the card goes away when the incident manager
+approves.
 
 Beside the title this role also has **Restart search-service**. Do not press
 it: it needs no approval, it restarts the pods, and it is not part of the
@@ -330,20 +345,20 @@ fallback.
 
 ### Beat 8. Langfuse (6:00, 1:10)
 
-1. **Tab 7.** Reload (`F5`). The top five rows are this incident.
+1. **Tab 7.** Reload (`F5`). The top six rows are this incident.
    *Say:* "Langfuse records every model call that went through the gateway.
-   The top five rows are this incident. Three calls were made by the
+   The top six rows are this incident. Four calls were made by the
    diagnosis agent, a workload with its own key from the gateway. One was
    made for the incident manager and one for the platform engineer, each with
    that person's verified identity."
-   The room sees: the three diagnosis rows are named
+   The room sees: the four diagnosis rows are named
    `POST /workloads/diagnosis-agent/...` and have no user; the two
    `POST /v1/messages` rows carry `incident-manager` and `platform-engineer`.
    Rows of about 30 tokens signed `developer` further down are the pre-flight
    checks.
 2. Point at the Cost and Total Tokens columns.
    *Say:* "Every call has its model, its tokens and its cost. This incident
-   cost about fifteen cents, and almost all of it was the diagnosis."
+   cost about fourteen cents, and almost all of it was the diagnosis."
 3. Click the third row. A panel opens with the system prompt and the answer.
    `Esc` closes it.
    *Say:* "Open one, and the prompt and the answer are there, for the people
@@ -352,6 +367,13 @@ fallback.
 Langfuse gets a trace about 20 seconds after it began. In the rehearsals the
 platform engineer's call was listed 21 to 22 seconds after the click on
 Apply, which is before you get here.
+
+The six calls and their cost were counted on 2026-11-03 in the gateway's own
+records, which Langfuse is fed from: four for the diagnosis, which loads its
+runbook as a skill first, then one each for the platform engineer and the
+incident manager, $0.137 in all
+([measurements](../docs/measurements.md#the-full-incident)). The Langfuse page
+itself was not looked at that day.
 
 *If it stalls:* the top row is not `platform-engineer`: wait 10 seconds and
 reload again. If the table is empty or shows an error, skip to beat 9, which
@@ -401,8 +423,8 @@ A panel that says "No data" needs its next refresh, 10 seconds.
   provider."
 - "And the limits. A real MCP client cannot yet sign in through the gateway
   by itself. Langfuse shows an incident as several traces, and not every role
-  appears, because proposing and approving call no model. The diagnosis
-  agent's runbook is in its prompt. And kagent is alpha."
+  appears, because proposing and approving call no model. And kagent is a
+  release candidate, not yet 1.0."
 
 ## If the pages fail altogether
 
@@ -434,9 +456,9 @@ back what it changed. Each can be run again at once.
 | `task demo:backup:registry-down` | "Is the registry in the request path?" Scaled to zero: tools and agents still answer (18 seconds) |
 | `task demo:backup:telemetry-down` | "What if the telemetry backend is down?" The collector at zero: the Sample App and the gateway still answer |
 | `task demo:backup:mcp-client` | "Can a developer use these tools from their own client, without hosting anything?" Both tool servers, as `developer`, through the gateway |
-| `task demo:backup:mcp-oauth-check` | "Can I point my IDE's MCP client at it today?" No: it shows which three steps of the client's own sign-in this cluster does not answer |
-| `task demo:backup:chain-gateway` | "Can an agent replay a token it was handed somewhere else?" chain-sts's tokens where the gateway expects another agent or none, a Chat UI sign-in past the assistant, a forged token: each refused, next to the one that is let in (10 seconds) |
-| `task demo:backup:chain-exchange` | "Who may act for a user?" chain-sts refuses an unknown account, an agent's token for the wrong audience or from a deleted pod, a wrong order, a chain past its limit, and a Chat UI sign-in for any agent but the assistant (under a minute) |
+| `task demo:backup:mcp-oauth-check` | "Can I point my IDE's MCP client at it today?" Not yet: the gateway now points the client to its sign-in, and one step, the authorization server's metadata, fails because Keycloak's issuer is `localhost` |
+| `task demo:backup:chain-gateway` | "Can an agent replay a token it was handed somewhere else?" The token an agent was called with, at another route (`restart_workload`, the model); chain-sts's tokens where the gateway expects another agent or none, a Chat UI sign-in past the assistant, a forged token: each refused, next to the one that is let in (10 seconds) |
+| `task demo:backup:chain-exchange` | "Who may act for a user?" chain-sts refuses an unknown account, an agent's token for the wrong audience or from a deleted pod, a wrong order, a chain past its limit, a Chat UI sign-in for any agent but the assistant, and a request for no target or one it does not issue for (under a minute) |
 | `task demo:backup:chain-network` | "Who can reach the token exchange?" Not the Sample App; the agents and the tool servers can (10 seconds) |
 | `task demo:backup:sts-down` | "What if the token exchange is down?" chain-sts at zero: every agent stops before calling anything, nothing reaches delivery-mcp; put back at two replicas (45 seconds) |
 
@@ -461,23 +483,30 @@ what they are.
 
 ## Limits to state honestly
 
+The ones worth saying aloud. The full list is the README's
+[Limits worth knowing](../README.md#limits-worth-knowing).
+
 From the build:
 
 - **A real MCP client cannot sign in through the gateway by itself.** A
   client with a token works (`demo:backup:mcp-client`); the client's own
-  sign-in does not (`demo:backup:mcp-oauth-check` shows the three missing
-  steps).
+  sign-in stops at one step, the authorization server's metadata, because
+  Keycloak's issuer is `localhost` (`demo:backup:mcp-oauth-check`).
 - **Langfuse shows several traces for one incident, and not every role.**
   The alert with its diagnosis is one trace; each button that calls a model
   is another. Proposing and approving call no model, so the developer does
   not appear. The diagnosis is attributed to the workload, not to a person.
-- **The diagnosis agent's runbook is in its prompt.** This kagent version
-  could not load a skill from git.
-- **kagent and Agent Substrate are alpha.** kagent does not verify tokens
-  itself; the gateway route, the sign-in proxy of its UI and network policies
-  guard its port. The kagent UI (<http://localhost:18087>, `platform-engineer`
-  only) is not part of the show: a chat started there reaches the diagnosis
-  agent without passing the gateway.
+- **The diagnosis agent has file tools in its sandbox.** kagent 1.0.0-rc1
+  offers every agent `read_file`, `write_file` and `edit_file`, with no way
+  to switch them off; `bash`, `list_files`, `grep_file` and `ask_user` are
+  switched off here. They reach its own sandbox and not the cluster, so say
+  "cannot change the cluster", not "has no tool that writes".
+- **kagent and Agent Substrate are release candidates (1.0.0-rc1).** kagent
+  does not verify a person's token itself; the gateway route, the sign-in
+  proxy of its UI and network policies guard its port. The kagent UI
+  (<http://localhost:18087>, `platform-engineer` only) is not part of the
+  show: a chat started there reaches the diagnosis agent without passing the
+  gateway.
 - **Incidents live in memory.** Restarting `delivery-mcp` forgets them, which
   is what `demo:reset` uses.
 
@@ -491,57 +520,7 @@ From the rehearsals:
 
 ## Measured
 
-Seconds, from the three rehearsals of 2026-10-06. "Current" is the cluster the
-nine workstreams built on. "Rebuilt" is a cluster made by `task up` from
-nothing: its first incident, then another after one `task demo:drive` and the
-drills.
-
-| Moment | Current | Rebuilt, first | Rebuilt, again |
-|---|---|---|---|
-| `task demo:break` returns | 5.7 | 4.6 | 5.7 |
-| Search page red, from the start of the command | | 6.9 | 6.9 |
-| Grafana "Search success" under 90%, from the start of the command | | 11.9 | 11.7 |
-| Card visible, from the start of the command | 24.8 | 26.7 | 26.7 |
-| Diagnosis on the card, from the start of the command | 38.8 | 38.8 | 38.6 |
-| Propose answered | 0.2 | 0.2 | 0.1 |
-| Status draft written | 1.8 | 2.3 | 2.1 |
-| Approve answered | 0.1 | 0.1 | 0.1 |
-| Apply clicked to Resolved | 7.2 | 7.3 | 7.3 |
-| Apply clicked to the result in words | | 8.7 | 8.5 |
-| Search page back, from the click on Apply | | 6.9 | 6.9 |
-| Grafana "Search success" over 90%, from the click on Apply | 33.0 | 27.9 | 27.7 |
-| Langfuse lists the platform engineer's call, from the click on Apply | | 22.0 | 20.9 |
-| An answer to a question typed in the chat pane | | 2.5 | 2.7 |
-
-Measured once after the rehearsals, with `chat-assistant` 0.1.6 and real
-clicks on the real alert: the refusal of beat 5 was on the card and in the
-chat pane 0.1 seconds after the click on Apply, and again 0.1 seconds after a
-second click. After approval the same button reached Resolved in 7.3 seconds.
-
-| Beat | Current | Rebuilt, first | Rebuilt, again |
-|---|---|---|---|
-| 1 | 51 | 51 | 51 |
-| 2 | 20 | 20 | 20 |
-| 3 | 31 | 31 | 31 |
-| 4 | 39 | 39 | 39 |
-| 5 | 27 | 27 | 27 |
-| 6 | 29 | 29 | 29 |
-| 7 | 35 | 30 | 30 |
-| 8 | 41 | 54 | 41 |
-| 9 | 50 | 50 | 50 |
-| 10 | 54 | 54 | 54 |
-| **Whole show** | **6:16** | **6:24** | **6:11** |
-| Waiting with nothing to say | 12 | 19 | 6 |
-
-The beats barely differ because the script speaks the same lines at the same
-speed every time; what the system adds is in beats 2, 3, 7 and 8. Beat 5 in
-these rehearsals was the earlier form, with a terminal command where the click
-on Apply now is. On the
-rebuilt cluster's first run, 12 of the 54 seconds of beat 8 were the rehearsal
-script waiting for the wrong thing on a page that had already opened. The 12
-seconds of waiting on the current cluster were the diagnosis (4) and Grafana's
-recovery (7).
-
-Sign-in to the end of the show took 7 minutes; each chat tab had 23 minutes
-left on its sign-in. The browser set-up of the pre-flight, done by the script,
-took 16 seconds; allow 5 minutes by hand.
+The rehearsals' timings, per moment and per beat, are in
+[`docs/measurements.md`](../docs/measurements.md#rehearsals-of-the-show-2026-10-06).
+The other figures in the beats, such as the drills' durations, are the
+rehearsals' own and are kept here, next to the lines that say them.

@@ -4,7 +4,9 @@
  *
  * Issued tokens are unsigned JWTs with the subject's claims, `act` and a new
  * `jti` each time, so the stub downstreams, which read the caller from the
- * token, still know who it is. A subject that is not a JWT gets none of its claims.
+ * token, still know who it is. A subject that is not a JWT gets none of its
+ * claims. Each is for the `resource` asked for (else `audience`), as chain-sts
+ * issues it.
  */
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -85,7 +87,7 @@ export async function startFakeSts(): Promise<FakeSts> {
       })
         .setIssuer(base)
         .setSubject(String(subject.sub ?? 'someone'))
-        .setAudience(form.audience ?? 'agentgateway')
+        .setAudience(form.resource ?? form.audience ?? 'agentgateway')
         .setIssuedAt(now)
         .setExpirationTime(now + lifetime)
         .encode();

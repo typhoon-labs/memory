@@ -7,9 +7,19 @@
 #      is offered read tools only), and a read ends at namespace sample-app.
 #   2. Its routes: no token, no call; its model key opens its own door only.
 #   3. kagent's port: only the gateway and Substrate's egress reach it.
-#   4. Its sandbox: what an Actor of the current revision may reach, and that
-#      only the gateway, under its two names, is sent a credential.
-#   5. Its prompt: the runbook is really in what the model is given.
+#   4. Its sandbox: what an Actor of the current revision may reach, that only
+#      the gateway, under its two names, is sent a stored credential, and that
+#      kagent's port gets the Actor's own short-lived token and nothing else.
+#   5. Its prompt and its skill: the prompt is rendered and no longer holds
+#      the runbook; the revision has the runbook as a skill, from an image
+#      pinned by digest that the registry holds.
+#   6. What the model is offered: its own tools, the built-ins nothing can
+#      switch off and the tools that read its skills, from the gateway's
+#      record of the last model call. The skill tools are there only when the
+#      runtime found the skill in its sandbox. kagent's runtime adds built-ins
+#      by itself, so this also catches a later version offering more. No
+#      record fails: ask the agent once. That call is logged even if the model
+#      does not answer, and this script makes none itself.
 #
 # Starts one short-lived pod (`diagnosis-agent-checks` in namespace kagent,
 # removed at the end) to make the in-cluster attempts. Exit status: the number
@@ -111,22 +121,29 @@ if [ -z "${actor}" ]; then
   echo "  skipped: revision ${revision} has no conversation yet. Ask the agent once (task diagnosis-agent:ask) and run this again."
 else
   rules="$(ate get egress-policy "${actor}" --atespace "${agent_namespace}" -o json 2>/dev/null \
-    | jq -c '[.rules[] | (.http // .https // .tcp // {}) as $r | {host: ($r.hostnames // $r.cidrs // ["?"] | join(",")), port: ($r.ports.numbers // [] | map(tostring) | join(",")), credential: (($r.effects.replaceHeaders // []) | length > 0)}]')"
-  printf '%s' "${rules}" | jq -r '.[] | "        \(.host):\(.port)\(if .credential then "   (the egress gateway adds the credential)" else "" end)"'
-  expected='["agentgateway-proxy.agentgateway-system.svc.cluster.local","diagnosis-agent-tools.kagent.svc.cluster.local","kagent-controller.kagent"]'
+    | jq -c '[.rules[] | (.http // .https // .tcp // {}) as $r | {host: ($r.hostnames // $r.cidrs // ["?"] | join(",")), port: ($r.ports.numbers // [] | map(tostring) | join(",")), credential: ([($r.effects.replaceHeaders // [])[] | select(.credentialUri)] | length > 0), identity: ([($r.effects.replaceHeaders // [])[] | select(.actorJwt) | .actorJwt.audiences[]] | join(","))}]')"
+  printf '%s' "${rules}" | jq -r '.[] | "        \(.host):\(.port)\(if .credential then "   (the egress gateway adds the credential)" elif .identity != "" then "   (the egress gateway adds the Actor'"'"'s own token, for \(.identity))" else "" end)"'
+  expected='["agentgateway-proxy.agentgateway-system.svc.cluster.local","diagnosis-agent-tools.kagent.svc.cluster.local","kagent-controller.kagent.svc.cluster.local"]'
   check "the gateway, its tool server and kagent are allowed" "$(jq -n --argjson r "${rules}" --argjson e "${expected}" '($e - ($r | map(.host))) | length == 0')"
   # The gateway under its two DNS names, and nothing else. Substrate attaches a
   # credential per host name and header, so the model route (the long name) and
   # the agent's route to observability-mcp (the short one) cannot share a name:
   # ../values.yaml.gotmpl, under tools.observability, says how that was found.
   gateway='["agentgateway-proxy.agentgateway-system.svc.cluster.local","agentgateway-proxy.agentgateway-system.svc"]'
-  check "only the gateway carries a credential, under its two names" \
+  check "only the gateway carries a stored credential, under its two names" \
     "$(jq -n --argjson r "${rules}" --argjson g "${gateway}" '([$r[] | select(.credential) | .host] | sort) == ($g | sort)')" \
     "$(jq -nc --argjson r "${rules}" '[$r[] | select(.credential) | .host]')"
+  # kagent (1.0.0-alpha17 and rc1) authenticates an Actor's calls to its port:
+  # the egress gateway mints a token of about five minutes for that Actor alone.
+  # No stored credential goes with it, and a Secret must never appear on this
+  # host.
+  check "kagent's port gets the Actor's own token, and only for kagent-runtime" \
+    "$(jq -n --argjson r "${rules}" '[$r[] | select(.identity != "")] | (length == 1) and (.[0].host == "kagent-controller.kagent.svc.cluster.local") and (.[0].identity == "kagent-runtime")')" \
+    "$(jq -nc --argjson r "${rules}" '[$r[] | select(.identity != "") | {host, identity}]')"
   # The collector is there only when tracing is on for the cluster.
   wanted='["otel-collector.telemetry.svc.cluster.local"]'
   extra="$(jq -nc --argjson r "${rules}" --argjson e "${expected}" --argjson g "${gateway}" --argjson w "${wanted}" '($r | map(.host)) - $e - $g - $w')"
-  # kagent 1.0.0-alpha7 adds api.openai.com:443 to every agent whose
+  # kagent (1.0.0-alpha17 and rc1) adds api.openai.com:443 to every agent whose
   # ModelConfig has provider OpenAI, whatever its baseUrl. Nothing here asks
   # for it and no credential goes with it. It is listed so that it is seen,
   # and it leads nowhere: release `substrate-egress-boundary` lets the egress
@@ -137,11 +154,55 @@ else
 fi
 
 echo "== The prompt the model is given (revision ${revision})"
-instruction="$(ate get actor-template "${agent}-${revision}" --atespace "${agent_namespace}" -o json 2>/dev/null \
-  | jq -r '.. | objects | select(.name? == "KAGENT_CONFIG_JSON") | .value' | jq -r '.instruction // ""' 2>/dev/null)"
+template="$(ate get actor-template "${agent}-${revision}" --atespace "${agent_namespace}" -o json 2>/dev/null)"
+compiled="$(printf '%s' "${template}" | jq -r '.. | objects | select(.name? == "KAGENT_CONFIG_JSON") | .value')"
+instruction="$(printf '%s' "${compiled}" | jq -r '.agent.instruction // ""' 2>/dev/null)"
 check "it holds the system prompt ($(printf '%s' "${instruction}" | wc -c | tr -d ' ') characters)" "$(printf '%s' "${instruction}" | grep -q 'the diagnosis agent for the Sample App' && echo true || echo false)"
-check "it holds the search-service runbook" "$(printf '%s' "${instruction}" | grep -q '## Runbook: search-service' && echo true || echo false)"
+check "it does not hold the search-service runbook: the model loads that as a skill" "$(printf '%s' "${instruction}" | grep -q '## Runbook: search-service' && echo false || echo true)"
 check "it has no unrendered template" "$(printf '%s' "${instruction}" | grep -q '{{' && echo false || echo true)"
+
+skill="search-service-runbook"
+echo "== Its skill ${skill} (revision ${revision})"
+# kagent compiles a skill from an image into a read-only image volume of the
+# Actor, mounted at /run/kagent/artifacts/<sha256 of the reference>, and tells
+# the runtime to copy the skill from that directory. Both halves must name the
+# same image, the one the AgentTemplate pins by digest.
+wanted_image="$(k -n "${agent_namespace}" get agenttemplate "${agent}" -o json 2>/dev/null | jq -r --arg s "${skill}" '.spec.skills[]? | select(.name == $s) | .source.oci // ""')"
+mounted="$(printf '%s' "${template}" | jq -c --arg s "${skill}" --argjson c "${compiled:-null}" '
+  ($c.agent.agent_plugins.skills // [] | map(select(.name == $s)) | first // {}) as $k
+  | [.containers[0].volumeMounts[] | select(.mountPath == $k.source.directory) | .name] as $names
+  | {path: ($k.source.path // ""), images: [.volumes[] | select(.name as $n | $names | index($n)) | .image.reference // empty]}' 2>/dev/null || echo '{}')"
+check "the revision has it, from the image the AgentTemplate pins, mounted read-only (directory $(printf '%s' "${mounted}" | jq -r '.path // "?"'))" \
+  "$(jq -n --argjson m "${mounted}" --arg w "${wanted_image}" '($w | test("@sha256:[0-9a-f]{64}$")) and ($m.images == [$w])')" \
+  "AgentTemplate ${wanted_image:-none}, mounted $(printf '%s' "${mounted}" | jq -c '.images // []')"
+# The node agent pulls it again on a node that has not cached it.
+repository="${wanted_image#*/}"; repository="${repository%@*}"
+check "the registry holds that image (${repository}@$(printf '%s' "${wanted_image#*@}" | cut -c1-19)...)" \
+  "$(is "$(code --head -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json' "${REGISTRY_URL:-http://localhost:5002}/v2/${repository}/manifests/${wanted_image#*@}")" 200)"
+
+echo "== What the model is offered (the gateway's record of the last model call)"
+# kagent gives every agent read_file, write_file and edit_file with no way to
+# switch them off. bash, list_files, grep_file and ask_user are switched off in
+# agent-platform/profiles/kagent/kagent-values.yaml, and a conversation keeps
+# the revision it started on, so an older one fails here. The runtime adds the
+# three tools that read skills (Google ADK's skill toolset) when it finds at
+# least one skill in its skills directory.
+builtin='["edit_file","read_file","write_file"]'
+skill_tools='["list_skills","load_skill","load_skill_resource"]'
+own="$(sed -n '/^tools:/,/^[a-z]/p' "${component_dir}/config/agent.yaml" | sed -n 's/^      - //p' | jq -Rnc '[inputs]')"
+wanted_tools="$(jq -nc --argjson b "${builtin}" --argjson s "${skill_tools}" --argjson o "${own}" '$b + $s + $o | sort')"
+check "this revision is compiled with bash, file search and ask_user off" \
+  "$(printf '%s' "${compiled}" | jq -r '.runtime.builtin_tools | (.disable_bash == true) and (.disable_file_search == true) and (.disable_ask_user == true)' 2>/dev/null || echo false)"
+seen="$(k -n agentgateway-system logs deploy/agentgateway-proxy 2>/dev/null \
+  | grep "route=agentgateway-system/model-${agent} " | grep -o 'gen_ai\.request\.tools="[^"]\{1,\}"' | tail -1 | cut -d'"' -f2)"
+if [ -z "${seen}" ]; then
+  check "the gateway holds a record of a model call" false "none since it started; ask the agent once (task diagnosis-agent:ask) and run this again"
+else
+  offered_now="$(printf '%s' "${seen}" | jq -Rc 'split(",") | sort')"
+  check "the model is offered $(printf '%s' "${offered_now}" | jq length) tools: its own, the three built-ins and the three skill tools, and nothing else" \
+    "$(jq -n --argjson o "${offered_now}" --argjson w "${wanted_tools}" '$o == $w')" \
+    "$(jq -nc --argjson o "${offered_now}" --argjson w "${wanted_tools}" '{unexpected: ($o - $w), missing: ($w - $o)}')"
+fi
 
 echo
 if [ "${failures}" -eq 0 ]; then echo "No check failed."; else echo "${failures} check(s) failed."; fi

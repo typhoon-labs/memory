@@ -8,6 +8,18 @@ What is written names the user and, next to them, the chain of agents that
 acted for them (``Caller.chain``, newest first; empty for the user's own
 token). The chain decides nothing here: who may call through which agent is
 the gateway's rule.
+
+The rule that the approver is not the proposer keys on the token's ``sub``,
+not on the user name: a login name can be renamed or given to someone else,
+and ``sub`` stays. ``sub`` alone, not with ``iss``: a person's own token is Keycloak's and
+their chain token is chain-sts's, and chain-sts keeps the ``sub`` of the one
+issuer it takes subjects from, Keycloak. Each change keeps the ``sub`` of every
+person who moved it next to their name.
+
+Each state a change reaches, and each write to an incident, is also an audit
+record (:mod:`delivery.audit`), written once the write is done. The steps of an
+apply that run in the background are recorded for the caller who asked to
+apply.
 """
 
 from __future__ import annotations
@@ -17,8 +29,9 @@ import logging
 import uuid
 from typing import Any
 
+from . import audit
 from . import errors as e
-from .applier import Applier, ApplyError
+from .applier import Applier, ApplyError, ApplyResult
 from .config import SERVICE_OWNERS, VERSION_PATTERN, VERSION_VALUE_KEYS
 from .errors import InvalidArgument, InvalidState, NotFound, OperationFailed, Refusal
 from .identity import Caller
@@ -46,6 +59,9 @@ TOOL_ROLES: dict[str, str | None] = {
     "restart_workload": ROLE_PLATFORM_ENGINEER,
     "post_status_update": ROLE_INCIDENT_MANAGER,
 }
+
+# The tools that change nothing.
+READ_TOOLS = frozenset({"list_incidents", "get_incident"})
 
 IN_FLIGHT = ("applying", "verifying")
 FINISHED = ("applied", "failed")
@@ -102,6 +118,22 @@ class DeliveryService:
                 f"{tool} needs the role '{role}'. The caller is {caller.describe()}.",
             )
 
+    @staticmethod
+    def _require_sub(caller: Caller, tool: str) -> str:
+        """The caller's ``sub``, which the approver-is-not-proposer rule keys on.
+
+        Fails closed. A change proposed without one could later be approved by
+        its own proposer, and an approver without one cannot be told apart from
+        the proposer, so both tools refuse a token that has no ``sub``.
+        """
+        if caller.sub is None:
+            raise Refusal(
+                e.RULE_APPROVER_NOT_PROPOSER,
+                f"{tool} needs the token's sub, which the rule that the approver is not the"
+                f" proposer keys on, and this token has none. The caller is {caller.describe()}.",
+            )
+        return caller.sub
+
     def _incident(self, incident_id: Any) -> dict[str, Any]:
         incident_id = _text("incident_id", incident_id, limit=64)
         incident = self._store.get_incident(incident_id)
@@ -147,7 +179,7 @@ class DeliveryService:
         summary = _text("summary", summary, limit=500)
         impact = _text("impact", impact, limit=500)
         try:
-            return self._store.create_incident(
+            incident = self._store.create_incident(
                 service=service,
                 severity=severity,
                 summary=summary,
@@ -163,6 +195,16 @@ class DeliveryService:
                 f"{service} already has an unresolved incident{which};"
                 f" a service has one at a time.",
             ) from None
+        audit.emit(
+            "incident.opened",
+            caller,
+            {
+                "incident.id": incident["incident_id"],
+                "delivery.service": service,
+                "incident.severity": severity,
+            },
+        )
+        return incident
 
     def record_diagnosis(
         self,
@@ -196,6 +238,7 @@ class DeliveryService:
                 "recorded_at": now_iso(),
             },
         )
+        audit.emit("incident.diagnosis_recorded", caller, {"incident.id": incident["incident_id"]})
         return self._incident(incident["incident_id"])
 
     # -- propose, approve, reject ------------------------------------------
@@ -204,6 +247,7 @@ class DeliveryService:
         self, caller: Caller, incident_id: str, target_version: str
     ) -> dict[str, Any]:
         self._require_role(caller, "propose_change")
+        sub = self._require_sub(caller, "propose_change")
         incident = self._incident(incident_id)
         service = incident["service"]
 
@@ -251,17 +295,32 @@ class DeliveryService:
             operation_id=f"op-{uuid.uuid4()}",
             proposed_by=caller.user,
             proposed_via=caller.chain,
+            proposed_by_sub=sub,
+        )
+        audit.emit(
+            "change.proposed",
+            caller,
+            {**self._change_fields(change), "change.previous_version": current},
         )
         self._store.set_incident_status(incident["incident_id"], "mitigating", only_from=("open",))
         return change
 
     def approve_change(self, caller: Caller, change_id: str) -> dict[str, Any]:
         self._require_role(caller, "approve_change")
+        sub = self._require_sub(caller, "approve_change")
         change = self._change(change_id)
-        if change["proposed_by"] == caller.user:
+        proposer_sub = change["proposed_by_sub"]
+        if proposer_sub is not None:
+            same_person = proposer_sub == sub
+        else:
+            # A change stored before 0.2.1 has no proposed_by_sub. Only the
+            # proposer's name is known, so the name decides, as it did then.
+            same_person = change["proposed_by"] == caller.user
+        if same_person:
             raise Refusal(
                 e.RULE_APPROVER_NOT_PROPOSER,
-                f"{caller.user} proposed change {change['change_id']} and cannot also approve it.",
+                f"{caller.user} is the person who proposed change {change['change_id']}"
+                f" (as {change['proposed_by']}) and cannot also approve it.",
             )
         moved = self._store.transition_change(
             change["change_id"],
@@ -270,6 +329,7 @@ class DeliveryService:
             by=caller.user,
             via=caller.chain,
             approved_by=caller.user,
+            approved_by_sub=sub,
             approved_via=list(caller.chain),
             approved_at=now_iso(),
         )
@@ -280,6 +340,7 @@ class DeliveryService:
                 f"change {current['change_id']} is {current['status']}; only a proposed"
                 f" change can be approved",
             )
+        audit.emit("change.approved", caller, self._change_fields(change))
         return self._change(change["change_id"])
 
     def reject_change(self, caller: Caller, change_id: str, reason: str) -> dict[str, Any]:
@@ -294,6 +355,7 @@ class DeliveryService:
             via=caller.chain,
             detail=reason,
             rejected_by=caller.user,
+            rejected_by_sub=caller.sub,
             rejected_via=list(caller.chain),
             rejected_at=now_iso(),
             reject_reason=reason,
@@ -305,6 +367,7 @@ class DeliveryService:
                 f"change {current['change_id']} is {current['status']}; only a proposed"
                 f" or approved change can be rejected",
             )
+        audit.emit("change.rejected", caller, self._change_fields(change))
         return self._change(change["change_id"])
 
     # -- apply -------------------------------------------------------------
@@ -328,12 +391,16 @@ class DeliveryService:
             by=caller.user,
             via=caller.chain,
             applied_by=caller.user,
+            applied_by_sub=caller.sub,
             applied_via=list(caller.chain),
             applied_at=now_iso(),
         )
         if claimed:
+            audit.emit("change.applying", caller, self._change_fields(change))
+            # The task runs in a copy of this request's context, so the records
+            # of its steps carry the request's trace.
             task = asyncio.get_running_loop().create_task(
-                self._run_apply(change_id), name=f"apply-{change_id}"
+                self._run_apply(change_id, caller), name=f"apply-{change_id}"
             )
             self._tasks.add(task)
             task.add_done_callback(self._tasks.discard)
@@ -348,38 +415,95 @@ class DeliveryService:
             f" only after an incident manager has approved it.",
         )
 
-    async def _run_apply(self, change_id: str) -> None:
+    async def _run_apply(self, change_id: str, caller: Caller | None = None) -> None:
+        """Apply and verify a change ``apply_change`` claimed.
+
+        Each step's audit record names ``caller``, who asked to apply, and
+        carries the Helm revision once the upgrade has created it.
+        """
         change = self._change(change_id)
         service, version = change["service"], change["target_version"]
+        result: ApplyResult | None = None
         try:
             async with self._apply_lock:
                 result = await self._applier.apply(service, version, change["operation_id"])
-                self._store.transition_change(
+                if self._store.transition_change(
                     change_id, "verifying", only_from=("applying",), detail=result.detail
-                )
+                ):
+                    audit.emit("change.verifying", caller, self._change_fields(change, result))
                 outcome = await self._verifier.verify(service)
         except ApplyError as exc:
-            self._fail(change_id, f"apply failed: {exc}")
+            self._fail(change_id, f"apply failed: {exc}", caller, result)
             return
         except Exception as exc:  # the change must not be left in flight
             logger.exception("apply of %s stopped unexpectedly", change_id)
-            self._fail(change_id, f"apply stopped unexpectedly: {type(exc).__name__}: {exc}")
+            self._fail(
+                change_id,
+                f"apply stopped unexpectedly: {type(exc).__name__}: {exc}",
+                caller,
+                result,
+            )
             return
 
         if not outcome.ok:
-            self._fail(change_id, outcome.detail)
+            self._fail(change_id, outcome.detail, caller, result)
             return
-        self._store.transition_change(
+        if self._store.transition_change(
             change_id, "applied", only_from=("verifying",), detail=outcome.detail
-        )
-        self._store.set_incident_status(
+        ):
+            audit.emit("change.applied", caller, self._change_fields(change, result))
+        if self._store.set_incident_status(
             change["incident_id"], "resolved", only_from=("open", "mitigating")
-        )
+        ):
+            audit.emit(
+                "incident.resolved",
+                caller,
+                {
+                    "incident.id": change["incident_id"],
+                    "change.id": change_id,
+                    "operation.id": change["operation_id"],
+                },
+            )
         logger.info("change %s applied: %s", change_id, outcome.detail)
 
-    def _fail(self, change_id: str, detail: str) -> None:
-        self._store.transition_change(change_id, "failed", only_from=IN_FLIGHT, detail=detail)
+    def _fail(
+        self,
+        change_id: str,
+        detail: str,
+        caller: Caller | None = None,
+        result: ApplyResult | None = None,
+    ) -> None:
+        """Mark an in-flight change failed. ``caller`` is None when the service does it alone."""
+        if self._store.transition_change(change_id, "failed", only_from=IN_FLIGHT, detail=detail):
+            audit.emit(
+                "change.failed",
+                caller,
+                {**self._change_fields(self._change(change_id), result), "change.detail": detail},
+                outcome=audit.FAILED,
+            )
         logger.warning("change %s failed: %s", change_id, detail)
+
+    @staticmethod
+    def _change_fields(change: dict[str, Any], result: ApplyResult | None = None) -> dict[str, Any]:
+        """What a change's audit record names: the change, its incident and operation.
+
+        The operation id is unique over time; change ids start again at
+        CHG-0001 with a new database.
+        """
+        fields: dict[str, Any] = {
+            "change.id": change["change_id"],
+            "incident.id": change["incident_id"],
+            "operation.id": change["operation_id"],
+            "delivery.service": change["service"],
+            "change.target_version": change["target_version"],
+        }
+        if result is not None:
+            fields |= {
+                "helm.release": result.release,
+                "helm.namespace": result.namespace,
+                "helm.revision": result.revision,
+            }
+        return fields
 
     def fail_interrupted(self) -> int:
         """Mark changes left in flight by a previous process as failed.
@@ -427,4 +551,7 @@ class DeliveryService:
         incident = self._incident(incident_id)
         text = _text("text", text, limit=2000)
         self._store.add_status_update(incident["incident_id"], text, caller.user, caller.chain)
+        audit.emit(
+            "incident.status_update_posted", caller, {"incident.id": incident["incident_id"]}
+        )
         return self._incident(incident["incident_id"])

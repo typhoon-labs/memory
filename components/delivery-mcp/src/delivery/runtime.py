@@ -3,6 +3,9 @@
 A tool hands :func:`run_tool` a function of ``(service, caller)``. The caller is
 built here from the access token FastMCP verified for this request. A tool
 cannot be run for a caller it did not get this way.
+
+A call that is refused, and a call to a tool that writes, is an audit record,
+``tool.call`` (:mod:`delivery.audit`). A read that succeeds is not.
 """
 
 from __future__ import annotations
@@ -17,18 +20,22 @@ from fastmcp.server.dependencies import get_access_token
 from fastmcp.tools.tool import ToolResult
 from opentelemetry import trace
 
+from . import audit
 from . import errors as e
 from .applier import Applier, FakeApplier, HelmApplier
 from .config import Settings, load_settings
-from .errors import Refusal, ServiceError
+from .errors import OperationFailed, Refusal, ServiceError
 from .identity import Caller, caller_from_claims
 from .restarter import FakeRestarter, KubernetesRestarter, Restarter
-from .service import DeliveryService
+from .service import READ_TOOLS, DeliveryService
 from .store import Store
 from .verifier import NoVerifier, SearchVerifier, Verifier
 
 logger = logging.getLogger(__name__)
-audit = logging.getLogger("delivery.audit")
+
+# The most of an argument an audit record repeats. Ids and service names are
+# shorter; anything longer was not one.
+NAMED_LIMIT = 64
 
 _service: DeliveryService | None = None
 
@@ -100,19 +107,36 @@ def _result(payload: dict[str, Any], *, is_error: bool = False) -> ToolResult:
     )
 
 
+def _named(value: Any) -> str | None:
+    """An argument that names something, as an audit record may repeat it."""
+    return value.strip()[:NAMED_LIMIT] if isinstance(value, str) and value.strip() else None
+
+
 async def run_tool(
     tool: str,
     action: Callable[[DeliveryService, Caller], dict[str, Any] | Awaitable[dict[str, Any]]],
     *,
-    target: str = "",
+    incident_id: Any = None,
+    change_id: Any = None,
+    service: Any = None,
 ) -> ToolResult:
     """Run one tool call for the verified caller and shape its result.
 
     A success is the tool's object. A refusal, or any other service error, is the
     contract's error object, with ``isError`` set on the MCP result.
+
+    ``incident_id``, ``change_id`` and ``service`` are the arguments that name
+    what the call is about, as the caller gave them; the audit record repeats
+    them.
     """
     span = trace.get_current_span()
     span.set_attribute("delivery.tool", tool)
+    about = {
+        "gen_ai.tool.name": tool,
+        "incident.id": _named(incident_id),
+        "change.id": _named(change_id),
+        "delivery.service": _named(service),
+    }
     caller: Caller | None = None
     try:
         caller = current_caller()
@@ -125,34 +149,18 @@ async def run_tool(
         error = exc.to_dict()
         span.set_attribute("delivery.outcome", error["error"])
         span.set_attribute("delivery.rule", error["rule"])
-        audit.info(
-            json.dumps(
-                {
-                    "tool": tool,
-                    "target": target,
-                    "user": caller.user if caller else None,
-                    "chain": list(caller.chain) if caller else [],
-                    "roles": sorted(caller.roles) if caller else [],
-                    "team": caller.team if caller else None,
-                    "outcome": error["error"],
-                    "rule": error["rule"],
-                }
-            )
+        # Every error but a failed operation is a rule saying no; error.type
+        # keeps the contract's kind (forbidden, not_found, ...).
+        failed = isinstance(exc, OperationFailed)
+        audit.emit(
+            "tool.call",
+            caller,
+            {**about, "error.type": error["error"]},
+            outcome=audit.FAILED if failed else audit.REFUSED,
+            rule=None if failed else error["rule"],
         )
         return _result(error, is_error=True)
     span.set_attribute("delivery.outcome", "allowed")
-    audit.info(
-        json.dumps(
-            {
-                "tool": tool,
-                "target": target,
-                "user": caller.user,
-                "chain": list(caller.chain),
-                "roles": sorted(caller.roles),
-                "team": caller.team,
-                "outcome": "allowed",
-                "rule": None,
-            }
-        )
-    )
+    if tool not in READ_TOOLS:
+        audit.emit("tool.call", caller, about, outcome=audit.ALLOWED)
     return _result(payload)

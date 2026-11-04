@@ -1,12 +1,37 @@
 # Agent Substrate, the runtime every kagent 1.x agent runs on.
-# Values for chart oci://ghcr.io/kagent-dev/substrate/helm/substrate, 0.3.0-alpha3.
+# Values for chart oci://ghcr.io/kagent-dev/substrate/helm/substrate, 1.0.0-rc1.
 #
 # Reusable baseline. What one cluster changes goes in that cluster's own values
 # file, listed after this one (agent-deployments/clusters/<name>/platform/60-kagent/).
 #
 # The chart alone does not give a working install: its pods wait for identity
-# material that only the `kubectl-ate` plugin creates. See
-# agent-deployments/clusters/dev/platform/60-kagent/scripts/bootstrap-identity.sh.
+# material that only the `kubectl-ate` plugin creates, certificates from the
+# separate chart `substrate-podcert`, and a prepared database. See
+# agent-deployments/clusters/dev/platform/60-kagent/helmfile.yaml.
+
+# Who may do anything in Substrate's API, which now authorizes every call. An
+# empty list means the shared `ate-client` ServiceAccount alone, and kagent's
+# controller could then do nothing. That account stays, for `kubectl-ate`: it
+# is what `task kagent:status` and `task kagent:ate` use, and anyone who may
+# mint its token is an owner, so give operators their own on a shared cluster.
+ateApi:
+  authorization:
+    bootstrapOwners:
+      - spiffe://cluster.local/ns/kagent/sa/kagent-controller
+      - system:serviceaccount:ate-system:ate-client
+
+# Who may reach an Actor through the router: callers by their pod certificate.
+# Empty refuses everyone. kagent's controller is the one caller: a turn that
+# comes in through the gateway reaches the agent by way of the controller.
+atenetRouter:
+  ingressAllowedSPIFFEIDs:
+    - spiffe://cluster.local/ns/kagent/sa/kagent-controller
+
+# kagent sets a snapshot location on every agent it compiles, from the
+# Harness (agent-platform/profiles/kagent/agent, `harness.snapshotLocation`).
+# Without this gate Substrate's API refuses the field and no agent compiles.
+preview:
+  - PerTemplateSnapshotLocation
 
 # Which Secrets the egress gateway may read on behalf of an agent.
 #
@@ -24,13 +49,9 @@ credentialProvider:
     - atespace: kagent
       allowedNamespaces: [kagent]
 
-# Substrate's own database (Actors, templates, snapshots index). The chart asks
-# for a whole CPU and 1 GiB; this is a small cluster with a handful of Actors.
+# Substrate's own schema in the database it shares with kagent. Logins are
+# client certificates; the connection Secrets come from release
+# `kagent-postgresql`, under the names the chart defaults to.
 postgres:
-  resources:
-    requests:
-      cpu: 100m
-      memory: 192Mi
-    limits:
-      cpu: "1"
-      memory: 512Mi
+  clientCertificates:
+    enabled: true

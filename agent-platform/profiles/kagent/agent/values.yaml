@@ -3,33 +3,54 @@
 # every reference in the Agent's own namespace).
 #
 #   ConfigMap <release>-prompt      the system prompt
-#   ConfigMap <release>-runbooks    text the prompt includes
 #   ModelConfig                     which model, through which gateway route,
 #                                   with which credential
 #   RemoteMCPServer, one per tool server
 #   Harness                         the runtime image and where it runs
-#   AgentTemplate                   prompt, model and tool bindings
+#   AgentTemplate                   prompt, model, tool bindings and skills
 #   Agent                           pairs the two; this is what callers address
 #   HTTPRoute, AgentgatewayBackend  the A2A route (its policy is a separate release)
 #
-# Schema: api.kagent.dev/v1alpha3 as served by kagent 1.0.0-alpha7
+# Schema: api.kagent.dev/v1alpha3 as served by kagent 1.0.0-rc1
 # (https://kagent.dev/docs/kagent/1.x/reference/api-ref/) and
-# agentgateway.dev/v1alpha1 as served by Agentgateway 1.6.
+# agentgateway.dev/v1alpha1 as served by Agentgateway 1.7.
 #
 # A workload sets these in
 # agent-deployments/clusters/<cluster>/workloads/<name>/values.yaml.gotmpl,
-# reading the prompt and runbooks from the component's own directory.
+# reading the prompt from the component's own directory.
 
 # Shown to callers in the agent card, verbatim.
 description: ""
 
 # The system prompt. kagent renders it as a Go template when it compiles the
-# agent: {{ .AgentTemplateName }}, {{ .Description }}, {{ .ToolNames }} and
-# {{ include "runbooks/<key>" }} are available.
+# agent: {{ .AgentTemplateName }}, {{ .AgentTemplateNamespace }},
+# {{ .Description }} and {{ .ToolNames }} (the MCP tools below; not the skill
+# tools) are available.
 prompt: ""
 
-# name: text. Each becomes a key of ConfigMap <release>-runbooks.
-runbooks: {}
+# Agent Skills (a directory with a SKILL.md) the agent may load, by name. A
+# map, like `tools`, so that the component can say which skills the agent has
+# and the cluster where each is.
+#
+# kagent's runtime lists each skill's name and description in the system
+# prompt, and offers the model three tools that read them, none of which
+# reaches the network or writes: list_skills, load_skill (a SKILL.md) and
+# load_skill_resource (a file under references/, assets/ or scripts/). The
+# text of a skill reaches the model only when it loads it.
+skills: {}
+# search-service-runbook:         the skill's name: the `name` in its SKILL.md,
+#                                 which must also be its directory's name
+#   source:                       exactly one of oci, git and bucket, which
+#                                 cannot change under the agent:
+#     oci: <registry>/<repository>@sha256:<digest>
+#                                 an image, pinned by digest. Substrate's node
+#                                 agent pulls it and mounts it read-only.
+#     git: {url: https://..., commit: <full commit id>}
+#     bucket: {s3: {endpoint, bucket, key, versionId}}
+#                                 these two the Actor fetches itself, through
+#                                 the egress gateway (kagent puts the host on
+#                                 the agent's egress list)
+#     path: <directory>           where the skill is in that source; optional
 
 # Optional JSON Schema for the final answer (kagent's structured output).
 # Not tried in this repository. Read the warning in
@@ -54,8 +75,8 @@ model:
 
 harness:
   # kagent's own runtime (Go ADK), pinned by digest: a tag is rejected.
-  # This digest is tag 1.0.0-alpha7.
-  image: ghcr.io/kagent-dev/kagent/golang-adk@sha256:215417b5401310bb496ae1687bb8622f93fd19991a218c6a218987836e71da84
+  # This digest is tag 1.0.0-rc1.
+  image: ghcr.io/kagent-dev/kagent/golang-adk@sha256:5b06741be8cb69c9293477bdbf3203c6526127c533fa940fd9f595a82a801701
   # A WorkerPool in the release namespace.
   workerPool: kagent-default
   # Where an Actor's state goes between turns. The default is the bucket of
@@ -77,7 +98,8 @@ tools: {}
 #   description: "..."            required by the API
 #   url: http://...               Streamable HTTP endpoint
 #   timeout: 30s
-#   tools: [a, b]                 the only tools offered to the model; required
+#   tools: [a, b]                 the only tools of this server the model is
+#                                 offered; required
 #   authorization:                optional: a fixed Authorization header value
 #     secretName: ""              from a Secret in the release namespace. The
 #     secretKey: ""               value is sent as is, so it includes "Bearer ".

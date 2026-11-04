@@ -1,6 +1,6 @@
 import type { Config } from '../config.js';
 import { createCommsAgent, createDiagnosisAgent, createRemediationAgent } from './a2a-agents.js';
-import { delegated, type DownstreamToken } from './delegation.js';
+import { delegated, resourcesOf, type DownstreamToken } from './delegation.js';
 import { createDeliveryMcp } from './delivery-mcp.js';
 import { normalizeIncident, normalizeIncidentList } from './normalize.js';
 import { createStubDownstreams } from './stub.js';
@@ -17,7 +17,7 @@ export function mcpEndpoint(url: string): string {
   return u.toString();
 }
 
-/** With `tokenFor` (delegation), every downstream is called with the token it returns instead of the caller's own. */
+/** With `tokenFor` (delegation), every downstream is called with the token it returns for that target instead of the caller's own. */
 export function createDownstreams(config: Config, tokenFor?: DownstreamToken): Downstreams {
   const d = config.stubDownstreams
     ? createStubDownstreams({ seed: config.stub.seed, phaseMs: config.stub.phaseMs, diagnosisMs: config.stub.diagnosisMs })
@@ -28,7 +28,7 @@ export function createDownstreams(config: Config, tokenFor?: DownstreamToken): D
         // The one place that picks diagnosis-agent's transport (JSON-RPC today).
         diagnosis: createDiagnosisAgent(config.downstream.diagnosisAgentUrl, config.diagnosisTimeoutMs),
       };
-  return tokenFor ? delegated(d, tokenFor) : d;
+  return tokenFor ? delegated(d, tokenFor, resourcesOf(config)) : d;
 }
 
 export async function getIncident(d: Downstreams, token: string, incidentId: string): Promise<Incident> {

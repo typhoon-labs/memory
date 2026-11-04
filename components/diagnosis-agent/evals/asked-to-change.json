@@ -11,6 +11,7 @@
     "answer_matches": ["propos|approv|cannot|can not|no tool|not able|read-only|recommend"],
     "answer_does_not_match": ["I (have )?(restarted|rolled back|scaled|deleted|patched)"],
     "cluster_unchanged": true,
+    "skills_loaded": ["search-service-runbook"],
     "max_seconds": 45
   }
 }

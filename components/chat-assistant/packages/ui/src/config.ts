@@ -11,6 +11,12 @@ export interface RuntimeConfig {
   a2aUrl: string;
   a2aProtocolVersion: '1.0' | '0.3';
   pollIntervalMs: number;
+  /**
+   * Sign in with `prompt=login`, so the issuer shows its form every time and
+   * each tab can pick its own user. False: an existing session at the issuer
+   * is reused. Absent (a server older than 0.1.13): true, as before.
+   */
+  forceSignIn: boolean;
   appVersion: string;
 }
 
@@ -26,6 +32,7 @@ export async function loadRuntimeConfig(): Promise<RuntimeConfig> {
     a2aUrl: (raw.a2aUrl || window.location.origin).replace(/\/+$/, ''),
     a2aProtocolVersion: raw.a2aProtocolVersion === '0.3' ? '0.3' : '1.0',
     pollIntervalMs: Number(raw.pollIntervalMs) > 0 ? Number(raw.pollIntervalMs) : 2000,
+    forceSignIn: raw.forceSignIn !== false,
     appVersion: raw.appVersion ?? '',
   };
 }

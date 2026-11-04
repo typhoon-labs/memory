@@ -9,6 +9,12 @@ Next to every user a record names (``opened_by``, ``proposed_by``, a history
 entry's ``by`` and so on) is the chain of agents that acted for them, newest
 first, as a list: ``opened_via``, ``proposed_via``, ``via``. It is empty for a
 call made with the user's own token. The ``*_via`` columns hold it as JSON.
+
+A change also keeps the token's ``sub`` of each person who moved it
+(``proposed_by_sub``, ``approved_by_sub``, ``rejected_by_sub``,
+``applied_by_sub``). The ``*_by`` name is for display; the rule that the
+approver is not the proposer, and any join with other records, use the
+``sub``. A change written before 0.2.1 has none: those columns read as None.
 """
 
 from __future__ import annotations
@@ -48,16 +54,20 @@ CREATE TABLE IF NOT EXISTS changes (
     status           TEXT NOT NULL,
     operation_id     TEXT NOT NULL UNIQUE,
     proposed_by      TEXT NOT NULL,
+    proposed_by_sub  TEXT,
     proposed_via     TEXT NOT NULL DEFAULT '[]',
     proposed_at      TEXT NOT NULL,
     approved_by      TEXT,
+    approved_by_sub  TEXT,
     approved_via     TEXT,
     approved_at      TEXT,
     rejected_by      TEXT,
+    rejected_by_sub  TEXT,
     rejected_via     TEXT,
     rejected_at      TEXT,
     reject_reason    TEXT,
     applied_by       TEXT,
+    applied_by_sub   TEXT,
     applied_via      TEXT,
     applied_at       TEXT,
     detail           TEXT,
@@ -83,6 +93,11 @@ ADDED_COLUMNS = {
         ("approved_via", "TEXT"),
         ("rejected_via", "TEXT"),
         ("applied_via", "TEXT"),
+        # 0.2.1: who moved the change, by the token's sub.
+        ("proposed_by_sub", "TEXT"),
+        ("approved_by_sub", "TEXT"),
+        ("rejected_by_sub", "TEXT"),
+        ("applied_by_sub", "TEXT"),
     ),
     "status_updates": (("posted_via", "TEXT NOT NULL DEFAULT '[]'"),),
 }
@@ -96,16 +111,20 @@ CHANGE_FIELDS = (
     "status",
     "operation_id",
     "proposed_by",
+    "proposed_by_sub",
     "proposed_via",
     "proposed_at",
     "approved_by",
+    "approved_by_sub",
     "approved_via",
     "approved_at",
     "rejected_by",
+    "rejected_by_sub",
     "rejected_via",
     "rejected_at",
     "reject_reason",
     "applied_by",
+    "applied_by_sub",
     "applied_via",
     "applied_at",
     "detail",
@@ -119,13 +138,16 @@ CHAIN_FIELDS = ("proposed_via", "approved_via", "rejected_via", "applied_via")
 _SETTABLE = frozenset(
     {
         "approved_by",
+        "approved_by_sub",
         "approved_via",
         "approved_at",
         "rejected_by",
+        "rejected_by_sub",
         "rejected_via",
         "rejected_at",
         "reject_reason",
         "applied_by",
+        "applied_by_sub",
         "applied_via",
         "applied_at",
     }
@@ -302,6 +324,7 @@ class Store:
         operation_id: str,
         proposed_by: str,
         proposed_via: Iterable[str] = (),
+        proposed_by_sub: str | None = None,
     ) -> dict[str, Any]:
         at = now_iso()
         via = list(proposed_via)
@@ -311,8 +334,9 @@ class Store:
             try:
                 cur = self._db.execute(
                     "INSERT INTO changes (incident_id, service, target_version,"
-                    " previous_version, status, operation_id, proposed_by, proposed_via,"
-                    " proposed_at, history) VALUES (?, ?, ?, ?, 'proposed', ?, ?, ?, ?, ?)",
+                    " previous_version, status, operation_id, proposed_by, proposed_by_sub,"
+                    " proposed_via, proposed_at, history)"
+                    " VALUES (?, ?, ?, ?, 'proposed', ?, ?, ?, ?, ?, ?)",
                     (
                         incident_id,
                         service,
@@ -320,6 +344,7 @@ class Store:
                         previous_version,
                         operation_id,
                         proposed_by,
+                        proposed_by_sub,
                         json.dumps(via),
                         at,
                         json.dumps(history),

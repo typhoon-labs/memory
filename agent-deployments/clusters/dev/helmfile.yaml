@@ -12,7 +12,7 @@
 # releases inside one sub-helmfile. Platform directories therefore carry a
 # two-digit prefix, in the order they are installed: the trunk is 10 to 30,
 # then 40 observability (it brings the kinds later releases use), 50 Langfuse,
-# 60 kagent, 70 Agentregistry, 80 policies. Routes come last because a route
+# 60 kagent, 70 Agentregistry, 80 policies, 90 chain-sts. Routes come last because a route
 # lives in its backend's namespace. Workloads must not depend on each other's
 # order, and neither must domains.
 #

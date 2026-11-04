@@ -38,18 +38,33 @@ policy:
   # Seconds an issued token lives; never longer than the user's token.
   token_ttl_seconds: 300
 
-  # The audiences it issues for: everything behind the gateway.
+  # The targets it issues for, one per token: each gateway route that takes
+  # its tokens, by the URL an agent calls it at (`delegation.resources` in
+  # ../../identity.yaml, which the chart checks this list against). An agent
+  # names one as `resource`; a request that names none, or two, is refused
+  # (invalid_target). A route accepts a token for itself alone, so an agent
+  # cannot present the token it was called with anywhere else.
   audiences:
-    - agentgateway
+    - http://agentgateway-proxy.agentgateway-system.svc.cluster.local/mcp/delivery
+    - http://agentgateway-proxy.agentgateway-system.svc.cluster.local/a2a/remediation-agent
+    - http://agentgateway-proxy.agentgateway-system.svc.cluster.local/a2a/comms-agent
+    - http://agentgateway-proxy.agentgateway-system.svc.cluster.local/a2a/diagnosis-agent
+    - http://agentgateway-proxy.agentgateway-system.svc.cluster.local/v1
 
   # The user's claims each issued token carries on, as the gateway and the
-  # tools read them (docs/contracts.md).
+  # tools read them (docs/contracts.md). `sid`, the Keycloak session, lets
+  # an agent's call join the person's sign-in in the audit trail
+  # (session.id); a machine client's token has none, and nothing is copied.
+  # `idp_sub`, the identity provider's ID for a brokered user, joins it to
+  # the provider's log (docs/production-design.md, section 2.2, item 3).
   carry_claims:
     - preferred_username
     - roles
     - team
     - email
     - name
+    - sid
+    - idp_sub
 
   # Keycloak writes `may_act` only through consent, which the scripted logins
   # (`task token`) cannot give; the agents above decide the first agent.

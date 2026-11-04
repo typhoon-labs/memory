@@ -2,10 +2,19 @@
 # gateway key instead of a user's token.
 #
 # WHY. The server's ordinary route asks for a token from the identity provider.
-# A kagent agent cannot forward its caller's token to a tool; it can only send
-# a fixed header from a Secret. The gateway already issues such a workload a
-# key of its own for the model route (../model-access, mint-key.sh). This
-# chart lets the same key open an MCP backend, on a route of its own.
+# This platform's kagent agents send a tool a fixed header from a Secret, not
+# their caller's token. The gateway already issues such a workload a key of its
+# own for the model route (../model-access, mint-key.sh). This chart lets the
+# same key open an MCP backend, on a route of its own. How the key works, and
+# how it is revoked: the header of ../model-access/values.yaml.
+#
+# When this was built, on alpha7, a kagent agent could not do otherwise.
+# alpha17's API can, and rc1's: `RemoteMCPServer.spec.tokenPassthrough`
+# forwards the bearer of the incoming A2A request, a request without one fails,
+# and the controller's tool discovery has none. Not used or tried here. rc1
+# adds `actorJwt`, a token Substrate's egress gateway mints for each Actor; the
+# tools of such a server drop out of the controller's discovery. Evaluated and
+# not adopted (agent-deployments/clusters/dev/platform/60-kagent/README.md).
 #
 # WHAT, per workload:
 #
@@ -14,8 +23,8 @@
 #       <backend.name> in <backend.namespace> (which must allow it with a
 #       ReferenceGrant)
 #   AgentgatewayPolicy `<backend.name>-<workload>-auth`
-#       apiKeyAuthentication: the caller presents a key whose SHA-256 the
-#       gateway knows, and that key must be the one issued to <workload>
+#       the key issued to <workload>, checked as on its model route
+#       (apiKeyAuthentication and `apiKey.workload`, ../model-access)
 #
 # Which tools exist is decided once, on the backend, for every route.
 #
@@ -28,7 +37,7 @@
 # Install in the namespace that holds the workload keys' ConfigMaps
 # (`workload-key-<workload>`, label agentgateway-demo/workload-key=<workload>).
 #
-# Schema: Agentgateway 1.6, AgentgatewayPolicy `traffic.apiKeyAuthentication`,
+# Schema: Agentgateway 1.7, AgentgatewayPolicy `traffic.apiKeyAuthentication`,
 # as in ../model-access.
 
 # The workloads that get a route. Each needs a key from mint-key.sh.

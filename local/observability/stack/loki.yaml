@@ -6,8 +6,10 @@
 # pins the chart version. Starting point: the "local storage" option of
 # https://agentgateway.dev/docs/kubernetes/latest/documentation/observability/otel-stack/
 #
-# Logs arrive from the OTel Collector over OTLP at /otlp. Nothing is
-# persistent: a restarted Loki starts empty.
+# Logs arrive from the OTel Collector over OTLP at /otlp. They are the audit
+# trail as well (docs/cluster.md), so they are on a volume and kept 7 days: a
+# restarted Loki keeps them. Measured on 2026-11-02, the gateway's access log
+# took about 200 KiB an hour; the volume has room for far more.
 deploymentMode: SingleBinary
 
 loki:
@@ -28,22 +30,21 @@ loki:
   limits_config:
     # OTLP attributes that are not index labels are kept as structured metadata.
     allow_structured_metadata: true
-    retention_period: 24h
+    retention_period: 168h
+  # Retention is enforced by the compactor; without it nothing is deleted.
+  compactor:
+    retention_enabled: true
+    delete_request_store: filesystem
+    working_directory: /var/loki/compactor
   analytics:
     reporting_enabled: false
 
 singleBinary:
   replicas: 1
+  # Mounted at /var/loki, where everything above is written.
   persistence:
-    enabled: false
-  # The chart mounts a data volume only when persistence is on, and the root
-  # filesystem is read-only, so Loki needs this one to write anything.
-  extraVolumes:
-    - name: storage
-      emptyDir: {}
-  extraVolumeMounts:
-    - name: storage
-      mountPath: /var/loki
+    enabled: true
+    size: 1Gi
   resources:
     requests:
       cpu: 50m

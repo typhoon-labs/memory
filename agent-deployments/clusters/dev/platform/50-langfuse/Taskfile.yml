@@ -2,7 +2,7 @@
 #
 #   task langfuse:install     create the credentials, then install or upgrade
 #   task langfuse:status      pods, memory per pod, addresses, Secrets
-#   task langfuse:login       the demo login for http://localhost:18085
+#   task langfuse:login       the password login, for when Keycloak is down
 #   task langfuse:check       send one test trace from inside the cluster and
 #                             read it back; wrong credentials must be refused
 #   task langfuse:secrets     only the credentials (safe to re-run, never rotates)
@@ -41,7 +41,7 @@ tasks:
       - "{{.TASKFILE_DIR}}/scripts/status.sh"
 
   login:
-    desc: Print the demo login for the Langfuse UI
+    desc: Print the password login for the Langfuse UI, for when Keycloak is down
     silent: true
     cmds:
       - task: guard

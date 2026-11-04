@@ -15,6 +15,7 @@
       "Cannot read properties of undefined|weights|TypeError"
     ],
     "tools_called": ["k8s_get_resources", "k8s_get_pod_logs"],
+    "skills_loaded": ["search-service-runbook"],
     "max_seconds": 45
   }
 }

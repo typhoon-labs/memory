@@ -1,12 +1,16 @@
 """The caller, as the verified token describes them.
 
 Signature, issuer, audience and expiry are checked here, in this service,
-whatever stands in front of it. The user, roles and team come from the token's
-claims and from nowhere else.
+whatever stands in front of it. The user, roles and team, and the ids the
+audit records carry, come from the token's claims and from nowhere else.
 
 Two issuers may be trusted: Keycloak, for a user's own token, and chain-sts,
 for a token it issued to an agent acting for a user. Each has its own keys, and
 a token is verified against the keys of the issuer it names, and only those.
+Each has its own audience too: Keycloak's tokens carry OIDC_AUDIENCE, the
+gateway's, and chain-sts's carry the one target they were issued for, which
+must be this service's own route (DELEGATION_AUDIENCE). A chain token an agent
+got for another route is refused here as it is at the gateway.
 """
 
 from __future__ import annotations
@@ -40,6 +44,15 @@ class Caller:
     # The agents acting for the user, newest first, from the token's `act`:
     # each one's `client_id`, else its `sub`. Empty for the user's own token.
     chain: tuple[str, ...] = ()
+    # From the token's claims, None when absent: its `sub`, `iss`, `azp` (the
+    # client it was issued to), `sid` (the sign-in session) and `jti` (its own
+    # id). The audit records carry them all. One rule reads `sub`: the approver
+    # is not the proposer, which refuses a caller without one.
+    sub: str | None = None
+    issuer: str | None = None
+    client: str | None = None
+    sid: str | None = None
+    jti: str | None = None
 
     def has_role(self, role: str) -> bool:
         return role in self.roles
@@ -104,10 +117,22 @@ def caller_from_claims(claims: Mapping[str, Any]) -> Caller | None:
         else frozenset()
     )
 
-    raw_team = claims.get("team")
-    team = raw_team.strip() if isinstance(raw_team, str) and raw_team.strip() else None
+    return Caller(
+        user=user,
+        roles=roles,
+        team=_text(claims.get("team")),
+        chain=chain_from_act(claims.get("act")),
+        sub=_text(claims.get("sub")),
+        issuer=_text(claims.get("iss")),
+        client=_text(claims.get("azp")),
+        sid=_text(claims.get("sid")),
+        jti=_text(claims.get("jti")),
+    )
 
-    return Caller(user=user, roles=roles, team=team, chain=chain_from_act(claims.get("act")))
+
+def _text(value: Any) -> str | None:
+    """A claim that is a non-empty string, stripped; anything else is absent."""
+    return value.strip() if isinstance(value, str) and value.strip() else None
 
 
 class StrictJWTVerifier(JWTVerifier):
@@ -177,18 +202,27 @@ class IssuerVerifier(TokenVerifier):
 
 
 def build_verifier(settings: Settings) -> IssuerVerifier:
-    """Keycloak's verifier, and chain-sts's when it is configured, both RS256."""
-    issuers = {settings.oidc_issuer: settings.oidc_jwks_url}
+    """Keycloak's verifier, and chain-sts's when it is configured, both RS256.
+
+    Each checks its own audience: Keycloak's tokens OIDC_AUDIENCE, chain-sts's
+    one of DELEGATION_AUDIENCE.
+    """
+    issuers: dict[str, tuple[str, str | list[str]]] = {
+        settings.oidc_issuer: (settings.oidc_jwks_url, settings.oidc_audience)
+    }
     if settings.delegation_issuer and settings.delegation_jwks_url:
-        issuers[settings.delegation_issuer] = settings.delegation_jwks_url
+        issuers[settings.delegation_issuer] = (
+            settings.delegation_jwks_url,
+            list(settings.delegation_audiences),
+        )
     return IssuerVerifier(
         {
             issuer: StrictJWTVerifier(
                 jwks_uri=jwks_url,
                 issuer=issuer,
-                audience=settings.oidc_audience,
+                audience=audience,
                 algorithm="RS256",
             )
-            for issuer, jwks_url in issuers.items()
+            for issuer, (jwks_url, audience) in issuers.items()
         }
     )

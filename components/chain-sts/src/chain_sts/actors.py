@@ -6,8 +6,8 @@
   this service's own service-account token and the cluster's CA from the
   standard paths in the pod. The API server checks the signature, the expiry
   and the audiences, and also refuses a bound token whose pod is gone. The
-  service needs the right to create TokenReviews (the ClusterRole
-  `system:auth-delegator`).
+  service needs the right to create TokenReviews and nothing else, which
+  the chart's ClusterRole `chain-sts-token-review` grants.
 - `jwks`: the token is checked here, against the cluster's service-account
   issuer and its keys, from a file or a URL. For development: a token stays
   valid until it expires, even when its pod is gone. The API server serves

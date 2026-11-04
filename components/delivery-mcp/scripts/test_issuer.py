@@ -56,6 +56,15 @@ IDENTITIES: dict[str, dict[str, Any]] = {
 }
 
 
+def subject(identity: str) -> str:
+    """The identity's ``sub``: the same in its own token and in its chain tokens.
+
+    chain-sts keeps the ``sub`` of the token it exchanges, so one person has
+    one ``sub`` under both issuers, as in the cluster.
+    """
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, f"keycloak/{identity}"))
+
+
 def _b64(number: int) -> str:
     raw = number.to_bytes((number.bit_length() + 7) // 8, "big")
     return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
@@ -98,7 +107,7 @@ class TestIssuer:
         claims: dict[str, Any] = {
             "iss": self.issuer,
             "aud": self.audience,
-            "sub": str(uuid.uuid5(uuid.NAMESPACE_URL, f"{self.issuer}/{identity}")),
+            "sub": subject(identity),
             "iat": now,
             "nbf": now,
             "exp": now + ttl_seconds,
@@ -142,7 +151,7 @@ class TestIssuer:
             act = link
         claims: dict[str, Any] = {
             "iss": self.issuer,
-            "sub": str(uuid.uuid5(uuid.NAMESPACE_URL, f"keycloak/{identity}")),
+            "sub": subject(identity),
             "aud": self.audience,
             "iat": now,
             "nbf": now,

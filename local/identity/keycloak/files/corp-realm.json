@@ -1,0 +1,300 @@
+{
+  "realm": "corp",
+  "displayName": "Corp, a stand-in enterprise IdP (DEMO ONLY)",
+  "enabled": true,
+  "eventsEnabled": true,
+  "eventsListeners": [
+    "jboss-logging"
+  ],
+  "adminEventsEnabled": true,
+  "adminEventsDetailsEnabled": false,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "resetPasswordAllowed": false,
+  "loginWithEmailAllowed": false,
+  "duplicateEmailsAllowed": false,
+  "groups": [
+    {
+      "name": "app-agentplatform-developer",
+      "path": "/app-agentplatform-developer"
+    },
+    {
+      "name": "app-agentplatform-incident-manager",
+      "path": "/app-agentplatform-incident-manager"
+    },
+    {
+      "name": "app-agentplatform-platform-engineer",
+      "path": "/app-agentplatform-platform-engineer"
+    },
+    {
+      "name": "all-staff",
+      "path": "/all-staff"
+    }
+  ],
+  "users": [
+    {
+      "id": "c0000000-0000-4000-8000-000000000001",
+      "username": "alex.rivera",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Alex",
+      "lastName": "Rivera",
+      "email": "alex.rivera@corp.invalid",
+      "attributes": {
+        "primary_team": [
+          "search"
+        ]
+      },
+      "groups": [
+        "/app-agentplatform-developer",
+        "/all-staff"
+      ],
+      "requiredActions": [],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "corp-demo",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "id": "c0000000-0000-4000-8000-000000000002",
+      "username": "sam.okafor",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Sam",
+      "lastName": "Okafor",
+      "email": "sam.okafor@corp.invalid",
+      "attributes": {
+        "primary_team": [
+          "incident"
+        ]
+      },
+      "groups": [
+        "/app-agentplatform-incident-manager",
+        "/all-staff"
+      ],
+      "requiredActions": [],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "corp-demo",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "id": "c0000000-0000-4000-8000-000000000003",
+      "username": "jo.chen",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Jo",
+      "lastName": "Chen",
+      "email": "jo.chen@corp.invalid",
+      "attributes": {
+        "primary_team": [
+          "platform"
+        ]
+      },
+      "groups": [
+        "/app-agentplatform-platform-engineer",
+        "/all-staff"
+      ],
+      "requiredActions": [],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "corp-demo",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "id": "c0000000-0000-4000-8000-000000000004",
+      "username": "mallory",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Mallory",
+      "lastName": "Takeover",
+      "email": "developer@demo.invalid",
+      "attributes": {
+        "primary_team": [
+          "search"
+        ]
+      },
+      "groups": [
+        "/app-agentplatform-developer",
+        "/all-staff"
+      ],
+      "requiredActions": [],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "corp-demo",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "service-account-directory-reader",
+      "enabled": true,
+      "serviceAccountClientId": "directory-reader",
+      "clientRoles": {
+        "realm-management": [
+          "view-users"
+        ]
+      }
+    },
+    {
+      "username": "service-account-idp-admin-test",
+      "enabled": true,
+      "serviceAccountClientId": "idp-admin-test",
+      "clientRoles": {
+        "realm-management": [
+          "view-users",
+          "manage-users"
+        ]
+      }
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "agentplatform-demo",
+      "name": "The agent platform's demo environment (Keycloak realm demo brokers through this)",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "fullScopeAllowed": false,
+      "redirectUris": [
+        "${KC_HOSTNAME}/realms/demo/broker/corp/endpoint"
+      ],
+      "webOrigins": [],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      },
+      "defaultClientScopes": [
+        "basic",
+        "profile",
+        "email",
+        "acr"
+      ],
+      "optionalClientScopes": [],
+      "clientAuthenticatorType": "client-secret",
+      "secret": "demo-only-corp-broker-secret",
+      "protocolMappers": [
+        {
+          "name": "groups",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-group-membership-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "groups",
+            "full.path": "false",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        },
+        {
+          "name": "primary_team",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "primary_team",
+            "claim.name": "primary_team",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "directory-reader",
+      "name": "Reconciliation job: read-only directory access (users, their status and groups)",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "fullScopeAllowed": true,
+      "redirectUris": [],
+      "webOrigins": [],
+      "attributes": {},
+      "clientAuthenticatorType": "client-secret",
+      "secret": "demo-only-corp-directory-reader-secret"
+    },
+    {
+      "clientId": "idp-admin-test",
+      "name": "Test harness only: disables and enables a corp user, as the IdP's administrators would",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "fullScopeAllowed": true,
+      "redirectUris": [],
+      "webOrigins": [],
+      "attributes": {},
+      "clientAuthenticatorType": "client-secret",
+      "secret": "demo-only-corp-idp-admin-test-secret"
+    }
+  ],
+  "components": {
+    "org.keycloak.userprofile.UserProfileProvider": [
+      {
+        "providerId": "declarative-user-profile",
+        "config": {
+          "kc.user.profile.config": [
+            "{\"attributes\":[{\"name\":\"username\",\"displayName\":\"${username}\",\"validations\":{\"length\":{\"min\":3,\"max\":255},\"username-prohibited-characters\":{},\"up-username-not-idn-homograph\":{}},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]},\"multivalued\":false},{\"name\":\"email\",\"displayName\":\"${email}\",\"validations\":{\"email\":{},\"length\":{\"max\":255}},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]},\"multivalued\":false},{\"name\":\"firstName\",\"displayName\":\"${firstName}\",\"validations\":{\"length\":{\"max\":255},\"person-name-prohibited-characters\":{}},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]},\"multivalued\":false},{\"name\":\"lastName\",\"displayName\":\"${lastName}\",\"validations\":{\"length\":{\"max\":255},\"person-name-prohibited-characters\":{}},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]},\"multivalued\":false},{\"name\":\"primary_team\",\"displayName\":\"Primary team\",\"validations\":{\"length\":{\"max\":64}},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\"]},\"multivalued\":false}],\"groups\":[{\"name\":\"user-metadata\",\"displayHeader\":\"User metadata\",\"displayDescription\":\"Attributes, which refer to user metadata\"}]}"
+          ]
+        }
+      }
+    ],
+    "org.keycloak.keys.KeyProvider": [
+      {
+        "name": "stable-rs256",
+        "providerId": "rsa",
+        "config": {
+          "priority": [
+            "200"
+          ],
+          "algorithm": [
+            "RS256"
+          ],
+          "keyUse": [
+            "SIG"
+          ],
+          "active": [
+            "true"
+          ],
+          "enabled": [
+            "true"
+          ],
+          "privateKey": [
+            "${KC_REALM_CORP_SIGNING_KEY}"
+          ],
+          "certificate": [
+            "${KC_REALM_CORP_SIGNING_CERT}"
+          ]
+        }
+      }
+    ]
+  },
+  "attributes": {
+    "demo-only-notice": "DEMO ONLY. Stands in for the enterprise identity provider (Okta, Ping) on a local kind cluster; realm demo brokers it as identity provider `corp`. Every password and client secret in this file are throwaway demo values, public by design. User IDs are pinned because they are the IdP's immutable IDs, which realm demo keeps as `idp_sub`. Notes: agent-deployments/clusters/dev/platform/20-keycloak/README.md."
+  }
+}

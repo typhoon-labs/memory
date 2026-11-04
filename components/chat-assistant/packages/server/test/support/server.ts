@@ -9,7 +9,7 @@ import { createTokenVerifier } from '../../src/auth.js';
 import { createChat } from '../../src/chat/agent.js';
 import { loadConfig } from '../../src/config.js';
 import { createTestIssuer } from '../../src/dev/test-issuer.js';
-import { createTokenExchange, delegated } from '../../src/downstream/delegation.js';
+import { createTokenExchange, delegated, resourcesOf } from '../../src/downstream/delegation.js';
 import { createStubDownstreams } from '../../src/downstream/stub.js';
 import type { Downstreams } from '../../src/downstream/types.js';
 import { startFakeAnthropic, type FakeAnthropic } from './fake-anthropic.js';
@@ -26,6 +26,14 @@ export interface TestServer {
   close(): Promise<void>;
 }
 
+/** The gateway's routes as the dev cluster names them, for a server with delegation. */
+export const GATEWAY_ROUTES = {
+  DELIVERY_MCP_URL: 'http://agentgateway-proxy.agentgateway-system.svc.cluster.local/mcp/delivery',
+  REMEDIATION_AGENT_URL: 'http://agentgateway-proxy.agentgateway-system.svc.cluster.local/a2a/remediation-agent',
+  COMMS_AGENT_URL: 'http://agentgateway-proxy.agentgateway-system.svc.cluster.local/a2a/comms-agent',
+  DIAGNOSIS_AGENT_URL: 'http://agentgateway-proxy.agentgateway-system.svc.cluster.local/a2a/diagnosis-agent',
+};
+
 export async function startTestServer(
   options: {
     seed?: boolean;
@@ -37,6 +45,8 @@ export async function startTestServer(
     diagnosis?: 'fails' | 'not-configured';
     /** chain-sts's metadata URL and the actor token file. */
     delegation?: { metadataUrl: string; actorTokenFile: string };
+    /** More environment variables, read last. */
+    env?: Record<string, string>;
   } = {},
 ): Promise<TestServer> {
   const model = await startFakeAnthropic();
@@ -56,8 +66,14 @@ export async function startTestServer(
     CORS_ALLOWED_ORIGINS: options.cors ?? '',
     UI_DIST_DIR: '/nonexistent',
     ...(options.delegation
-      ? { DELEGATION_METADATA_URL: options.delegation.metadataUrl, DELEGATION_ACTOR_TOKEN_FILE: options.delegation.actorTokenFile }
+      ? {
+          DELEGATION_METADATA_URL: options.delegation.metadataUrl,
+          DELEGATION_ACTOR_TOKEN_FILE: options.delegation.actorTokenFile,
+          // The stubs are called instead; these name the resource each exchange asks for.
+          ...GATEWAY_ROUTES,
+        }
       : {}),
+    ...options.env,
   });
   const issuer = await createTestIssuer({ issuer: issuerUrl, audience: 'agentgateway' });
   const downstreams = createStubDownstreams({
@@ -85,8 +101,8 @@ export async function startTestServer(
       },
     };
   }
-  const tokenFor = config.delegation && createTokenExchange({ ...config.delegation, audience: config.oidc.audience });
-  const sent = tokenFor ? delegated(downstreams, tokenFor) : downstreams;
+  const tokenFor = config.delegation && createTokenExchange(config.delegation);
+  const sent = tokenFor ? delegated(downstreams, tokenFor, resourcesOf(config)) : downstreams;
   const app = createApp({
     config,
     verify: createTokenVerifier({ issuer: issuerUrl, audiences: config.oidc.acceptedAudiences, keys: issuer.keys }),

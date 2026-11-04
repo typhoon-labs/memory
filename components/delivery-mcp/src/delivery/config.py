@@ -39,9 +39,12 @@ class Settings:
     oidc_issuer: str
     oidc_jwks_url: str
     oidc_audience: str
-    # chain-sts, whose tokens name the agents acting for a user. Both or neither.
+    # chain-sts, whose tokens name the agents acting for a user. All three or
+    # none. Its tokens are each for one target and must carry one of
+    # `delegation_audiences`: this service's own route, not OIDC_AUDIENCE.
     delegation_issuer: str | None
     delegation_jwks_url: str | None
+    delegation_audiences: tuple[str, ...]
 
     db_path: str
 
@@ -77,7 +80,9 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
 
     The service refuses to start without the three identity bindings: there is no
     mode in which it accepts a call it cannot attribute to a verified caller. The
-    second issuer, chain-sts, is optional, but only with both of its bindings.
+    second issuer, chain-sts, is optional, but only with all three of its
+    bindings. DELEGATION_AUDIENCE may list several audiences, comma-separated:
+    a token needs one of them.
     """
     env = os.environ if env is None else env
 
@@ -88,11 +93,18 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     if missing:
         raise ConfigError("missing required environment variables: " + ", ".join(missing))
 
-    delegation = {n: get(n) for n in ("DELEGATION_ISSUER", "DELEGATION_JWKS_URL")}
+    delegation = {
+        n: get(n) for n in ("DELEGATION_ISSUER", "DELEGATION_JWKS_URL", "DELEGATION_AUDIENCE")
+    }
     if any(delegation.values()) and not all(delegation.values()):
         given = next(n for n, v in delegation.items() if v)
         absent = next(n for n, v in delegation.items() if not v)
-        raise ConfigError(f"{given} is set and {absent} is not: set both, or neither")
+        raise ConfigError(f"{given} is set and {absent} is not: set all three, or none")
+    delegation_audiences = tuple(
+        dict.fromkeys(a.strip() for a in delegation["DELEGATION_AUDIENCE"].split(",") if a.strip())
+    )
+    if delegation["DELEGATION_AUDIENCE"] and not delegation_audiences:
+        raise ConfigError("DELEGATION_AUDIENCE names no audience")
     if delegation["DELEGATION_ISSUER"] and delegation["DELEGATION_ISSUER"] == get("OIDC_ISSUER"):
         raise ConfigError("DELEGATION_ISSUER must differ from OIDC_ISSUER")
 
@@ -106,13 +118,14 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         raise ConfigError(f"RETAINED_VERSIONS has entries that are not versions: {bad}")
 
     settings = Settings(
-        app_version=get("APP_VERSION", "0.1.0"),
+        app_version=get("APP_VERSION", "0.2.2"),
         environment=get("DEPLOYMENT_ENVIRONMENT", "dev"),
         oidc_issuer=get("OIDC_ISSUER"),
         oidc_jwks_url=get("OIDC_JWKS_URL"),
         oidc_audience=get("OIDC_AUDIENCE"),
         delegation_issuer=delegation["DELEGATION_ISSUER"] or None,
         delegation_jwks_url=delegation["DELEGATION_JWKS_URL"] or None,
+        delegation_audiences=delegation_audiences,
         db_path=get("DELIVERY_DB_PATH", ":memory:"),
         applier=applier,
         retained_versions=retained,

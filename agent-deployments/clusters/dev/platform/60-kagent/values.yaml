@@ -3,19 +3,24 @@
 
 # Traces from the controller and from every agent's runtime (one span per model
 # call and per tool call) to the cluster's collector
-# (platform/40-observability). OTLP over HTTP, because an agent's export
-# leaves its sandbox through Substrate's egress gateway, which is an HTTP
-# proxy; kagent adds the collector's host to each agent's egress allowlist by
-# itself. Prompts and answers are not put on the spans (otel.capture).
-otel:
-  exporter:
-    otlp:
-      endpoint: http://otel-collector.telemetry.svc.cluster.local:4318
+# (platform/40-observability). The controller's own settings and the ones it
+# hands each runtime are separate, and a signal left out of either is off.
+#
+# OTLP over HTTP, because an agent's export leaves its sandbox through
+# Substrate's egress gateway, which is an HTTP proxy; kagent adds the
+# collector's host to each agent's egress allowlist by itself. The endpoint
+# carries its path: a per-signal endpoint is used as it stands, and without it
+# spans go to `/`. Prompts and answers are not put on the spans (captureContent
+# is off).
+config:
+  telemetry: &telemetry
+    traces:
+      endpoint: http://otel-collector.telemetry.svc.cluster.local:4318/v1/traces
       protocol: http/protobuf
-  traces:
-    enabled: true
-  resourceAttributes:
-    deployment.environment: dev
+    resourceAttributes:
+      deployment.environment: dev
+  runtimeDefaults:
+    telemetry: *telemetry
 
 # The kagent UI, at http://localhost:18087 (NodePort 30087, docs/cluster.md).
 # The profile leaves it off, because it needs a sign-in proxy and the proxy
@@ -25,8 +30,9 @@ otel:
 #           -> the UI's nginx -> the controller's port 8083
 #
 # The proxy hands on the ID token Keycloak issued. The controller reads the
-# user from it without verifying it (controller.auth in the profile), so the
-# proxy is the only check there is. Two things keep it the only door: the UI's
+# user from it without verifying its signature (config.server.auth in the
+# profile; since 1.0.0-rc1 it refuses one that has expired), so the proxy is
+# the only check there is. Two things keep it the only door: the UI's
 # own Service stays ClusterIP, and the NetworkPolicy `kagent-ui-callers` in
 # the profile lets nothing but the proxy reach the UI.
 #
@@ -83,10 +89,13 @@ oauth2-proxy:
     # The address is plain http, where a browser other than Chrome or Firefox
     # drops a cookie marked Secure.
     cookie-secure: false
-    # The proxy does not renew a session, and the controller does not look at
-    # a token's expiry. So a session ends before its token does (30 minutes,
-    # the realm's accessTokenLifespan); the browser is then sent through
-    # Keycloak again, which asks for no password while its own session lasts.
+    # The proxy does not renew a session, and since 1.0.0-rc1 the controller
+    # refuses a token that has expired (alpha17 did not look). So a session
+    # ends before its token does (30 minutes, the realm's
+    # accessTokenLifespan), and the controller is never handed an expired
+    # one. The UI then says the session has expired, and its "Sign in with
+    # SSO" goes through Keycloak again, which asks for no password while its
+    # own session lasts.
     cookie-expire: 25m
     # The chart lets a client with a bearer token of this client skip the
     # sign-in. Nothing needs that here: programs call the gateway's routes.

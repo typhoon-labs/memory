@@ -3,7 +3,9 @@
  * client `chat-ui`. oidc-client-ts does the protocol work.
  *
  * The session lives in sessionStorage, which is per tab, so three tabs can be
- * signed in as three roles side by side.
+ * signed in as three roles side by side. That needs `forceSignIn`
+ * (UI_FORCE_SIGN_IN, on by default): without it a new tab reuses the issuer's
+ * session, and so its user.
  */
 import { UserManager, WebStorageStateStore, type User } from 'oidc-client-ts';
 import type { RuntimeConfig } from './config';
@@ -80,8 +82,10 @@ export function startAuth(config: RuntimeConfig): Promise<Auth> {
     return {
       manager,
       user,
-      // prompt=login: always show the sign-in form, so each tab can pick its own user.
-      signIn: () => manager.signinRedirect({ prompt: 'login' }),
+      // prompt=login: always show the sign-in form, so each tab can pick its own user (the demo).
+      // Without it an existing session at the issuer is reused, so a user behind an
+      // enterprise IdP is not sent back through the IdP, and perhaps MFA, on every visit.
+      signIn: () => (config.forceSignIn ? manager.signinRedirect({ prompt: 'login' }) : manager.signinRedirect()),
       signOut: async () => {
         try {
           await manager.signoutRedirect();

@@ -11,6 +11,7 @@
     "suspected_cause_does_not_match": ["2\\.0\\.0 (is|has) (failing|a (bug|defect|regression))"],
     "evidence_matches": ["2\\.0\\.0", "200|no error"],
     "tools_called": ["k8s_get_resources", "k8s_get_pod_logs"],
+    "skills_loaded": ["search-service-runbook"],
     "max_seconds": 45
   }
 }

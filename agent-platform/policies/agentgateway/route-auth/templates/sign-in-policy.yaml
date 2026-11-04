@@ -1,0 +1,49 @@
+{{- $mcp := .Values.mcpAuthentication | default dict -}}
+{{- if $mcp.enabled -}}
+{{- $target := required "target.name: the route to protect" .Values.target.name -}}
+{{- if ne .Values.target.kind "HTTPRoute" -}}
+  {{- fail "mcpAuthentication: needs an HTTPRoute with a rule named sign-in (chart mcp-route, with its own mcpAuthentication.enabled)" -}}
+{{- end -}}
+# For rule `sign-in` of the route, which the mcp-route chart adds. That rule
+# gets the requests without an Authorization header, and an MCP client's
+# discovery. On it, this policy's jwtAuthentication replaces the route's.
+# It trusts only `identity`'s issuer, because Agentgateway's MCP
+# authentication allows only one. The route's authorization still applies.
+# Nothing on this rule reaches the backend: the gateway refuses a request
+# without a token and answers the metadata itself. A request with a token
+# goes to the route's other rule and its own policy, with every issuer it
+# trusts.
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: {{ $target }}-sign-in
+  namespace: {{ .Release.Namespace }}
+spec:
+  targetRefs:
+    - group: {{ .Values.target.group }}
+      kind: HTTPRoute
+      name: {{ $target }}
+      sectionName: sign-in
+  traffic:
+    jwtAuthentication:
+      # Strict: the MCP extension requires it. A request without a token gets
+      # 401 with `WWW-Authenticate: Bearer resource_metadata="..."`.
+      mode: Strict
+      providers:
+        - issuer: {{ required "identity.issuer" .Values.identity.issuer | quote }}
+          audiences:
+            - {{ required "identity.audience" .Values.identity.audience | quote }}
+          jwks:
+            remote:
+              url: {{ required "identity.jwksUrl" .Values.identity.jwksUrl | quote }}
+              cacheDuration: 5m
+      mcp:
+        provider: {{ required "mcpAuthentication.provider" $mcp.provider }}
+        {{- with $mcp.clientId }}
+        clientId: {{ . | quote }}
+        {{- end }}
+        {{- with $mcp.resourceMetadata }}
+        resourceMetadata:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+{{- end }}

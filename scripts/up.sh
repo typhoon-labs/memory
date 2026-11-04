@@ -42,8 +42,9 @@
 #     namespace), and a route's policy before the route: `task install` does both.
 #   - The registry's catalog and Langfuse's prices are data, loaded at the end.
 #
-# Measured on 2026-10-07 on Docker Desktop with 8 CPUs: 14 to 15 minutes
-# from `task down`, and under 2 minutes when run again on a finished cluster.
+# How long it takes, by version and date, is in docs/measurements.md,
+# "Rebuilds": about 14 to 16 minutes from `task down` on Docker Desktop with
+# 8 CPUs, and under 2 minutes when run again on a finished cluster.
 set -o nounset
 
 repo="$(cd "$(dirname "$0")/.." && pwd)"

@@ -609,7 +609,7 @@ class Driver:
             isinstance(error, dict) and error.get("code") == -32602,
             "a JSON-RPC error, code -32602, not a tool result",
         )
-        check(error["message"] == "Unknown tool: apply_change", f"message: {error['message']}")
+        check(error["message"] == "unknown resource", f"message: {error['message']}")
         _, incident = self.tool("developer", "get_incident", incident_id=incident_id)
         check(incident["changes"][0]["status"] == "proposed", "the change is untouched: proposed")
 

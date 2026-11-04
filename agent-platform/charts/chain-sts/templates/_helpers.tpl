@@ -40,6 +40,28 @@ helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version }}
 {{- fail (printf "policy.%s: the chart sets this key; set the chart's own value instead" $key) }}
 {{- end }}
 {{- end }}
+{{- /* The targets the gateway takes this service's tokens for, when the
+       cluster's identity values name them, and the targets the policy issues
+       for must be the same list: a target the policy lacks is refused to the
+       agents (invalid_target), and one no route accepts is a token nobody
+       should hold. */ -}}
+{{- with (.Values.delegation | default dict).resources -}}
+{{- $routes := values . -}}
+{{- with $.Values.delegation.audience -}}
+{{- $routes = append $routes . -}}
+{{- end -}}
+{{- $issued := $.Values.policy.audiences | default list -}}
+{{- $differ := list -}}
+{{- range $routes -}}
+{{- if not (has . $issued) -}}{{- $differ = append $differ . -}}{{- end -}}
+{{- end -}}
+{{- range $issued -}}
+{{- if not (has . $routes) -}}{{- $differ = append $differ . -}}{{- end -}}
+{{- end -}}
+{{- if $differ -}}
+{{- fail (printf "policy.audiences must list exactly delegation.resources and delegation.audience; these are in only one of them: %s" (toJson $differ)) -}}
+{{- end -}}
+{{- end -}}
 {{- $issuer := default (include "chain-sts.serviceUrl" .) .Values.issuer -}}
 {{- /* The pod's own token and the cluster's CA: the bearer and the trust
        anchor of every call to the API server, whichever the check. */ -}}

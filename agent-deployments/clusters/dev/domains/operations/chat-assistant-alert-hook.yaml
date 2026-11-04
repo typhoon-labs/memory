@@ -7,7 +7,7 @@
 # The assistant then opens the incident, and asks diagnosis-agent, as the
 # caller. Values for two releases in the helmfile.yaml next to this file:
 # `chat-assistant-alert-hook` (route, backend) and
-# `chat-assistant-alert-hook-auth` (allow, passthrough).
+# `chat-assistant-alert-hook-auth` (allow, actors, passthrough).
 
 route:
   name: chat-assistant-alert-hook
@@ -30,7 +30,8 @@ allow:
   - '"alert-automation" in jwt.roles'
 
 # Who may call it on the machine client's behalf: nobody. Alertmanager posts
-# with alert-automation's own token; a token with `act` is refused.
+# with alert-automation's own token. With no `resource`, the route does not
+# trust chain-sts at all, so its tokens are refused (401).
 actors: []
 
 # The assistant receives the alert's own token and opens the incident with it.

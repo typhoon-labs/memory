@@ -6,7 +6,7 @@
 # Authentication is a separate release of
 # agent-platform/policies/agentgateway/route-auth that targets HTTPRoute `model`.
 #
-# Schema: Agentgateway 1.6, AgentgatewayBackend `spec.ai`
+# Schema: Agentgateway 1.7, AgentgatewayBackend `spec.ai`
 # (https://agentgateway.dev/docs/kubernetes/latest/integrations/llm/providers/).
 
 # The Gateway this route attaches to.

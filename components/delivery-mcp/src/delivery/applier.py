@@ -12,6 +12,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -27,6 +28,12 @@ class ApplyError(Exception):
 @dataclass(frozen=True)
 class ApplyResult:
     detail: str
+    # Where the change landed, for the audit records: the Helm release and the
+    # revision the upgrade created. None from the fake applier, and the
+    # revision None when helm's output does not name it.
+    release: str | None = None
+    namespace: str | None = None
+    revision: int | None = None
 
 
 class Applier(Protocol):
@@ -158,7 +165,14 @@ class HelmApplier:
         return str(value) if value is not None else None
 
     async def apply(self, service: str, version: str, operation_id: str) -> ApplyResult:
-        await self._run(self.upgrade_command(service, version, operation_id))
+        out = await self._run(self.upgrade_command(service, version, operation_id))
+        # helm upgrade prints the revision it created as "REVISION: <n>".
+        found = re.search(r"^REVISION:\s*(\d+)\s*$", out, re.MULTILINE)
+        revision = int(found.group(1)) if found else None
         return ApplyResult(
             detail=f"helm release {self._release} in {self._namespace}: {service} set to {version}"
+            + (f", revision {revision}" if revision is not None else ""),
+            release=self._release,
+            namespace=self._namespace,
+            revision=revision,
         )

@@ -1,0 +1,10 @@
+flowchart LR
+    A[Discover<br/>catalog] --> B[Scaffold<br/>template]
+    B --> C[Develop<br/>dev gateway]
+    C --> D[Test and evaluate<br/>conformance, evals]
+    D --> E[Release<br/>signed, recorded]
+    E --> F[Deploy<br/>GitOps, two charts]
+    F --> G[Operate and debug<br/>one trace per task]
+    G --> H[Upgrade<br/>automated MRs]
+    H --> D
+    G --> I[Retire]

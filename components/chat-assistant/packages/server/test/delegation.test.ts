@@ -1,25 +1,32 @@
 /**
- * Delegation: the caller's token is exchanged at chain-sts and only the issued
- * token goes downstream. A fake chain-sts, a fake gateway in front of
- * delivery-mcp and the agents, and the fake model record what each is sent.
+ * Delegation: the caller's token is exchanged at chain-sts for a token for
+ * each target, and only the issued token goes to that target. A fake
+ * chain-sts, a fake gateway in front of delivery-mcp and the agents, and the
+ * fake model record what each is sent.
  */
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { decodeJwt } from 'jose';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 import { A2aSession } from '../scripts/lib/a2a-session.js';
 import { createChat } from '../src/chat/agent.js';
 import { loadConfig } from '../src/config.js';
-import { createTokenExchange, type DownstreamToken } from '../src/downstream/delegation.js';
+import { createTokenExchange, resourcesOf, type DownstreamToken } from '../src/downstream/delegation.js';
 import { createDownstreams } from '../src/downstream/index.js';
 import { DownstreamError, Refusal } from '../src/downstream/types.js';
 import { startFakeAnthropic, type FakeAnthropic } from './support/fake-anthropic.js';
 import { startFakeSts, type FakeSts } from './support/fake-sts.js';
-import { startTestServer, type TestServer } from './support/server.js';
+import { GATEWAY_ROUTES, startTestServer, type TestServer } from './support/server.js';
 
 const USERS_TOKEN = 'the-users-own-token';
+/** Two targets, as the dev cluster names their resources: delivery-mcp's route and the model route's. */
+const DELIVERY = GATEWAY_ROUTES.DELIVERY_MCP_URL;
+const MODEL = 'http://agentgateway-proxy.agentgateway-system.svc.cluster.local/v1';
+/** The audience a token was issued for. */
+const audienceOf = (token: string) => decodeJwt(token).aud;
 const REFUSED = { refuse: { error: 'unauthorized_client', description: "chat-assistant may not act on a user's own token" } };
 
 let sts: FakeSts;
@@ -44,13 +51,13 @@ beforeEach(async () => {
   await writeFile(actorFile, 'actor-token-1\n');
 });
 
-const exchanger = () => createTokenExchange({ metadataUrl: sts.metadataUrl, actorTokenFile: actorFile, audience: 'agentgateway' });
+const exchanger = () => createTokenExchange({ metadataUrl: sts.metadataUrl, actorTokenFile: actorFile });
 
 describe('the exchange at chain-sts', () => {
   afterEach(() => void vi.useRealTimers());
 
-  test("asks as kagent's clients do: a form POST to the token_endpoint, without client authentication", async () => {
-    const issued = await exchanger()(USERS_TOKEN);
+  test("asks as kagent's clients do: a form POST to the token_endpoint, without client authentication, naming the target as `resource`", async () => {
+    const issued = await exchanger()(USERS_TOKEN, DELIVERY);
     expect(issued).toBe(sts.issued[0]);
     expect(sts.exchanges).toHaveLength(1);
     const [{ form, headers }] = sts.exchanges;
@@ -60,32 +67,55 @@ describe('the exchange at chain-sts', () => {
       subject_token_type: 'urn:ietf:params:oauth:token-type:jwt',
       actor_token: 'actor-token-1',
       actor_token_type: 'urn:ietf:params:oauth:token-type:jwt',
-      audience: 'agentgateway',
+      resource: DELIVERY,
     });
+    expect(audienceOf(issued)).toBe(DELIVERY);
     expect(headers['content-type']).toMatch(/^application\/x-www-form-urlencoded/);
     expect(headers.authorization).toBeUndefined();
   });
 
+  test('a target without a resource is asked for with none, which chain-sts refuses when it issues for several', async () => {
+    await exchanger()(USERS_TOKEN, '');
+    expect(sts.exchanges[0]!.form).not.toHaveProperty('resource');
+    expect(sts.exchanges[0]!.form).not.toHaveProperty('audience');
+  });
+
+  test('keeps one token per caller token and per target: another target is another exchange', async () => {
+    const tokenFor = exchanger();
+    const forDelivery = await tokenFor('caller-a', DELIVERY);
+    const forModel = await tokenFor('caller-a', MODEL);
+    expect(forModel).not.toBe(forDelivery);
+    expect(await tokenFor('caller-a', DELIVERY)).toBe(forDelivery);
+    expect(await tokenFor('caller-a', MODEL)).toBe(forModel);
+    expect(await tokenFor('caller-b', DELIVERY)).not.toBe(forDelivery);
+    expect(sts.exchanges.map((e) => [e.form.subject_token, e.form.resource])).toEqual([
+      ['caller-a', DELIVERY],
+      ['caller-a', MODEL],
+      ['caller-b', DELIVERY],
+    ]);
+    expect([audienceOf(forDelivery), audienceOf(forModel)]).toEqual([DELIVERY, MODEL]);
+  });
+
   test('reads the actor token file again for every exchange: the kubelet replaces it', async () => {
     const tokenFor = exchanger();
-    await tokenFor('caller-a');
+    await tokenFor('caller-a', DELIVERY);
     await writeFile(actorFile, 'actor-token-2');
-    await tokenFor('caller-b');
+    await tokenFor('caller-b', DELIVERY);
     expect(sts.exchanges.map((e) => e.form.actor_token)).toEqual(['actor-token-1', 'actor-token-2']);
   });
 
-  test('keeps the issued token per caller token until 30 seconds before it expires', async () => {
+  test('keeps the issued token per caller token and target until 30 seconds before it expires', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     const tokenFor = exchanger();
-    const first = await tokenFor('caller-a');
-    expect(await tokenFor('caller-a')).toBe(first);
-    expect(await tokenFor('caller-b')).not.toBe(first);
+    const first = await tokenFor('caller-a', DELIVERY);
+    expect(await tokenFor('caller-a', DELIVERY)).toBe(first);
+    expect(await tokenFor('caller-b', DELIVERY)).not.toBe(first);
     expect(sts.exchanges).toHaveLength(2);
 
     vi.setSystemTime(Date.now() + 269_000);
-    expect(await tokenFor('caller-a')).toBe(first);
+    expect(await tokenFor('caller-a', DELIVERY)).toBe(first);
     vi.setSystemTime(Date.now() + 2_000);
-    const second = await tokenFor('caller-a');
+    const second = await tokenFor('caller-a', DELIVERY);
     expect(second).not.toBe(first);
     expect(sts.exchanges.map((e) => e.form.subject_token)).toEqual(['caller-a', 'caller-b', 'caller-a']);
     // The metadata was read once.
@@ -96,49 +126,55 @@ describe('the exchange at chain-sts', () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     sts.answer({ issue: { lifetimeSeconds: 100, expiresIn: false } });
     const tokenFor = exchanger();
-    const first = await tokenFor('caller-a');
+    const first = await tokenFor('caller-a', DELIVERY);
     vi.setSystemTime(Date.now() + 69_000);
-    expect(await tokenFor('caller-a')).toBe(first);
+    expect(await tokenFor('caller-a', DELIVERY)).toBe(first);
     vi.setSystemTime(Date.now() + 2_000);
-    expect(await tokenFor('caller-a')).not.toBe(first);
+    expect(await tokenFor('caller-a', DELIVERY)).not.toBe(first);
   });
 
   test('a call that needs the token for longer than the kept one lasts gets a new one, which is kept instead', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     const tokenFor = exchanger();
-    const first = await tokenFor('caller-a');
+    const first = await tokenFor('caller-a', DELIVERY);
     vi.setSystemTime(Date.now() + 150_000);
-    expect(await tokenFor('caller-a', 120_000)).toBe(first);
-    const second = await tokenFor('caller-a', 180_000);
+    expect(await tokenFor('caller-a', DELIVERY, 120_000)).toBe(first);
+    const second = await tokenFor('caller-a', DELIVERY, 180_000);
     expect(second).not.toBe(first);
-    expect(await tokenFor('caller-a')).toBe(second);
+    expect(await tokenFor('caller-a', DELIVERY)).toBe(second);
     expect(sts.exchanges).toHaveLength(2);
   });
 
-  test('concurrent calls for one caller token share one exchange', async () => {
+  test('concurrent calls for one caller token and target share one exchange; another target has its own', async () => {
     const tokenFor = exchanger();
-    const tokens = await Promise.all([tokenFor('caller-a'), tokenFor('caller-a'), tokenFor('caller-a', 180_000)]);
-    expect(new Set(tokens).size).toBe(1);
-    expect(sts.exchanges).toHaveLength(1);
+    const tokens = await Promise.all([
+      tokenFor('caller-a', DELIVERY),
+      tokenFor('caller-a', DELIVERY),
+      tokenFor('caller-a', DELIVERY, 180_000),
+      tokenFor('caller-a', MODEL),
+    ]);
+    expect(new Set(tokens.slice(0, 3)).size).toBe(1);
+    expect(tokens[3]).not.toBe(tokens[0]);
+    expect(sts.exchanges.map((e) => e.form.resource)).toEqual([DELIVERY, MODEL]);
   });
 
   test("chain-sts's refusal is a Refusal that names the RFC 6749 error; nothing is kept", async () => {
     sts.answer(REFUSED);
     const tokenFor = exchanger();
-    const refused = await tokenFor('caller-a').catch((err) => err);
+    const refused = await tokenFor('caller-a', DELIVERY).catch((err) => err);
     expect(refused).toBeInstanceOf(Refusal);
     expect(refused).toMatchObject({ layer: 'gateway', status: 400, oauthError: 'unauthorized_client' });
     expect(refused.message).toBe("Refused by the token exchange (unauthorized_client): chat-assistant may not act on a user's own token");
     expect(refused.message).not.toContain('caller-a');
 
     sts.answer({ issue: {} });
-    expect(await tokenFor('caller-a')).toBe(sts.issued[0]);
+    expect(await tokenFor('caller-a', DELIVERY)).toBe(sts.issued[0]);
     expect(sts.exchanges).toHaveLength(2);
   });
 
   test('a 503 from chain-sts is a failure, not a refusal, and still names the error', async () => {
     sts.answer({ refuse: { error: 'temporarily_unavailable', description: 'the signing keys for the cluster could not be fetched', status: 503 } });
-    const failed = await exchanger()('caller-a').catch((err) => err);
+    const failed = await exchanger()('caller-a', DELIVERY).catch((err) => err);
     expect(failed).toBeInstanceOf(DownstreamError);
     expect(failed.message).toBe(
       'chain-sts: the token exchange failed with HTTP 503 (temporarily_unavailable): the signing keys for the cluster could not be fetched',
@@ -146,14 +182,14 @@ describe('the exchange at chain-sts', () => {
   });
 
   test('an actor token file that is missing or empty fails before anything is sent', async () => {
-    const missing = await createTokenExchange({ metadataUrl: sts.metadataUrl, actorTokenFile: path.join(dir, 'none'), audience: 'agentgateway' })(
-      'caller-a',
-    ).catch((err) => err);
+    const missing = await createTokenExchange({ metadataUrl: sts.metadataUrl, actorTokenFile: path.join(dir, 'none') })('caller-a', DELIVERY).catch(
+      (err) => err,
+    );
     expect(missing).toBeInstanceOf(DownstreamError);
     expect(missing.message).toBe(`chain-sts: the actor token file ${path.join(dir, 'none')} could not be read: ENOENT`);
 
     await writeFile(actorFile, '\n');
-    const empty = await exchanger()('caller-a').catch((err) => err);
+    const empty = await exchanger()('caller-a', DELIVERY).catch((err) => err);
     expect(empty).toBeInstanceOf(DownstreamError);
     expect(empty.message).toMatch(/^chain-sts: the actor token file .* is empty$/);
     expect(sts.metadataReads).toBe(0);
@@ -168,13 +204,13 @@ describe('the exchange at chain-sts', () => {
     sts.tokenEndpoint(`http://127.0.0.1:${port}/token`);
 
     const tokenFor = exchanger();
-    const failed = await tokenFor('caller-a').catch((err) => err);
+    const failed = await tokenFor('caller-a', DELIVERY).catch((err) => err);
     expect(failed).toBeInstanceOf(DownstreamError);
     expect(failed.message).toMatch(/^chain-sts: the token exchange failed: fetch failed/);
 
     sts.tokenEndpoint();
-    expect(await tokenFor('caller-a')).toBe(sts.issued[0]);
-    await tokenFor('caller-b');
+    expect(await tokenFor('caller-a', DELIVERY)).toBe(sts.issued[0]);
+    await tokenFor('caller-b', DELIVERY);
     expect(sts.metadataReads).toBe(2);
   });
 });
@@ -280,16 +316,26 @@ describe('what goes downstream', () => {
 
   const sent = () => [...gateway.requests.map((r) => r.authorization), ...model.calls.map((c) => c.headers.authorization)];
 
-  test("delivery-mcp, the three agents and the model get the issued token, never the caller's", async () => {
+  test("delivery-mcp, the three agents and the model each get the token issued for their own resource, never the caller's", async () => {
     const outcomes = await callEverything(exchanger());
     expect(outcomes.map((o) => o.status)).toEqual(['fulfilled', 'fulfilled', 'fulfilled', 'fulfilled', 'fulfilled']);
-    expect(sts.exchanges).toHaveLength(1);
-    expect(new Set(gateway.requests.map((r) => r.path.split('/').slice(0, 3).join('/')))).toEqual(
+    const route = (path: string) => path.split('/').slice(0, 3).join('/');
+    expect(new Set(gateway.requests.map((r) => route(r.path)))).toEqual(
       new Set(['/mcp/delivery', '/a2a/remediation-agent', '/a2a/comms-agent', '/a2a/diagnosis-agent']),
     );
+    // One exchange per target: the four routes and the model, whose resource is its base URL with /v1.
+    const routes = ['/mcp/delivery', '/a2a/remediation-agent', '/a2a/comms-agent', '/a2a/diagnosis-agent'].map((r) => `${gateway.url}${r}`);
+    expect(new Set(sts.exchanges.map((e) => e.form.resource))).toEqual(new Set([...routes, `${model.url}/v1`]));
+    expect(sts.exchanges).toHaveLength(5);
+    // Every request carried a token chain-sts issued, for the route it went to.
+    for (const request of gateway.requests) {
+      const token = request.authorization!.replace(/^Bearer /, '');
+      expect(sts.issued).toContain(token);
+      expect([request.path, audienceOf(token)]).toEqual([request.path, `${gateway.url}${route(request.path)}`]);
+    }
     // Two model calls: the tool call and the answer; the tool read went to delivery-mcp.
     expect(model.calls).toHaveLength(2);
-    expect(new Set(sent())).toEqual(new Set([`Bearer ${sts.issued[0]}`]));
+    for (const call of model.calls) expect(audienceOf(call.headers.authorization!.replace(/^Bearer /, ''))).toBe(`${model.url}/v1`);
     expect(JSON.stringify({ requests: gateway.requests, model: model.calls.map((c) => c.headers) })).not.toContain(USERS_TOKEN);
   });
 
@@ -354,9 +400,10 @@ describe('over A2A, with delegation', () => {
     s.model.script([{ text: 'Search is failing.' }]);
     const reply = await developer.chat('What is broken?');
     expect(reply.state).toBe('COMPLETED');
-    expect(s.model.calls.at(-1)!.headers.authorization).toBe(`Bearer ${sts.issued[0]}`);
-    expect(sts.exchanges).toHaveLength(1);
-    expect(sts.exchanges[0]!.form.subject_token).toBe(token);
+    // Two exchanges of the caller's token: one for delivery-mcp (the card), one for the model (the chat).
+    expect(sts.exchanges.map((e) => e.form.resource)).toEqual([GATEWAY_ROUTES.DELIVERY_MCP_URL, `${s.model.url}/v1`]);
+    expect(sts.exchanges.map((e) => e.form.subject_token)).toEqual([token, token]);
+    expect(s.model.calls.at(-1)!.headers.authorization).toBe(`Bearer ${sts.issued[1]}`);
   });
 
   test("a refused exchange shows as the token exchange's refusal, with its error code, on the card, the chat and a button", async () => {
@@ -389,10 +436,27 @@ describe('over A2A, with delegation', () => {
 describe('configuration', () => {
   const base = { OIDC_ISSUER: 'http://issuer.invalid', OIDC_JWKS_URL: 'http://issuer.invalid/certs', STUB_DOWNSTREAMS: '1' };
 
-  test('both bindings: delegation, with the audience the gateway checks', () => {
+  test('both bindings: delegation', () => {
     const config = loadConfig({ ...base, DELEGATION_METADATA_URL: sts.metadataUrl, DELEGATION_ACTOR_TOKEN_FILE: actorFile });
     expect(config.delegation).toEqual({ metadataUrl: sts.metadataUrl, actorTokenFile: actorFile });
-    expect(config.oidc.audience).toBe('agentgateway');
+  });
+
+  test("each target's resource is the address it is called at, without a trailing slash; the model's is MODEL_BASE_URL with /v1", () => {
+    const config = loadConfig({
+      ...base,
+      DELIVERY_MCP_URL: `${DELIVERY}/`,
+      REMEDIATION_AGENT_URL: GATEWAY_ROUTES.REMEDIATION_AGENT_URL,
+      COMMS_AGENT_URL: GATEWAY_ROUTES.COMMS_AGENT_URL,
+      DIAGNOSIS_AGENT_URL: `${GATEWAY_ROUTES.DIAGNOSIS_AGENT_URL}//`,
+      MODEL_BASE_URL: 'http://agentgateway-proxy.agentgateway-system.svc.cluster.local/',
+    });
+    expect(resourcesOf(config)).toEqual({
+      delivery: DELIVERY,
+      remediation: GATEWAY_ROUTES.REMEDIATION_AGENT_URL,
+      comms: GATEWAY_ROUTES.COMMS_AGENT_URL,
+      diagnosis: GATEWAY_ROUTES.DIAGNOSIS_AGENT_URL,
+      model: MODEL,
+    });
   });
 
   test('neither: no delegation', () => {
@@ -403,7 +467,7 @@ describe('configuration', () => {
     expect(loadConfig(base).oidc.acceptedAudiences).toEqual(['agentgateway']);
     const both = loadConfig({ ...base, OIDC_ACCEPTED_AUDIENCES: 'agentgateway, chat-assistant' });
     expect(both.oidc.acceptedAudiences).toEqual(['agentgateway', 'chat-assistant']);
-    // What goes downstream is still asked for the gateway's audience.
+    // The gateway's audience stays the default; what goes downstream is asked for per target instead.
     expect(both.oidc.audience).toBe('agentgateway');
   });
 

@@ -23,8 +23,8 @@ const verify = createTokenVerifier({
   keys: testIssuer?.keys,
 });
 
-// With delegation, the model and every downstream get a token chain-sts issued for the caller, never the caller's own.
-const tokenFor = config.delegation && createTokenExchange({ ...config.delegation, audience: config.oidc.audience });
+// With delegation, the model and every downstream get a token chain-sts issued for the caller and that target, never the caller's own.
+const tokenFor = config.delegation && createTokenExchange(config.delegation);
 const downstreams = createDownstreams(config, tokenFor);
 const app = createApp({ config, verify, downstreams, chat: createChat(config, downstreams, tokenFor), testIssuer });
 

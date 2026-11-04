@@ -4,7 +4,8 @@ The subject is a user's token from a trusted identity provider, or a token this
 service issued. The actor is the calling agent, proven by its Kubernetes
 service-account token. The issued token keeps the user as `sub`, carries the
 user's claims on, and names every agent in a nested `act`, the newest
-outermost. Every decision writes one audit line.
+outermost. Every decision writes one audit line, whose `attributes` are what
+the Collector gets of it (telemetry.py).
 """
 
 from __future__ import annotations
@@ -46,6 +47,15 @@ def chain_of(act: Any) -> list[str]:
     return chain
 
 
+def user_attributes(claims: dict[str, Any]) -> dict[str, Any]:
+    """The user of a verified token, by the names the gateway's access log gives the same claims."""
+    return {
+        "user.id": claims.get("preferred_username"),
+        "user.sub": claims["sub"],
+        "user.issuer": claims["iss"],
+    }
+
+
 class TokenService:
     def __init__(self, config: Config, keys: KeySet, actors: ActorVerifier) -> None:
         self.config = config
@@ -78,20 +88,27 @@ class TokenService:
 
     async def exchange(self, params: Parameters) -> dict[str, Any]:
         """Issue a token or refuse; either way, write one audit line."""
-        # Who asked, as far as their tokens have verified.
+        # Who asked, as far as their tokens have verified: for the line, and
+        # the user's attributes for the Collector.
         asked: dict[str, str] = {}
+        user: dict[str, Any] = {}
         try:
-            return await self._exchange(params, asked)
+            return await self._exchange(params, asked, user)
         except Refusal as refusal:
-            self.refused(refusal, asked)
+            self.refused(refusal, asked, user)
             raise
         except Exception as exc:
             log.exception("token exchange failed")
             refusal = Refusal("server_error", "the exchange failed", status=500)
-            self.refused(refusal, asked)
+            self.refused(refusal, asked, user)
             raise refusal from exc
 
-    def refused(self, refusal: Refusal, asked: dict[str, str] | None = None) -> None:
+    def refused(
+        self,
+        refusal: Refusal,
+        asked: dict[str, str] | None = None,
+        user: dict[str, Any] | None = None,
+    ) -> None:
         audit.info(
             "token exchange refused",
             extra={
@@ -101,11 +118,19 @@ class TokenService:
                     **(asked or {}),
                     "error": refusal.error,
                     "reason": refusal.description,
-                }
+                },
+                "attributes": {
+                    "audit.event": "token_exchange",
+                    "audit.outcome": "refused",
+                    "audit.rule": refusal.description,
+                    **(user or {}),
+                },
             },
         )
 
-    async def _exchange(self, params: Parameters, asked: dict[str, str]) -> dict[str, Any]:
+    async def _exchange(
+        self, params: Parameters, asked: dict[str, str], user: dict[str, Any]
+    ) -> dict[str, Any]:
         def one(name: str) -> str | None:
             values = params.get(name) or []
             if len(values) > 1:
@@ -137,6 +162,16 @@ class TokenService:
                 "invalid_target", f"not an audience this service issues for: {not_allowed}"
             )
         audience = list(dict.fromkeys(requested)) or [self.config.audiences[0]]
+        if len(self.config.audiences) > 1 and len(set(requested)) != 1:
+            # Several targets: each token is for one of them, named by the
+            # agent. Without a name there is no default (RFC 8707, section 2,
+            # allows refusing a request that names none), and a token for two
+            # targets would let the agent it is sent to replay it at the other.
+            raise Refusal(
+                "invalid_target",
+                "name one target, with `resource` or `audience`: this service issues a token"
+                f" for one of {len(self.config.audiences)} targets",
+            )
 
         service_account = await self._actors.verify(actor_token)
         asked["service_account"] = service_account
@@ -148,6 +183,7 @@ class TokenService:
         asked["agent"] = agent.name
         subject, ours = await self._verify_subject(subject_token, agent)
         asked["user"] = subject.get("preferred_username") or subject["sub"]
+        user.update(user_attributes(subject))
 
         previous_act = subject.get("act")
         if ours:
@@ -214,6 +250,7 @@ class TokenService:
             if name in subject:
                 claims[name] = subject[name]
         token = self.keys.sign(claims)
+        names = [self._name(sa) for sa in chain_of(act)]
         audit.info(
             "token exchange issued",
             extra={
@@ -222,10 +259,20 @@ class TokenService:
                     "outcome": "issued",
                     "jti": claims["jti"],
                     "user": asked["user"],
-                    "chain": [self._name(sa) for sa in chain_of(act)],
+                    "chain": names,
                     "aud": claims["aud"],
                     "exp": expires,
-                }
+                },
+                # Comma-separated, as the gateway writes actor.chain for the
+                # same token, so that a query can match one to the other.
+                "attributes": {
+                    "audit.event": "token_exchange",
+                    "audit.outcome": "issued",
+                    **user,
+                    "token.jti": claims["jti"],
+                    "actor.chain": ",".join(names),
+                    "token.aud": ",".join(audience),
+                },
             },
         )
         return {

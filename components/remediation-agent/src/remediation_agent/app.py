@@ -55,7 +55,8 @@ class RemediationA2AServer(A2AServer):
                             bearer_format="JWT",
                             description="The signed-in caller's access token. It is forwarded"
                             " to delivery-mcp and to the model endpoint, or first exchanged at"
-                            " chain-sts for a token that names this agent too.",
+                            " chain-sts, for each of them, for a token that names this agent"
+                            " too and is for that one alone.",
                         )
                     )
                 },
@@ -90,7 +91,7 @@ def create_app(settings: Settings) -> Starlette:
             {"status": "ok", "service": SERVICE_NAME, "version": settings.app_version}
         )
 
-    verifier = TokenVerifier(issuers=settings.trusted_issuers(), audience=settings.oidc_audience)
+    verifier = TokenVerifier(issuers=settings.trusted_issuers())
     app = server.to_starlette_app(
         app_kwargs={
             "routes": [Route("/healthz", healthz, methods=["GET"])],

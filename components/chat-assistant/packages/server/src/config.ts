@@ -12,9 +12,11 @@ export interface Config {
   port: number;
   appVersion: string;
   /**
-   * `audience`: the gateway's, asked for at chain-sts for what goes downstream.
-   * `acceptedAudiences`: what a caller's token may carry, one being enough
-   * (OIDC_ACCEPTED_AUDIENCES, else `audience` alone).
+   * `audience`: the gateway's, which `task token` and the alert's machine
+   * client get (and the test issuer's default). `acceptedAudiences`: what a
+   * caller's token may carry, one being enough (OIDC_ACCEPTED_AUDIENCES, else
+   * `audience` alone). What goes downstream is exchanged per target instead
+   * (downstream/delegation.ts, `resourcesOf`).
    */
   oidc: { issuer: string; jwksUrl: string; audience: string; acceptedAudiences: string[] };
   /** `timeoutMs`: all the time one chat answer may take, tool calls included. There is no retry. */
@@ -26,8 +28,9 @@ export interface Config {
     diagnosisAgentUrl: string;
   };
   /**
-   * chain-sts, where the caller's token is exchanged before every downstream
-   * call (see downstream/delegation.ts). Unset: the caller's own token goes downstream.
+   * chain-sts, where the caller's token is exchanged for a token for each
+   * target before every downstream call (see downstream/delegation.ts). Unset:
+   * the caller's own token goes downstream.
    */
   delegation?: {
     /** RFC 8414 metadata; the exchange goes to its `token_endpoint` as given. */
@@ -54,11 +57,26 @@ export interface Config {
     a2aUrl: string;
     a2aProtocolVersion: string;
     pollIntervalMs: number;
+    /**
+     * Ask the issuer to show its sign-in form on every sign-in (`prompt=login`),
+     * so that each tab can sign in as another role. Off: an existing session at
+     * the issuer is reused, as production wants (UI_FORCE_SIGN_IN).
+     */
+    forceSignIn: boolean;
   };
 }
 
 function flag(value: string | undefined): boolean {
   return value === '1' || value?.toLowerCase() === 'true';
+}
+
+/** `fallback` when unset or empty; otherwise 1, true, 0 or false, and anything else stops the start. */
+function onOff(name: string, value: string | undefined, fallback: boolean): boolean {
+  if (value === undefined || value === '') return fallback;
+  const v = value.toLowerCase();
+  if (v === '1' || v === 'true') return true;
+  if (v === '0' || v === 'false') return false;
+  throw new Error(`${name} is 1, true, 0 or false, not ${value}.`);
 }
 
 function list(value: string | undefined): string[] {
@@ -139,6 +157,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       a2aUrl: (env.UI_A2A_URL ?? '').replace(/\/+$/, ''),
       a2aProtocolVersion: env.UI_A2A_PROTOCOL_VERSION ?? '1.0',
       pollIntervalMs: Number(env.UI_POLL_INTERVAL_MS ?? 2000),
+      forceSignIn: onOff('UI_FORCE_SIGN_IN', env.UI_FORCE_SIGN_IN, true),
     },
   };
 }

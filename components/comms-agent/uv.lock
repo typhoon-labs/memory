@@ -31,7 +31,7 @@ sql = [
 
 [[package]]
 name = "agentsts-core"
-version = "1.0.0a16"
+version = "1.0.0rc1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cryptography" },
@@ -40,9 +40,9 @@ dependencies = [
     { name = "pyjwt" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/52/f5/9405d831699a487aef3448f364d15b12b16a110883528ecc799bc87b9a9e/agentsts_core-1.0.0a16.tar.gz", hash = "sha256:b7417c9bb9f00c5b12283d60439beb2591a7d890ffada9f0a79fae0cd425aa67", size = 10349, upload-time = "2026-10-19T18:59:50.248Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/31/49/55a2818dfa733d81848ad111dbe8e5eabc2d7dfc412f600a67b1396ca9c1/agentsts_core-1.0.0rc1.tar.gz", hash = "sha256:14da2a594878d39479d68c310e5d113bb6ac1d3fcfdc8eb8bf7a5f93565b9fb9", size = 10343, upload-time = "2026-10-30T18:36:08.803Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/98/27/6f2f9cb0a889b1ff320d5c55e6f1bdada6d92f3994d59e5adb2179845ac6/agentsts_core-1.0.0a16-py3-none-any.whl", hash = "sha256:c1282536623e1c6784711eaedf7839b017ad16aa7373378e1b774a140ca039d4", size = 9575, upload-time = "2026-10-19T18:59:42.174Z" },
+    { url = "https://files.pythonhosted.org/packages/f4/60/d182b3d225b275a45ee1563f408804234f8a0b9746017fd173a771f77a95/agentsts_core-1.0.0rc1-py3-none-any.whl", hash = "sha256:ed86c2f42c297f3595a9e5bd3869b4c6c224f06c3eac206365e76f003bcd3aec", size = 9574, upload-time = "2026-10-30T18:36:01.316Z" },
 ]
 
 [[package]]
@@ -435,7 +435,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "agentsts-core", specifier = "==1.0.0a16" },
+    { name = "agentsts-core", specifier = "==1.0.0rc1" },
     { name = "httpx", specifier = ">=0.28.1,<1.0" },
     { name = "mcp", specifier = ">=1.30,<2" },
     { name = "opentelemetry-exporter-otlp", specifier = ">=1.30.0,<2.0" },

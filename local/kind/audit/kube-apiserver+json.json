@@ -1,0 +1,10 @@
+[
+  {"op": "add", "path": "/spec/containers/0/command/-", "value": "--audit-policy-file=/etc/kubernetes/audit/policy.yaml"},
+  {"op": "add", "path": "/spec/containers/0/command/-", "value": "--audit-log-path=/var/log/kubernetes/audit/audit.log"},
+  {"op": "add", "path": "/spec/containers/0/command/-", "value": "--audit-log-maxsize=50"},
+  {"op": "add", "path": "/spec/containers/0/command/-", "value": "--audit-log-maxbackup=4"},
+  {"op": "add", "path": "/spec/containers/0/volumeMounts/-", "value": {"name": "audit-policy", "mountPath": "/etc/kubernetes/audit", "readOnly": true}},
+  {"op": "add", "path": "/spec/containers/0/volumeMounts/-", "value": {"name": "audit-log", "mountPath": "/var/log/kubernetes/audit"}},
+  {"op": "add", "path": "/spec/volumes/-", "value": {"name": "audit-policy", "hostPath": {"path": "/etc/kubernetes/audit", "type": "Directory"}}},
+  {"op": "add", "path": "/spec/volumes/-", "value": {"name": "audit-log", "hostPath": {"path": "/var/log/kubernetes/audit", "type": "DirectoryOrCreate"}}}
+]

@@ -1,8 +1,16 @@
+{{- /*
+Every realm file under files/, each imported at start: demo-realm.json (the
+platform's realm) and corp-realm.json (a stand-in enterprise IdP that realm
+demo brokers). The pod's checksum/realm annotation hashes this whole
+ConfigMap, so a change to any of them restarts Keycloak.
+*/ -}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: keycloak-realm
   namespace: {{ .Release.Namespace }}
 data:
-  demo-realm.json: |-
-{{ .Files.Get "files/demo-realm.json" | indent 4 }}
+{{- range $path, $_ := .Files.Glob "files/*-realm.json" }}
+  {{ base $path }}: |-
+{{ $.Files.Get $path | indent 4 }}
+{{- end }}
